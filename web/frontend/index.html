@@ -73,13 +73,43 @@
   .item:hover .badge{transform:scale(1.03)}
   header .tag{transition:background .2s}
   header:hover .tag{background:rgba(255,255,255,.25)}
+
+  /* 判定结果卡片 */
+  .judge-card{background:linear-gradient(180deg,#fff,#fafbff)}
+  .judge-hero{padding:14px 16px;border-radius:10px;margin-bottom:14px;animation:fadeUp .4s cubic-bezier(.4,0,.2,1) both}
+  .judge-hero-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+  .pri-badge{color:#fff;padding:4px 12px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+  .pri-label{font-weight:600;color:#0f172a;font-size:14px}
+  .judge-score{margin-left:auto;font-size:12px;color:#475569}
+  .judge-score b{font-size:18px;color:#0f172a;margin-left:4px}
+  .judge-headline{font-size:16px;font-weight:600;color:#0f172a;margin:6px 0 4px;line-height:1.4}
+  .judge-summary{font-size:13px;color:#334155;line-height:1.7;margin-bottom:10px}
+  .score-bar{height:6px;background:rgba(255,255,255,.5);border-radius:3px;overflow:hidden}
+  .score-bar-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1)}
+
+  .section-title{font-size:12px;color:#475569;font-weight:600;margin:14px 0 8px;text-transform:none;letter-spacing:.3px}
+  .anomaly-list{display:flex;flex-direction:column;gap:6px}
+  .anomaly{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
+  .anomaly:hover{transform:translateX(2px);box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .sev-tag{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0}
+  .anomaly-body{flex:1;min-width:0}
+  .anomaly-name{font-weight:500;color:#0f172a;font-size:13px}
+  .anomaly-cat{font-weight:400;color:#94a3b8;font-size:11px;margin-left:6px}
+  .anomaly-reason{color:#475569;font-size:12px;margin-top:3px;line-height:1.5}
+  .anomaly-score{font-size:12px;color:#64748b;white-space:nowrap;align-self:center}
+  .actions-list{margin:0;padding-left:20px;color:#334155;font-size:13px;line-height:1.7}
+  .task-card{background:#f0f9ff;border-left:3px solid #0284c7;padding:10px 12px;border-radius:8px}
+  .task-card-title{font-weight:600;color:#0c4a6e;font-size:13px}
+  .task-card-brief{color:#475569;font-size:12px;margin-top:4px;line-height:1.5}
+  .judge-meta{margin-top:12px;font-size:11px;color:#94a3b8;text-align:right}
 </style>
 </head>
 <body>
 <header>
-  weilai-HealthCheck-Agent
+  🩺 业务巡检 Agent
   <span class="tag">本地测试台</span>
   <span class="tag" id="stat">加载中…</span>
+  <span style="margin-left:auto;font-size:11px;opacity:.7">weilai-HealthCheck-Agent</span>
 </header>
 <div class="layout">
   <!-- 知识库模块 -->
@@ -97,9 +127,9 @@
 
   <!-- 内容展示 -->
   <div class="col">
-    <h3 id="viewer-title">查看器</h3>
+    <h3 id="viewer-title">详情</h3>
     <div class="content" id="viewer">
-      <div class="placeholder">← 左侧点击知识库模块或 ASIN 查看</div>
+      <div class="placeholder">← 从左侧选一个知识库模块，或从中间选一个 ASIN 查看详情</div>
     </div>
   </div>
 </div>
@@ -129,7 +159,7 @@ async function viewKb(name, btn){
   btn && btn.classList.add('active');
   state.kbActive = name;
   const r = await api('/api/knowledge/' + encodeURIComponent(name));
-  document.getElementById('viewer-title').textContent = '知识库 · ' + name;
+  document.getElementById('viewer-title').textContent = '知识库模块 · ' + name.replace(/\.md$/,'');
   document.getElementById('viewer').innerHTML = `<div class="md">${renderMd(r.content)}</div>`;
 }
 
@@ -171,7 +201,7 @@ function esc(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;',
 let allAsins = [];
 async function loadAsins(){
   allAsins = await api('/api/asins');
-  document.getElementById('stat').textContent = allAsins.length + ' ASIN · ' + (await api('/api/knowledge')).modules.length + ' 模块';
+  document.getElementById('stat').textContent = allAsins.length + ' 个 ASIN · ' + (await api('/api/knowledge')).modules.length + ' 个知识模块';
   renderAsins();
 }
 
@@ -215,23 +245,105 @@ async function viewAsin(a, btn){
 function renderAsinView(a, data){
   const cfgFields = ['parent_asin','parent_seller_sku','shop_id','shop_account','site_code',
                      'product_stage','product_position','target_acos_suggest','daily_budget_suggest'];
-  const cfgHtml = `<div class="card"><h4>Config（ERP）</h4><div class="grid">` +
-    cfgFields.map(k=>`<div class="kv"><span class="k">${k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${a[k]??'—'}</span></div>`).join('') +
+  const CN_LABEL = {
+    parent_asin: '父 ASIN', parent_seller_sku: '父 SKU',
+    shop_id: '店铺 ID', shop_account: '店铺账号', site_code: '站点',
+    product_stage: '产品阶段', product_position: '产品定位',
+    target_acos_suggest: '目标 ACOS', daily_budget_suggest: '日预算建议',
+  };
+  const cfgHtml = `<div class="card"><h4>产品基础信息（来自 ERP）</h4><div class="grid">` +
+    cfgFields.map(k=>`<div class="kv"><span class="k">${CN_LABEL[k]||k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${a[k]??'—'}</span></div>`).join('') +
     `</div></div>`;
 
-  const judgeHtml = `<div class="card">
-    <h4>判定引擎（LLM 读知识库 + 热参数）</h4>
-    <button class="run-btn" onclick="runJudge('${a.key}')">🔍 运行判定</button>
-    <div id="judge-result" style="margin-top:10px"></div>
+  const judgeHtml = `<div class="card judge-card">
+    <h4>巡检判定结果</h4>
+    <div style="color:#64748b;font-size:12px;margin-bottom:10px">点击下方按钮，让 Agent 依据知识库和热参数对该产品做一次巡检</div>
+    <button class="run-btn" onclick="runJudge('${a.key}')">🔍 运行巡检判定</button>
+    <div id="judge-result" style="margin-top:14px"></div>
   </div>`;
 
+  const KIND_CN = {
+    listing: { title: '商品基础信息', desc: '标题 / 星级 / 售价 / 退款率' },
+    sales:   { title: '销售与广告',   desc: '销量 / 广告花费 / ACOS / 毛利率' },
+    campaigns:{title: '广告活动',     desc: '所有 Campaign 清单' },
+  };
   const dataHtml = ['listing','sales','campaigns'].map(kind => {
     const d = data[kind] || {};
-    return `<div class="card"><h4>${kind} · found=${d.found} · count=${d.count??0}</h4>
-      <pre style="max-height:260px">${esc(JSON.stringify(d, null, 2))}</pre></div>`;
+    const meta = KIND_CN[kind];
+    const status = d.found ? `<span style="color:#059669">✓ 有数据（${d.count??0} 条）</span>` : `<span style="color:#94a3b8">— 无匹配</span>`;
+    return `<div class="card"><h4>${meta.title} <span style="font-weight:400;color:#94a3b8;font-size:11px">· ${meta.desc}</span></h4>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">${status}</div>
+      <details><summary style="cursor:pointer;font-size:12px;color:#475569">查看原始 JSON</summary>
+      <pre style="max-height:260px;margin-top:6px">${esc(JSON.stringify(d, null, 2))}</pre></details></div>`;
   }).join('');
 
   document.getElementById('viewer').innerHTML = cfgHtml + judgeHtml + dataHtml;
+}
+
+const SEV_META = {
+  S0: {color:'#dc2626', bg:'#fee2e2', label:'S0 严重'},
+  S1: {color:'#ea580c', bg:'#ffedd5', label:'S1 中等'},
+  S2: {color:'#0891b2', bg:'#cffafe', label:'S2 轻微'},
+};
+const PRI_META = {
+  P0: {color:'#dc2626', bg:'linear-gradient(135deg,#fee2e2,#fecaca)', label:'当天处理'},
+  P1: {color:'#ea580c', bg:'linear-gradient(135deg,#ffedd5,#fed7aa)', label:'3 天内处理'},
+  P2: {color:'#0891b2', bg:'linear-gradient(135deg,#cffafe,#a5f3fc)', label:'7 天内处理'},
+};
+
+function renderJudgment(j, usage, model){
+  const P = j.priority || 'P2';
+  const pm = PRI_META[P] || PRI_META.P2;
+  const score = j.product_execution_score;
+  const scorePct = Math.min(100, Math.max(0, (score ?? 0) / 150 * 100));
+
+  const headline = j.headline || '';
+  const summary = j.human_summary || j.priority_reason || '';
+
+  const anomaliesHtml = (j.anomalies || []).map(a => {
+    const sm = SEV_META[a.severity] || SEV_META.S2;
+    return `<div class="anomaly">
+      <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
+      <div class="anomaly-body">
+        <div class="anomaly-name">${esc(a.code||'-')} <span class="anomaly-cat">${esc(a.category||'')}</span></div>
+        <div class="anomaly-reason">${esc(a.plain_reason||a.reason||'')}</div>
+      </div>
+      <div class="anomaly-score">${a.final_score ?? a.base_score ?? '-'} 分</div>
+    </div>`;
+  }).join('') || '<div style="color:#94a3b8;font-size:12px;padding:6px 0">未识别到异常</div>';
+
+  const actionsHtml = (j.suggested_actions||[]).map((s,i) =>
+    `<li style="margin:4px 0">${esc(s)}</li>`
+  ).join('');
+
+  const tc = j.task_card || {};
+  return `
+    <div class="judge-hero" style="background:${pm.bg}">
+      <div class="judge-hero-top">
+        <span class="pri-badge" style="background:${pm.color}">${esc(P)}</span>
+        <span class="pri-label">${esc(pm.label)}</span>
+        <span class="judge-score">综合执行分 <b>${score ?? '-'}</b></span>
+      </div>
+      <div class="judge-headline">${esc(headline)}</div>
+      <div class="judge-summary">${esc(summary)}</div>
+      <div class="score-bar"><div class="score-bar-fill" style="width:${scorePct}%;background:${pm.color}"></div></div>
+    </div>
+
+    <div class="section-title">🎯 识别到的异常（${(j.anomalies||[]).length} 项）</div>
+    <div class="anomaly-list">${anomaliesHtml}</div>
+
+    ${actionsHtml ? `<div class="section-title">✅ 处理建议</div><ol class="actions-list">${actionsHtml}</ol>` : ''}
+
+    ${tc.title ? `<div class="section-title">📋 任务卡</div>
+      <div class="task-card">
+        <div class="task-card-title">${esc(tc.title)}</div>
+        <div class="task-card-brief">${esc(tc.brief||'')}</div>
+      </div>` : ''}
+
+    <div class="judge-meta">模型 ${esc(model||'-')} · 输入 ${usage?.input_tokens ?? '-'} tokens · 输出 ${usage?.output_tokens ?? '-'} tokens</div>
+    <details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:#94a3b8">查看原始 JSON</summary>
+    <pre style="max-height:300px;margin-top:6px">${esc(JSON.stringify(j, null, 2))}</pre></details>
+  `;
 }
 
 async function runJudge(key){
@@ -242,24 +354,14 @@ async function runJudge(key){
   try {
     const r = await fetch('/api/judge/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
     if (r.dry_run){
-      box.innerHTML = `<div style="background:#fef3c7;padding:8px 12px;border-radius:6px;color:#92400e;font-size:12px">
-        ⚠️ ${esc(r.note)}<br>system: ${r.system_length} chars · user: ${r.user_length} chars
+      box.innerHTML = `<div style="background:#fef3c7;padding:10px 12px;border-radius:6px;color:#92400e;font-size:12px">
+        ⚠️ ${esc(r.note)}<br>提示词长度：system ${r.system_length} 字符 · user ${r.user_length} 字符
         </div>
-        <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:#475569">查看即将发送的 prompt</summary>
-        <pre style="max-height:400px;margin-top:6px">${esc(r.system_preview + '\n\n===USER===\n' + r.user_preview)}</pre>
+        <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:#475569">查看即将发送的提示词</summary>
+        <pre style="max-height:400px;margin-top:6px">${esc(r.system_preview + '\n\n===用户消息===\n' + r.user_preview)}</pre>
         </details>`;
     } else {
-      const j = r.judgment || {};
-      const P = j.priority || '?';
-      const badge = P==='P0'?'#dc2626':P==='P1'?'#ea580c':'#0891b2';
-      box.innerHTML = `
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-          <span style="background:${badge};color:#fff;padding:3px 10px;border-radius:4px;font-weight:600">${esc(P)}</span>
-          <span style="font-size:12px;color:#64748b">score=${j.product_execution_score ?? '-'} · ${r.usage?.input_tokens ?? '-'}/${r.usage?.output_tokens ?? '-'} tokens</span>
-        </div>
-        <div style="font-size:12px;color:#334155;margin-bottom:6px">${esc(j.priority_reason||'')}</div>
-        <details open><summary style="cursor:pointer;font-size:12px;color:#475569">完整 JSON 结果</summary>
-        <pre style="max-height:400px;margin-top:6px">${esc(JSON.stringify(j, null, 2))}</pre></details>`;
+      box.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model);
     }
   } catch(e) {
     box.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
