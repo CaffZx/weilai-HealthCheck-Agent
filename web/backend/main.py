@@ -8,7 +8,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from core import knowledge_loader
+from core import llm_judge
 from data import fixture_loader
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI(title="weilai-HealthCheck-Agent · 本地测试台")
 
@@ -59,6 +62,25 @@ def fixture(key: str):
     if key not in fixture_loader.list_keys():
         raise HTTPException(404, "unknown fixture key")
     return {"key": key, "data": fixture_loader.load_bundle(key)}
+
+
+# --- 判定引擎 ---
+def _config_by_key(key: str) -> dict | None:
+    for c in fixture_loader.load_configs():
+        if c["fixture_key"] == key:
+            smap = fixture_loader.load_shop_map().get(c["shop_id"], {})
+            c["shop_account"] = smap.get("account")
+            return c
+    return None
+
+
+@app.post("/api/judge/{key}")
+def judge(key: str):
+    cfg = _config_by_key(key)
+    if not cfg:
+        raise HTTPException(404, "unknown key")
+    bundle = fixture_loader.load_bundle(key)
+    return llm_judge.judge(cfg, bundle)
 
 
 # --- 前端静态资源 ---

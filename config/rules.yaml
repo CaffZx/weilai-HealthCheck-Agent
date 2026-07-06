@@ -1,0 +1,76 @@
+# 判定引擎的"热参数"（改这里不需要重解析知识库，Agent 下次巡检立即生效）
+# 语义描述、判定逻辑仍以 knowledge/*.md 为准；这里只放 LLM 会频繁引用/校准的数字
+
+# --- 定位系数（模块 4.2） ---
+position_coeff:
+  T0: 1.5   # 战略级 (P0_PRODUCT)
+  T1: 1.2   # 重点 (P1_PRODUCT)
+  T2: 1.0   # 常规 (P2_PRODUCT)
+  T3: 0.6   # 长尾 (P3_PRODUCT)
+
+# ERP 值 → T 层的映射
+position_erp_map:
+  P0_PRODUCT: T0
+  P1_PRODUCT: T1
+  P2_PRODUCT: T2
+  P3_PRODUCT: T3
+
+# --- 阶段系数（模块 4.3） ---
+stage_coeff:
+  harvesting: 1.3
+  pushing: 1.2
+  maintaining: 1.0
+  testing: 0.8
+  liquidating: 0.4
+# ERP 里还见过 PROMOTING / HARVEST_PROFIT / LIQUIDATING / 清货期 等大小写与中文写法
+stage_alias:
+  PROMOTING: pushing
+  HARVEST_PROFIT: harvesting
+  LIQUIDATING: liquidating
+  MAINTAINING: maintaining
+  TESTING: testing
+  推进: pushing
+  收割利润: harvesting
+  维持: maintaining
+  测试: testing
+  清货: liquidating
+  清货期: liquidating
+
+# --- 淡旺季系数（模块 4.4） ---
+season_coeff:
+  peak: 1.3           # 旺季
+  peak_early: 1.2     # 旺季前期
+  peak_late: 1.0      # 旺季末期
+  off: 0.7            # 淡季
+
+# --- 异常基础分（模块 4.1，简化版；子体级完整表见 md） ---
+base_score:
+  link_level:         # 链接级异常
+    S0: 100
+    S1: 60
+    S2: 30
+  variant_primary:    # 变体·主要色
+    S0: 100
+    S1: 60
+    S2: 30
+
+# --- 多异常并发权重（模块 4.5） ---
+concurrent_weight: 0.2
+
+# --- 执行优先级阈值（模块 4.6） ---
+priority_threshold:
+  P0: 90
+  P1: 45
+  # < 45 = P2
+
+# --- 超期升降级（模块 5） ---
+overdue_promotion:
+  P1_to_P0_days: 7
+  P2_to_P1_days: 14
+
+# --- ACOS / 花费异常判定基线（模块 3.6，双基准） ---
+acos_anomaly:
+  # 相对基线偏离阈值（近 7 天平均 ACOS 为基线）
+  s0_delta: 0.30      # 偏离 ≥ 30% → S0
+  s1_delta: 0.15
+  min_days_consecutive: 3

@@ -49,6 +49,8 @@
   .kv .v{font-weight:500;color:#0f172a;word-break:break-all}
   .kv .v.none{color:#cbd5e1;font-style:italic;font-weight:400}
   .placeholder{color:#94a3b8;text-align:center;padding:60px 20px;font-size:13px}
+  .run-btn{background:#6366f1;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
+  .run-btn:hover{background:#4f46e5}
 </style>
 </head>
 <body>
@@ -195,13 +197,49 @@ function renderAsinView(a, data){
     cfgFields.map(k=>`<div class="kv"><span class="k">${k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${a[k]??'—'}</span></div>`).join('') +
     `</div></div>`;
 
+  const judgeHtml = `<div class="card">
+    <h4>判定引擎（LLM 读知识库 + 热参数）</h4>
+    <button class="run-btn" onclick="runJudge('${a.key}')">运行判定</button>
+    <div id="judge-result" style="margin-top:10px"></div>
+  </div>`;
+
   const dataHtml = ['listing','sales','campaigns'].map(kind => {
     const d = data[kind] || {};
     return `<div class="card"><h4>${kind} · found=${d.found} · count=${d.count??0}</h4>
       <pre style="max-height:260px">${esc(JSON.stringify(d, null, 2))}</pre></div>`;
   }).join('');
 
-  document.getElementById('viewer').innerHTML = cfgHtml + dataHtml;
+  document.getElementById('viewer').innerHTML = cfgHtml + judgeHtml + dataHtml;
+}
+
+async function runJudge(key){
+  const box = document.getElementById('judge-result');
+  box.innerHTML = '<div style="color:#64748b">运行中… (首次会读全部 md 拼 prompt)</div>';
+  try {
+    const r = await fetch('/api/judge/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
+    if (r.dry_run){
+      box.innerHTML = `<div style="background:#fef3c7;padding:8px 12px;border-radius:6px;color:#92400e;font-size:12px">
+        ⚠️ ${esc(r.note)}<br>system: ${r.system_length} chars · user: ${r.user_length} chars
+        </div>
+        <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:#475569">查看即将发送的 prompt</summary>
+        <pre style="max-height:400px;margin-top:6px">${esc(r.system_preview + '\n\n===USER===\n' + r.user_preview)}</pre>
+        </details>`;
+    } else {
+      const j = r.judgment || {};
+      const P = j.priority || '?';
+      const badge = P==='P0'?'#dc2626':P==='P1'?'#ea580c':'#0891b2';
+      box.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <span style="background:${badge};color:#fff;padding:3px 10px;border-radius:4px;font-weight:600">${esc(P)}</span>
+          <span style="font-size:12px;color:#64748b">score=${j.product_execution_score ?? '-'} · ${r.usage?.input_tokens ?? '-'}/${r.usage?.output_tokens ?? '-'} tokens</span>
+        </div>
+        <div style="font-size:12px;color:#334155;margin-bottom:6px">${esc(j.priority_reason||'')}</div>
+        <details open><summary style="cursor:pointer;font-size:12px;color:#475569">完整 JSON 结果</summary>
+        <pre style="max-height:400px;margin-top:6px">${esc(JSON.stringify(j, null, 2))}</pre></details>`;
+    }
+  } catch(e) {
+    box.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
+  }
 }
 
 loadKb();
