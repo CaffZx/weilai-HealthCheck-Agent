@@ -102,6 +102,32 @@
   .task-card-title{font-weight:600;color:#0c4a6e;font-size:13px}
   .task-card-brief{color:#475569;font-size:12px;margin-top:4px;line-height:1.5}
   .judge-meta{margin-top:12px;font-size:11px;color:#94a3b8;text-align:right}
+
+  /* 批量判定 */
+  .batch-btn{margin-left:12px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.2);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:13px;transition:all .18s}
+  .batch-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.4)}
+  .batch-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100;align-items:center;justify-content:center;animation:fadeIn .2s}
+  .batch-mask.open{display:flex}
+  .batch-modal{background:#fff;border-radius:12px;width:min(1000px,92vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:fadeUp .3s cubic-bezier(.4,0,.2,1)}
+  .batch-head{padding:18px 22px;border-bottom:1px solid #eef1f5;display:flex;justify-content:space-between;align-items:flex-start}
+  .batch-toolbar{padding:12px 22px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:#f8fafc;border-bottom:1px solid #eef1f5}
+  .batch-toolbar label{font-size:12px;color:#475569;display:flex;align-items:center;gap:6px}
+  .batch-toolbar select{padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;background:#fff}
+  .mini-btn{background:#fff;color:#334155;border:1px solid #cbd5e1;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px;transition:all .15s}
+  .mini-btn:hover{background:#f1f5f9;border-color:#94a3b8}
+  .batch-progress{padding:8px 22px;font-size:12px;color:#475569;background:#fafbfc;min-height:0}
+  .batch-progress .bar{height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;margin-top:6px}
+  .batch-progress .bar-fill{height:100%;background:linear-gradient(90deg,var(--indigo),var(--indigo-d));transition:width .3s}
+  .batch-table-wrap{overflow:auto;flex:1;padding:0 22px 22px}
+  .batch-table{width:100%;border-collapse:collapse;font-size:13px}
+  .batch-table th{background:#f8fafc;text-align:left;padding:8px 10px;font-weight:600;color:#475569;font-size:12px;position:sticky;top:0}
+  .batch-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
+  .batch-table tr{transition:background .15s}
+  .batch-table tr:hover{background:#fafbff}
+  .pri-mini{color:#fff;padding:2px 7px;border-radius:3px;font-weight:600;font-size:11px}
+  .batch-row-pending td{color:#94a3b8}
+  .batch-row-running td{background:linear-gradient(90deg,#fff,#eef2ff,#fff);background-size:400px 100%;animation:shimmer 1.4s linear infinite}
+  .batch-row-error td{color:#dc2626;background:#fef2f2}
 </style>
 </head>
 <body>
@@ -109,8 +135,44 @@
   🩺 业务巡检 Agent
   <span class="tag">本地测试台</span>
   <span class="tag" id="stat">加载中…</span>
+  <button class="batch-btn" onclick="openBatch()">📊 批量判定</button>
   <span style="margin-left:auto;font-size:11px;opacity:.7">weilai-HealthCheck-Agent</span>
 </header>
+
+<!-- 批量判定弹层 -->
+<div id="batch-mask" class="batch-mask" onclick="if(event.target===this) closeBatch()">
+  <div class="batch-modal">
+    <div class="batch-head">
+      <div>
+        <h2 style="margin:0;font-size:16px">📊 批量判定</h2>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">对多个 ASIN 并行运行判定，每个约 15-30 秒</div>
+      </div>
+      <button onclick="closeBatch()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    <div class="batch-toolbar">
+      <label>数量
+        <select id="batch-limit" onchange="refreshBatchTable()"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="70">全部 70</option></select>
+      </label>
+      <label>并发
+        <select id="batch-conc"><option value="1">1</option><option value="3" selected>3</option><option value="5">5</option></select>
+      </label>
+      <label>范围
+        <select id="batch-scope" onchange="refreshBatchTable()">
+          <option value="filter">当前过滤结果</option>
+          <option value="all">所有 ASIN</option>
+          <option value="uncached">未跑过的</option>
+        </select>
+      </label>
+      <button class="run-btn" id="batch-run-btn" onclick="runBatch()">▶ 开始批量判定</button>
+      <button class="mini-btn" onclick="exportBatch()">⬇ 导出 CSV</button>
+    </div>
+    <div class="batch-progress" id="batch-progress"></div>
+    <div class="batch-table-wrap"><table class="batch-table" id="batch-table">
+      <thead><tr><th>ASIN</th><th>店铺</th><th>优先级</th><th>处理时限</th><th>分数</th><th>结论</th><th>操作</th></tr></thead>
+      <tbody id="batch-tbody"></tbody>
+    </table></div>
+  </div>
+</div>
 <div class="layout">
   <!-- 知识库模块 -->
   <div class="col">
@@ -136,6 +198,8 @@
 
 <script>
 const state = { kbActive: null, asinActive: null, dataTab: 'summary' };
+// 判定结果缓存：切换 ASIN 后回来还能看到上次结果
+const judgeCache = new Map();  // key -> {result, ts}
 
 async function api(path){ const r = await fetch(path); return r.json(); }
 
@@ -278,6 +342,16 @@ function renderAsinView(a, data){
   }).join('');
 
   document.getElementById('viewer').innerHTML = cfgHtml + judgeHtml + dataHtml;
+
+  // 回填之前的判定结果（如果有）
+  const cached = judgeCache.get(a.key);
+  if (cached){
+    document.getElementById('judge-result').innerHTML =
+      renderJudgment(cached.result.judgment || {}, cached.result.usage, cached.result.model)
+      + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">📌 上次判定于 ${new Date(cached.ts).toLocaleString('zh-CN')}</div>`;
+    const btn = document.querySelector('.run-btn');
+    if (btn) btn.innerHTML = '🔄 重新运行判定';
+  }
 }
 
 const SEV_META = {
@@ -361,6 +435,7 @@ async function runJudge(key){
         <pre style="max-height:400px;margin-top:6px">${esc(r.system_preview + '\n\n===用户消息===\n' + r.user_preview)}</pre>
         </details>`;
     } else {
+      judgeCache.set(key, {result: r, ts: Date.now()});
       box.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model);
     }
   } catch(e) {
@@ -368,6 +443,149 @@ async function runJudge(key){
   } finally {
     if (btn){ btn.disabled = false; btn.innerHTML = '🔍 重新运行判定'; }
   }
+}
+
+// ------- 批量判定 -------
+function refreshBatchTable(){
+  const scope = document.getElementById('batch-scope').value;
+  const limit = parseInt(document.getElementById('batch-limit').value);
+  const list = pickBatch(scope, limit);
+  renderBatchTable(list);
+  const prog = document.getElementById('batch-progress');
+  if (prog && !prog.querySelector('.bar')){
+    const cached = list.filter(a => judgeCache.has(a.key)).length;
+    prog.innerHTML = `待判定 <b>${list.length}</b> 个 · 其中已缓存 <b>${cached}</b> 个（会直接复用）`;
+  }
+}
+function openBatch(){
+  document.getElementById('batch-mask').classList.add('open');
+  refreshBatchTable();
+}
+function closeBatch(){ document.getElementById('batch-mask').classList.remove('open'); }
+
+function pickBatch(scope, limit){
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  let list = allAsins.slice();
+  if (scope === 'filter' && q){
+    list = list.filter(a =>
+      [a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
+    );
+  } else if (scope === 'uncached'){
+    list = list.filter(a => !judgeCache.has(a.key));
+  }
+  return list.slice(0, limit);
+}
+
+function renderBatchTable(list){
+  const tbody = document.getElementById('batch-tbody');
+  tbody.innerHTML = list.map(a => {
+    const cached = judgeCache.get(a.key);
+    if (cached) return rowHtml(a, cached.result.judgment, 'done');
+    return `<tr data-key="${a.key}" class="batch-row-pending">
+      <td><b>${esc(a.parent_asin||'-')}</b></td>
+      <td>${esc(a.shop_account||'')}</td>
+      <td colspan="4">待判定</td>
+      <td><button class="mini-btn" onclick="goToAsin('${a.key}')">跳转</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function rowHtml(a, j, status){
+  const P = j.priority || 'P2';
+  const pm = PRI_META[P] || PRI_META.P2;
+  return `<tr data-key="${a.key}" class="batch-row-${status}">
+    <td><b>${esc(a.parent_asin||'-')}</b><br><span style="font-size:11px;color:#94a3b8">${esc(a.parent_seller_sku||'')}</span></td>
+    <td>${esc(a.shop_account||'')}<br><span style="font-size:11px;color:#94a3b8">${esc(a.site_code||'')}</span></td>
+    <td><span class="pri-mini" style="background:${pm.color}">${esc(P)}</span></td>
+    <td style="font-size:12px">${esc(pm.label)}</td>
+    <td><b>${j.product_execution_score ?? '-'}</b></td>
+    <td style="max-width:340px">${esc(j.headline||j.priority_reason||'-')}</td>
+    <td><button class="mini-btn" onclick="goToAsin('${a.key}')">查看详情</button></td>
+  </tr>`;
+}
+
+function goToAsin(key){
+  closeBatch();
+  const a = allAsins.find(x => x.key === key);
+  const btn = document.querySelector(`#asin-list button[data-key='${CSS.escape(key)}']`);
+  if (a) viewAsin(a, btn);
+  btn && btn.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+async function runBatch(){
+  const scope = document.getElementById('batch-scope').value;
+  const limit = parseInt(document.getElementById('batch-limit').value);
+  const conc = parseInt(document.getElementById('batch-conc').value);
+  const list = pickBatch(scope, limit);
+  renderBatchTable(list);
+  const runBtn = document.getElementById('batch-run-btn');
+  runBtn.disabled = true; runBtn.innerHTML = '<span class="spinner"></span> 判定中…';
+  const prog = document.getElementById('batch-progress');
+  const t0 = Date.now();
+  let done = 0, failed = 0;
+  const total = list.length;
+  function updateProg(){
+    const pct = total ? (done/total*100).toFixed(0) : 0;
+    const elapsed = ((Date.now()-t0)/1000).toFixed(0);
+    prog.innerHTML = `进度 ${done}/${total} · 失败 ${failed} · 已用 ${elapsed}s
+      <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+  }
+  updateProg();
+
+  const queue = list.slice();
+  async function worker(){
+    while (queue.length){
+      const a = queue.shift();
+      const tr = document.querySelector(`#batch-tbody tr[data-key='${CSS.escape(a.key)}']`);
+      if (tr) tr.className = 'batch-row-running';
+      try {
+        // 用缓存
+        let r = judgeCache.get(a.key)?.result;
+        if (!r){
+          const resp = await fetch('/api/judge/' + encodeURIComponent(a.key), {method:'POST'});
+          if (!resp.ok) throw new Error('HTTP '+resp.status);
+          r = await resp.json();
+          if (!r.dry_run) judgeCache.set(a.key, {result: r, ts: Date.now()});
+        }
+        const j = r.judgment || {};
+        if (tr) tr.outerHTML = rowHtml(a, j, 'done');
+      } catch(e) {
+        failed++;
+        if (tr) { tr.className = 'batch-row-error'; tr.querySelector('td:nth-child(3)').setAttribute('colspan','4'); tr.innerHTML = `
+          <td><b>${esc(a.parent_asin||'-')}</b></td>
+          <td>${esc(a.shop_account||'')}</td>
+          <td colspan="4">❌ ${esc(String(e))}</td>
+          <td>-</td>`; }
+      }
+      done++;
+      updateProg();
+    }
+  }
+  await Promise.all(Array.from({length:conc}, worker));
+  runBtn.disabled = false; runBtn.innerHTML = '▶ 重新运行';
+  prog.innerHTML += ' · <b style="color:#059669">完成</b>';
+}
+
+function exportBatch(){
+  const rows = [['ASIN','SKU','店铺','站点','优先级','时限','分数','结论','异常数','处理建议']];
+  for (const a of allAsins){
+    const cached = judgeCache.get(a.key);
+    if (!cached) continue;
+    const j = cached.result.judgment || {};
+    rows.push([
+      a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code,
+      j.priority, j.priority_label, j.product_execution_score,
+      (j.headline||'').replace(/,/g,'，'),
+      (j.anomalies||[]).length,
+      (j.suggested_actions||[]).join(' | ').replace(/,/g,'，'),
+    ]);
+  }
+  const csv = '﻿' + rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download = `巡检批量结果_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 loadKb();
