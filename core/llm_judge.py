@@ -88,37 +88,63 @@ def build_prompt(config_row: dict, mcp_bundle: dict) -> dict:
     }
 
 
+def _extract_json(text: str) -> dict:
+    """LLM 有时会在 JSON 外包一层 ```json ... ```，剥壳后再解析。"""
+    s = text.strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[1] if "\n" in s else s
+        if s.endswith("```"):
+            s = s.rsplit("```", 1)[0]
+        s = s.strip()
+        if s.lower().startswith("json"):
+            s = s[4:].lstrip()
+    # 从 { 到最后 } 之间取
+    a, b = s.find("{"), s.rfind("}")
+    if a >= 0 and b > a:
+        s = s[a:b + 1]
+    try:
+        return json.loads(s)
+    except Exception as e:
+        return {"raw": text, "parse_error": str(e)}
+
+
 def judge(config_row: dict, mcp_bundle: dict, model: str | None = None) -> dict:
     prompt = build_prompt(config_row, mcp_bundle)
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         return {
             "dry_run": True,
-            "note": "未设置 ANTHROPIC_API_KEY，返回即将发送的 prompt。",
+            "note": "未设置 DEEPSEEK_API_KEY，返回即将发送的 prompt。",
             "system_length": len(prompt["system"]),
             "user_length": len(prompt["user"]),
             "system_preview": prompt["system"][:1200] + "\n...(截断)",
             "user_preview": prompt["user"][:1500],
         }
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=key)
-    resp = client.messages.create(
-        model=model or "claude-opus-4-8",
-        max_tokens=4096,
-        temperature=0,
-        system=prompt["system"],
-        messages=[{"role": "user", "content": prompt["user"]}],
+    # 走 DeepSeek（OpenAI 兼容）
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=key,
+        base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
     )
-    text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-    # 尝试解析 JSON
-    try:
-        parsed = json.loads(text)
-    except Exception:
-        parsed = {"raw": text, "parse_error": True}
+    resp = client.chat.completions.create(
+        model=model or os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        temperature=0,
+        max_tokens=4096,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": prompt["system"]},
+            {"role": "user", "content": prompt["user"]},
+        ],
+    )
+    text = resp.choices[0].message.content or ""
+    parsed = _extract_json(text)
     return {
         "dry_run": False,
         "model": resp.model,
-        "usage": {"input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens},
+        "usage": {
+            "input_tokens": resp.usage.prompt_tokens,
+            "output_tokens": resp.usage.completion_tokens,
+        },
         "judgment": parsed,
     }

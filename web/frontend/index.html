@@ -5,7 +5,14 @@
 <title>weilai-HealthCheck-Agent · 本地测试台</title>
 <style>
   *{box-sizing:border-box}
-  body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#f4f5f7;color:#1c2126}
+  :root{--indigo:#6366f1;--indigo-d:#4f46e5;--slate:#0f172a}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+  body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#f4f5f7;color:#1c2126;animation:fadeIn .4s ease}
   header{background:linear-gradient(90deg,#1e293b,#334155);color:#fff;padding:10px 20px;font-weight:600;display:flex;gap:16px;align-items:center}
   header .tag{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:400}
   .layout{display:grid;grid-template-columns:minmax(160px,200px) minmax(260px,340px) minmax(0,1fr);height:calc(100vh - 43px)}
@@ -14,9 +21,10 @@
   .col h3{margin:0;padding:12px 14px 8px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600;position:sticky;top:0;background:#fff;border-bottom:1px solid #eef1f5;z-index:1}
   .col:last-child h3{background:#fafbfc}
   .list{padding:6px 8px}
-  .item{display:block;padding:8px 10px;margin:2px 0;background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;text-align:left;width:100%;font-size:13px;color:#334155}
-  .item:hover{background:#eef2ff;border-color:#c7d2fe}
-  .item.active{background:#eef2ff;border-color:#818cf8;color:#3730a3;font-weight:500}
+  .item{display:block;padding:8px 10px;margin:2px 0;background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;text-align:left;width:100%;font-size:13px;color:#334155;transition:all .18s cubic-bezier(.4,0,.2,1)}
+  .item:hover{background:#eef2ff;border-color:#c7d2fe;transform:translateX(2px)}
+  .item.active{background:linear-gradient(135deg,#eef2ff,#e0e7ff);border-color:#818cf8;color:#3730a3;font-weight:500;box-shadow:0 2px 6px rgba(99,102,241,.15)}
+  .item:active{transform:scale(.98)}
   .item .meta{display:block;font-size:11px;color:#94a3b8;margin-top:2px}
   .item.active .meta{color:#6366f1}
   .badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-right:4px;font-weight:500}
@@ -41,7 +49,12 @@
   .md table{border-collapse:collapse;margin:8px 0;background:#f8fafc}
   .md th,.md td{border:1px solid #e2e8f0;padding:6px 10px;font-size:12px;text-align:left}
   .md th{background:#f1f5f9;font-weight:600}
-  .card{background:#fff;padding:14px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
+  .card{background:#fff;padding:14px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px;animation:fadeUp .35s cubic-bezier(.4,0,.2,1) both;transition:box-shadow .2s}
+  .card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+  .card:nth-child(2){animation-delay:.05s}
+  .card:nth-child(3){animation-delay:.1s}
+  .card:nth-child(4){animation-delay:.15s}
+  .card:nth-child(5){animation-delay:.2s}
   .card h4{margin:0 0 8px;font-size:12px;color:#64748b;text-transform:uppercase;font-weight:600}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
   .kv{background:#f8fafc;padding:6px 10px;border-radius:6px;font-size:12px}
@@ -49,8 +62,17 @@
   .kv .v{font-weight:500;color:#0f172a;word-break:break-all}
   .kv .v.none{color:#cbd5e1;font-style:italic;font-weight:400}
   .placeholder{color:#94a3b8;text-align:center;padding:60px 20px;font-size:13px}
-  .run-btn{background:#6366f1;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500}
-  .run-btn:hover{background:#4f46e5}
+  .run-btn{background:linear-gradient(135deg,var(--indigo),var(--indigo-d));color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;box-shadow:0 2px 6px rgba(99,102,241,.3);transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+  .run-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,.4)}
+  .run-btn:active{transform:translateY(0)}
+  .run-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+  .spinner{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+  .md{animation:fadeUp .3s cubic-bezier(.4,0,.2,1) both}
+  .placeholder{animation:pulse 2s ease-in-out infinite}
+  .badge{transition:transform .15s}
+  .item:hover .badge{transform:scale(1.03)}
+  header .tag{transition:background .2s}
+  header:hover .tag{background:rgba(255,255,255,.25)}
 </style>
 </head>
 <body>
@@ -199,7 +221,7 @@ function renderAsinView(a, data){
 
   const judgeHtml = `<div class="card">
     <h4>判定引擎（LLM 读知识库 + 热参数）</h4>
-    <button class="run-btn" onclick="runJudge('${a.key}')">运行判定</button>
+    <button class="run-btn" onclick="runJudge('${a.key}')">🔍 运行判定</button>
     <div id="judge-result" style="margin-top:10px"></div>
   </div>`;
 
@@ -214,7 +236,9 @@ function renderAsinView(a, data){
 
 async function runJudge(key){
   const box = document.getElementById('judge-result');
-  box.innerHTML = '<div style="color:#64748b">运行中… (首次会读全部 md 拼 prompt)</div>';
+  const btn = document.querySelector('.run-btn');
+  if (btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 判定中…'; }
+  box.innerHTML = '<div style="color:#64748b;animation:pulse 1.4s ease-in-out infinite">📊 拼装 prompt · 调用 DeepSeek…</div>';
   try {
     const r = await fetch('/api/judge/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
     if (r.dry_run){
@@ -239,6 +263,8 @@ async function runJudge(key){
     }
   } catch(e) {
     box.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
+  } finally {
+    if (btn){ btn.disabled = false; btn.innerHTML = '🔍 重新运行判定'; }
   }
 }
 
