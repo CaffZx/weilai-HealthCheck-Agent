@@ -1,25 +1,21 @@
-"""FastAPI 测试页 —— 单 ASIN 试跑 / 知识库预览 / MCP 直调。
-运行: uvicorn web.backend.main:app --reload --port 8000
+"""本地离线测试台。全部数据来自 tests/fixtures/demo/，无需网络。
+运行: python -m uvicorn web.backend.main:app --reload --port 8000
 """
 from __future__ import annotations
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from core import knowledge_loader
-from core.inspector import inspect_one
-from data import erp_repo, shop_map
-from data.mcp_client import MCPClient
+from data import fixture_loader
 
-app = FastAPI(title="weilai-HealthCheck-Agent")
+app = FastAPI(title="weilai-HealthCheck-Agent · 本地测试台")
 
 FRONT = Path(__file__).resolve().parent.parent / "frontend"
 
 
+# --- 知识库 ---
 @app.get("/api/knowledge")
 def kb_index():
     return {"modules": knowledge_loader.list_modules()}
@@ -33,34 +29,44 @@ def kb_read(name: str):
         raise HTTPException(404, "module not found")
 
 
-@app.get("/api/shops")
-def shops():
-    return list(shop_map.load_all().values())
+# --- Fixture (70 ASIN) ---
+@app.get("/api/asins")
+def asins():
+    """列出 70 个采样，附带 config 元数据（stage / position / site 等）。"""
+    configs = {c["fixture_key"]: c for c in fixture_loader.load_configs()}
+    smap = fixture_loader.load_shop_map()
+    out = []
+    for key in fixture_loader.list_keys():
+        cfg = configs.get(key, {})
+        shop = smap.get(cfg.get("shop_id", ""), {})
+        out.append({
+            "key": key,
+            "parent_asin": cfg.get("parent_asin"),
+            "parent_seller_sku": cfg.get("parent_seller_sku"),
+            "shop_id": cfg.get("shop_id"),
+            "shop_account": shop.get("account"),
+            "site_code": cfg.get("site_code"),
+            "product_stage": cfg.get("product_stage"),
+            "product_position": cfg.get("product_position"),
+            "target_acos_suggest": cfg.get("target_acos_suggest"),
+            "daily_budget_suggest": cfg.get("daily_budget_suggest"),
+        })
+    return out
 
 
-@app.get("/api/configs")
-def configs(limit: int = 20):
-    return erp_repo.fetch_decision_configs(limit=limit)
+@app.get("/api/fixture/{key}")
+def fixture(key: str):
+    if key not in fixture_loader.list_keys():
+        raise HTTPException(404, "unknown fixture key")
+    return {"key": key, "data": fixture_loader.load_bundle(key)}
 
 
-@app.post("/api/inspect")
-def inspect(payload: dict):
-    """payload: 单条 config_row 或 {shop_id, parent_asin, parent_seller_sku}"""
-    return inspect_one(payload)
-
-
-@app.post("/api/mcp/{tool}")
-def mcp_call(tool: str, arguments: dict):
-    return MCPClient().call(tool, arguments)
-
-
+# --- 前端静态资源 ---
 if FRONT.exists():
-    app.mount("/", StaticFiles(directory=FRONT, html=True), name="frontend")
+    app.mount("/ui", StaticFiles(directory=str(FRONT), html=True), name="frontend")
 
 
 @app.get("/")
-def _root():
+def root():
     idx = FRONT / "index.html"
-    if idx.exists():
-        return FileResponse(idx)
-    return {"ok": True, "hint": "frontend not built yet"}
+    return FileResponse(idx) if idx.exists() else {"ok": True}

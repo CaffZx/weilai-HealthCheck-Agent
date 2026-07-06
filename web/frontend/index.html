@@ -2,62 +2,210 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8"/>
-<title>weilai-HealthCheck-Agent 测试台</title>
+<title>weilai-HealthCheck-Agent · 本地测试台</title>
 <style>
-  body{font:14px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;margin:0;background:#f6f7f9;color:#222}
-  header{background:#111;color:#fff;padding:12px 20px;font-weight:600}
-  .layout{display:grid;grid-template-columns:220px 1fr 1fr;height:calc(100vh - 44px)}
-  .col{padding:14px;overflow:auto;border-right:1px solid #e2e5ea;background:#fff}
-  .col h3{margin:4px 0 10px;font-size:13px;color:#555;text-transform:uppercase;letter-spacing:.5px}
-  .btn{display:block;width:100%;text-align:left;padding:6px 8px;margin:2px 0;background:#f0f2f6;border:1px solid #dde2ea;border-radius:6px;cursor:pointer;font-size:13px}
-  .btn:hover{background:#e6ebf3}
-  pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;overflow:auto;font:12px/1.5 Monaco,monospace}
-  .row{display:flex;gap:6px;margin-bottom:8px}
-  input,select{flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px}
-  button.primary{background:#2563eb;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:13px}
+  *{box-sizing:border-box}
+  body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#f4f5f7;color:#1c2126}
+  header{background:linear-gradient(90deg,#1e293b,#334155);color:#fff;padding:10px 20px;font-weight:600;display:flex;gap:16px;align-items:center}
+  header .tag{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:400}
+  .layout{display:grid;grid-template-columns:minmax(160px,200px) minmax(260px,340px) minmax(0,1fr);height:calc(100vh - 43px)}
+  .col{overflow:auto;background:#fff;border-right:1px solid #e2e5ea}
+  .col:last-child{border-right:none;background:#fafbfc}
+  .col h3{margin:0;padding:12px 14px 8px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600;position:sticky;top:0;background:#fff;border-bottom:1px solid #eef1f5;z-index:1}
+  .col:last-child h3{background:#fafbfc}
+  .list{padding:6px 8px}
+  .item{display:block;padding:8px 10px;margin:2px 0;background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;text-align:left;width:100%;font-size:13px;color:#334155}
+  .item:hover{background:#eef2ff;border-color:#c7d2fe}
+  .item.active{background:#eef2ff;border-color:#818cf8;color:#3730a3;font-weight:500}
+  .item .meta{display:block;font-size:11px;color:#94a3b8;margin-top:2px}
+  .item.active .meta{color:#6366f1}
+  .badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-right:4px;font-weight:500}
+  .b-stage{background:#dbeafe;color:#1e40af}
+  .b-pos{background:#fef3c7;color:#92400e}
+  .b-site{background:#dcfce7;color:#166534}
+  .filter{padding:8px 10px;border-bottom:1px solid #eef1f5;position:sticky;top:32px;background:#fff;z-index:1}
+  .filter input{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none}
+  .filter input:focus{border-color:#818cf8}
+  .content{padding:16px 20px}
+  .tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e2e5ea}
+  .tab{padding:6px 14px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;color:#64748b}
+  .tab:hover{color:#3730a3}
+  .tab.active{color:#3730a3;border-bottom-color:#6366f1;font-weight:500}
+  pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;overflow:auto;font:12px/1.6 "SF Mono",Monaco,monospace;margin:0;max-height:calc(100vh - 200px)}
+  .md{background:#fff;padding:20px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);font:13px/1.7 -apple-system,sans-serif;max-height:calc(100vh - 200px);overflow:auto;word-break:break-word}
+  .md p{margin:.4em 0}
+  .md h1,.md h2,.md h3{margin:1em 0 .5em}
+  .md h1{font-size:20px;color:#0f172a;border-bottom:2px solid #e2e8f0;padding-bottom:6px}
+  .md h2{font-size:16px;color:#1e293b}
+  .md h3{font-size:14px;color:#334155}
+  .md table{border-collapse:collapse;margin:8px 0;background:#f8fafc}
+  .md th,.md td{border:1px solid #e2e8f0;padding:6px 10px;font-size:12px;text-align:left}
+  .md th{background:#f1f5f9;font-weight:600}
+  .card{background:#fff;padding:14px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
+  .card h4{margin:0 0 8px;font-size:12px;color:#64748b;text-transform:uppercase;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+  .kv{background:#f8fafc;padding:6px 10px;border-radius:6px;font-size:12px}
+  .kv .k{color:#64748b;display:block;margin-bottom:2px}
+  .kv .v{font-weight:500;color:#0f172a;word-break:break-all}
+  .kv .v.none{color:#cbd5e1;font-style:italic;font-weight:400}
+  .placeholder{color:#94a3b8;text-align:center;padding:60px 20px;font-size:13px}
 </style>
 </head>
 <body>
-<header>weilai-HealthCheck-Agent · 测试台</header>
+<header>
+  weilai-HealthCheck-Agent
+  <span class="tag">本地测试台</span>
+  <span class="tag" id="stat">加载中…</span>
+</header>
 <div class="layout">
+  <!-- 知识库模块 -->
   <div class="col">
-    <h3>知识库</h3>
-    <div id="kb-list"></div>
+    <h3>知识库模块</h3>
+    <div class="list" id="kb-list"></div>
   </div>
+
+  <!-- 70 个 ASIN -->
   <div class="col">
-    <h3>试跑巡检</h3>
-    <div class="row"><input id="shop_id" placeholder="shop_id 27451"/></div>
-    <div class="row"><input id="parent_asin" placeholder="parent_asin B0EXAMPLE0"/></div>
-    <div class="row"><input id="parent_seller_sku" placeholder="parent_seller_sku"/></div>
-    <div class="row"><button class="primary" onclick="runInspect()">Inspect</button></div>
-    <pre id="inspect-out">尚未运行</pre>
+    <h3>采样 ASIN</h3>
+    <div class="filter"><input id="q" placeholder="过滤 ASIN / SKU / 店铺 …"/></div>
+    <div class="list" id="asin-list"></div>
   </div>
+
+  <!-- 内容展示 -->
   <div class="col">
-    <h3>知识库内容 / 结果</h3>
-    <pre id="viewer">左侧点击知识库模块查看</pre>
+    <h3 id="viewer-title">查看器</h3>
+    <div class="content" id="viewer">
+      <div class="placeholder">← 左侧点击知识库模块或 ASIN 查看</div>
+    </div>
   </div>
 </div>
+
 <script>
+const state = { kbActive: null, asinActive: null, dataTab: 'summary' };
+
+async function api(path){ const r = await fetch(path); return r.json(); }
+
+function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
+
+// ------- 知识库 -------
 async function loadKb(){
-  const r = await fetch('/api/knowledge').then(r=>r.json());
-  document.getElementById('kb-list').innerHTML =
-    r.modules.map(m => `<button class="btn" onclick="viewKb('${m}')">${m}</button>`).join('');
+  const r = await api('/api/knowledge');
+  const box = document.getElementById('kb-list');
+  box.innerHTML = '';
+  r.modules.forEach(m => {
+    const b = el(`<button class="item" data-kb="${m}">${m.replace(/\.md$/,'')}</button>`);
+    b.onclick = () => viewKb(m, b);
+    box.appendChild(b);
+  });
 }
-async function viewKb(name){
-  const r = await fetch('/api/knowledge/'+encodeURIComponent(name)).then(r=>r.json());
-  document.getElementById('viewer').textContent = r.content;
+
+async function viewKb(name, btn){
+  document.querySelectorAll('#kb-list .item').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('#asin-list .item').forEach(x => x.classList.remove('active'));
+  btn && btn.classList.add('active');
+  state.kbActive = name;
+  const r = await api('/api/knowledge/' + encodeURIComponent(name));
+  document.getElementById('viewer-title').textContent = '知识库 · ' + name;
+  document.getElementById('viewer').innerHTML = `<div class="md">${renderMd(r.content)}</div>`;
 }
-async function runInspect(){
-  const payload = {
-    shop_id: +document.getElementById('shop_id').value,
-    parent_asin: document.getElementById('parent_asin').value,
-    parent_seller_sku: document.getElementById('parent_seller_sku').value,
-  };
-  document.getElementById('inspect-out').textContent = '运行中…';
-  const r = await fetch('/api/inspect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());
-  document.getElementById('inspect-out').textContent = JSON.stringify(r, null, 2);
+
+function renderMd(src){
+  // 极简 markdown 渲染（够看即可）
+  const lines = src.split('\n');
+  let out = [], inTable = false, tableRows = [];
+  for (const L of lines){
+    if (/^\| /.test(L)){
+      if (!inTable){ inTable = true; tableRows = []; }
+      tableRows.push(L);
+      continue;
+    } else if (inTable){
+      out.push(renderTable(tableRows));
+      inTable = false;
+    }
+    if (/^### /.test(L)) out.push('<h3>'+esc(L.slice(4))+'</h3>');
+    else if (/^## /.test(L)) out.push('<h2>'+esc(L.slice(3))+'</h2>');
+    else if (/^# /.test(L)) out.push('<h1>'+esc(L.slice(2))+'</h1>');
+    else if (L.trim()==='') out.push('');
+    else out.push('<p>'+esc(L)+'</p>');
+  }
+  if (inTable) out.push(renderTable(tableRows));
+  return out.join('\n');
 }
+
+function renderTable(rows){
+  if (!rows.length) return '';
+  const parse = r => r.slice(1,-1).split('|').map(c=>c.trim());
+  const head = parse(rows[0]);
+  const body = rows.slice(rows.length>1 && /^\| *[-: ]+ *\|/.test(rows[1]) ? 2 : 1).map(parse);
+  return '<table><thead><tr>'+head.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead><tbody>'
+    + body.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('') + '</tbody></table>';
+}
+
+function esc(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// ------- ASIN 列表 -------
+let allAsins = [];
+async function loadAsins(){
+  allAsins = await api('/api/asins');
+  document.getElementById('stat').textContent = allAsins.length + ' ASIN · ' + (await api('/api/knowledge')).modules.length + ' 模块';
+  renderAsins();
+}
+
+function renderAsins(){
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const box = document.getElementById('asin-list');
+  box.innerHTML = '';
+  const rows = allAsins.filter(a =>
+    !q || [a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
+  );
+  rows.forEach(a => {
+    const b = el(`
+      <button class="item" data-key="${a.key}">
+        <div><b>${esc(a.parent_asin||'-')}</b> · ${esc(a.shop_account||'?')}</div>
+        <span class="meta">
+          <span class="badge b-site">${esc(a.site_code||'')}</span>
+          <span class="badge b-stage">${esc(a.product_stage||'-')}</span>
+          <span class="badge b-pos">${esc(a.product_position||'-')}</span>
+          ${esc(a.parent_seller_sku||'')}
+        </span>
+      </button>`);
+    b.onclick = () => viewAsin(a, b);
+    box.appendChild(b);
+  });
+}
+
+document.getElementById('q').addEventListener('input', renderAsins);
+
+// ------- ASIN 详情 -------
+async function viewAsin(a, btn){
+  document.querySelectorAll('#kb-list .item').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('#asin-list .item').forEach(x => x.classList.remove('active'));
+  btn && btn.classList.add('active');
+  state.asinActive = a;
+  document.getElementById('viewer-title').textContent = 'ASIN · ' + a.parent_asin;
+  const r = await api('/api/fixture/' + encodeURIComponent(a.key));
+  renderAsinView(a, r.data);
+}
+
+function renderAsinView(a, data){
+  const cfgFields = ['parent_asin','parent_seller_sku','shop_id','shop_account','site_code',
+                     'product_stage','product_position','target_acos_suggest','daily_budget_suggest'];
+  const cfgHtml = `<div class="card"><h4>Config（ERP）</h4><div class="grid">` +
+    cfgFields.map(k=>`<div class="kv"><span class="k">${k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${a[k]??'—'}</span></div>`).join('') +
+    `</div></div>`;
+
+  const dataHtml = ['listing','sales','campaigns'].map(kind => {
+    const d = data[kind] || {};
+    return `<div class="card"><h4>${kind} · found=${d.found} · count=${d.count??0}</h4>
+      <pre style="max-height:260px">${esc(JSON.stringify(d, null, 2))}</pre></div>`;
+  }).join('');
+
+  document.getElementById('viewer').innerHTML = cfgHtml + dataHtml;
+}
+
 loadKb();
+loadAsins();
 </script>
 </body>
 </html>
