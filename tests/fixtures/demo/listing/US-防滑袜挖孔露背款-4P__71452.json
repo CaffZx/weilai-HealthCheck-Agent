@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":14.99,\\\"星级\\\":null,\\\"16周退款率\\\":0.16,\\\"标题\\\":\\\"BFONS Women's No Show Socks, Non Slip Low Cut Liner Socks for Flats, Loafers, Sneakers and Ballet Shoes, Breathable Hidden Socks\\\"}]}\"}]}"}],"isError":false}}
+

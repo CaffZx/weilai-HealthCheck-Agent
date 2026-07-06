@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":4,\\\"rows\\\":[{\\\"广告活动名称\\\":\\\"不对称透视-广泛--asymmetrical tops for women\\\",\\\"广告活动id\\\":\\\"35526703458671\\\"},{\\\"广告活动名称\\\":\\\"不对称透视-广泛--mesh shirt\\\",\\\"广告活动id\\\":\\\"98651227437734\\\"},{\\\"广告活动名称\\\":\\\"不对称透视-广泛--rave tops\\\",\\\"广告活动id\\\":\\\"157715117545114\\\"},{\\\"广告活动名称\\\":\\\"搜索出单词-广泛--black see through mesh top\\\",\\\"广告活动id\\\":\\\"235424504410843\\\"}]}\"}]}"}],"isError":false}}
+

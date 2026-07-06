@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":11.99,\\\"星级\\\":4.4,\\\"16周退款率\\\":0.2764,\\\"标题\\\":\\\"Sports Bras for Women Longline Wirefree Padded High Support, Workout Tank Athletic Crop Tops Built in Bra for Women Large Bust, Push up Crop Running Yoga Women's Sports Bra High Impact Green S\\\"}]}\"}]}"}],"isError":false}}
+

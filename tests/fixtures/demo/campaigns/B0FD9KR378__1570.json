@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":5,\\\"rows\\\":[{\\\"广告活动名称\\\":\\\"oversized卫衣优化款-自动\\\",\\\"广告活动id\\\":\\\"35876856254390\\\"},{\\\"广告活动名称\\\":\\\"广泛1-black crew neck sweatshirt\\\",\\\"广告活动id\\\":\\\"216565461545011\\\"},{\\\"广告活动名称\\\":\\\"广泛1-black crewneck\\\",\\\"广告活动id\\\":\\\"57988455897916\\\"},{\\\"广告活动名称\\\":\\\"广泛1-crew neck sweatshirts women\\\",\\\"广告活动id\\\":\\\"42183041394199\\\"},{\\\"广告活动名称\\\":\\\"广泛2-casual oversized sweatshirt women\\\",\\\"广告活动id\\\":\\\"91946239707876\\\"}]}\"}]}"}],"isError":false}}
+

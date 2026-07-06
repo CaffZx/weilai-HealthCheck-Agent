@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":6,\\\"rows\\\":[{\\\"广告活动名称\\\":\\\"7KR-evening wrap\\\",\\\"广告活动id\\\":\\\"110880199160040\\\"},{\\\"广告活动名称\\\":\\\"7KR-evening wraps and shawls formal\\\",\\\"广告活动id\\\":\\\"189496916566200\\\"},{\\\"广告活动名称\\\":\\\"7KR-shawls and wraps for evening dresses\\\",\\\"广告活动id\\\":\\\"60693165596736\\\"},{\\\"广告活动名称\\\":\\\"披肩围巾系列-羊绒披肩-US 广泛1-shawls for women\\\",\\\"广告活动id\\\":\\\"4115051260902\\\"},{\\\"广告活动名称\\\":\\\"披肩围巾系列-羊绒披肩-US 广泛广告-infinity scarf for women\\\",\\\"广告活动id\\\":\\\"75403799896984\\\"},{\\\"广告活动名称\\\":\\\"羊绒披肩-精准-高转化--winter scarves for women\\\",\\\"广告活动id\\\":\\\"387493589991938\\\"}]}\"}]}"}],"isError":false}}
+

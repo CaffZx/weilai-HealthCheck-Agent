@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":16.99,\\\"星级\\\":1.5,\\\"16周退款率\\\":0.1632,\\\"标题\\\":\\\"AURUZA Women's Crop Tops, Double Lined Crop Top, High Neck Cropped Tank Top Sleeveless Racerback Tops Basic Summer Shirt Red\\\"}]}\"}]}"}],"isError":false}}
+

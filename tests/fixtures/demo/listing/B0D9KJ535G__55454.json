@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":11.99,\\\"星级\\\":4.3,\\\"16周退款率\\\":0.1098,\\\"标题\\\":\\\"Buauty Leg Warmers for Women 80s 90s Outfit Fashion Neon Ribbed Leg Socks Fashion Y2k Neon Accessories Sports Yoga (2 Pairs)\\\"}]}\"}]}"}],"isError":false}}
+

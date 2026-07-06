@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":26.99,\\\"星级\\\":4.1,\\\"16周退款率\\\":0.4529,\\\"标题\\\":\\\"Vivola Womens Swimsuit Asymmetrical Color Block Bathing Suit Tummy Control Swim Suit with Adjustable Straps Removable Soft Cups for Beach Pool Vacation, Black White, Large\\\"}]}\"}]}"}],"isError":false}}
+

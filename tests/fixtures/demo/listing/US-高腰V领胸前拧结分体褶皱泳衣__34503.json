@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":22.99,\\\"星级\\\":3.8,\\\"16周退款率\\\":0.3439,\\\"标题\\\":\\\"Buauty Bikini Swimsuits for Women Two Piece Cross V Neck Bathing Suit with High Waisted Ruched Tummy Control Bottom, Adjustable Straps Removable Pads Beach Vacation Swimwear\\\"}]}\"}]}"}],"isError":false}}
+

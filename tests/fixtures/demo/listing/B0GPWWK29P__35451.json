@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":7.99,\\\"星级\\\":3.7,\\\"16周退款率\\\":0.14,\\\"标题\\\":\\\"YOGINGO Women's Long Sleeve Shirts, Fall Casual Color Block Crew Neck Tops, Soft Tshirt Basic Tee Fashion Clothes Black\\\"}]}\"}]}"}],"isError":false}}
+

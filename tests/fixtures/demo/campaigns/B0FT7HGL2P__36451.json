@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":4,\\\"rows\\\":[{\\\"广告活动名称\\\":\\\"广泛2-athletic tank top\\\",\\\"广告活动id\\\":\\\"115599185483204\\\"},{\\\"广告活动名称\\\":\\\"广泛2-work out tops gym for women\\\",\\\"广告活动id\\\":\\\"81139618153883\\\"},{\\\"广告活动名称\\\":\\\"广泛3-womens tank tops loose fit\\\",\\\"广告活动id\\\":\\\"18642846763794\\\"},{\\\"广告活动名称\\\":\\\"精准1-gym shirts women tank top\\\",\\\"广告活动id\\\":\\\"173666294943845\\\"}]}\"}]}"}],"isError":false}}
+

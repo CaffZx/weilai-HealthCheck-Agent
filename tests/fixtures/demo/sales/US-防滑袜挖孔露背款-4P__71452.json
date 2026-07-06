@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"全部单量\\\":0,\\\"广告花费\\\":0,\\\"毛利率\\\":null,\\\"ACOS\\\":null,\\\"全部销量\\\":0,\\\"全部销售额\\\":0,\\\"广告单量\\\":0,\\\"广告销售额\\\":0}]}\"}]}"}],"isError":false}}
+

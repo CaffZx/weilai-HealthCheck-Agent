@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":27.99,\\\"星级\\\":4.2,\\\"16周退款率\\\":0.05,\\\"标题\\\":\\\"ZENUTA Women's Square Neck Sweater Dress Long Sleeve Knit Casual Fall Maxi Dresses with Pockets for Women Winter 2026 Black\\\"}]}\"}]}"}],"isError":false}}
+

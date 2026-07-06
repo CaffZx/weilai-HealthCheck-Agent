@@ -1,0 +1,4 @@
+id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
+event:message
+data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":14.99,\\\"星级\\\":5,\\\"16周退款率\\\":0.1585,\\\"标题\\\":\\\"Buauty V Neck Sports Bra for Women, Padded Push up Women's Sport Bras Adjustable Thin Straps, Light Support Yoga Camisole Basic Top, Low Impact Spaghetti Strap Sport Racerback Bras Green 2XL\\\"}]}\"}]}"}],"isError":false}}
+
