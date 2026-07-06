@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<title>weilai-HealthCheck-Agent 测试台</title>
+<style>
+  body{font:14px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;margin:0;background:#f6f7f9;color:#222}
+  header{background:#111;color:#fff;padding:12px 20px;font-weight:600}
+  .layout{display:grid;grid-template-columns:220px 1fr 1fr;height:calc(100vh - 44px)}
+  .col{padding:14px;overflow:auto;border-right:1px solid #e2e5ea;background:#fff}
+  .col h3{margin:4px 0 10px;font-size:13px;color:#555;text-transform:uppercase;letter-spacing:.5px}
+  .btn{display:block;width:100%;text-align:left;padding:6px 8px;margin:2px 0;background:#f0f2f6;border:1px solid #dde2ea;border-radius:6px;cursor:pointer;font-size:13px}
+  .btn:hover{background:#e6ebf3}
+  pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;overflow:auto;font:12px/1.5 Monaco,monospace}
+  .row{display:flex;gap:6px;margin-bottom:8px}
+  input,select{flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px}
+  button.primary{background:#2563eb;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:13px}
+</style>
+</head>
+<body>
+<header>weilai-HealthCheck-Agent · 测试台</header>
+<div class="layout">
+  <div class="col">
+    <h3>知识库</h3>
+    <div id="kb-list"></div>
+  </div>
+  <div class="col">
+    <h3>试跑巡检</h3>
+    <div class="row"><input id="shop_id" placeholder="shop_id 27451"/></div>
+    <div class="row"><input id="parent_asin" placeholder="parent_asin B0EXAMPLE0"/></div>
+    <div class="row"><input id="parent_seller_sku" placeholder="parent_seller_sku"/></div>
+    <div class="row"><button class="primary" onclick="runInspect()">Inspect</button></div>
+    <pre id="inspect-out">尚未运行</pre>
+  </div>
+  <div class="col">
+    <h3>知识库内容 / 结果</h3>
+    <pre id="viewer">左侧点击知识库模块查看</pre>
+  </div>
+</div>
+<script>
+async function loadKb(){
+  const r = await fetch('/api/knowledge').then(r=>r.json());
+  document.getElementById('kb-list').innerHTML =
+    r.modules.map(m => `<button class="btn" onclick="viewKb('${m}')">${m}</button>`).join('');
+}
+async function viewKb(name){
+  const r = await fetch('/api/knowledge/'+encodeURIComponent(name)).then(r=>r.json());
+  document.getElementById('viewer').textContent = r.content;
+}
+async function runInspect(){
+  const payload = {
+    shop_id: +document.getElementById('shop_id').value,
+    parent_asin: document.getElementById('parent_asin').value,
+    parent_seller_sku: document.getElementById('parent_seller_sku').value,
+  };
+  document.getElementById('inspect-out').textContent = '运行中…';
+  const r = await fetch('/api/inspect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());
+  document.getElementById('inspect-out').textContent = JSON.stringify(r, null, 2);
+}
+loadKb();
+</script>
+</body>
+</html>

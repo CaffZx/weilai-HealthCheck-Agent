@@ -1,0 +1,22 @@
+# 巡检运行参数
+data_source_preference: mcp           # mcp | starrocks（mcp 失败自动回退）
+
+inspection:
+  concurrency: 8
+  batch_size: 50
+  default_lookback_days: 30           # product_sales 默认取数窗口
+  timezone: "Asia/Shanghai"
+
+knowledge:
+  path: knowledge                     # 相对项目根
+  hot_reload: true                    # 修改 md 后接口触发即重载
+
+llm:
+  provider: anthropic
+  model: claude-opus-4-8
+  temperature: 0
+  max_tokens: 4096
+
+logging:
+  level: INFO
+  file: logs/agent.log

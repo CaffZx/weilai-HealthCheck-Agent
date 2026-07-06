@@ -1,0 +1,63 @@
+# MCP 网关 + 可用工具白名单
+# 修改此文件不需要改代码，data/mcp_client.py 启动时读取
+
+gateways:
+  primary:
+    url: http://10.0.0.0:7089/mcp        # 内网优先
+    api_key_env: MCP_API_KEY
+    header: X-Api-Key
+    timeout_seconds: 30
+  fallback:
+    url: http://mcp-gateway.example.com/mcp
+    api_key_env: MCP_API_KEY
+    header: X-Api-Key
+    timeout_seconds: 30
+
+# 已确认可调用的工具（其余 API_KEY 无权限：sprout_shop_query / erp_product_query / sys_user_query）
+tools:
+  listing_basic_info_v2:
+    required: [shop_account]
+    optional: [parent_asin, parent_seller_sku]
+    purpose: Listing 基础信息（标题/星级/售价/16 周退款率）
+
+  product_sales:
+    required: [shop_account, parent_asin, parent_seller_sku, start_date, end_date]
+    purpose: 销售/广告花费/ACOS
+
+  ad_campaign_list:
+    required: [shop_account, parent_asin, parent_seller_sku]
+    purpose: 广告 Campaign 清单
+
+  # 广告细节
+  ad_campaign_placement_report: {}
+  ad_campaign_product_report: {}
+  ad_campaign_search_term_report: {}
+  ad_placement_report: {}
+  ad_product_report: {}
+  ad_search_term_report: {}
+  advert_all_campaign_list: {}
+  ad_optimization: {}
+
+  # 关键词 / 竞品
+  flow_keywords: {}
+  own_keyword_flow: {}
+  keyword_child_asins: {}
+  keyword_competitors: {}
+  keyword_competitor_flow: {}
+  direct_competitors: {}
+  product_competitors: {}
+  product_competitors_basic_info: {}
+  product_competitors_monthly_sales: {}
+  product_competitors_asin_detail: {}
+  product_competitors_review_list: {}
+
+  # 库存
+  listing_inventory: {}
+  parent_listing_stock_summary: {}
+  parent_listing_detail: {}
+
+# 无权限的工具（记录以便运维申请）
+denied:
+  - sprout_shop_query
+  - erp_product_query
+  - sys_user_query
