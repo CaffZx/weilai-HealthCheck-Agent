@@ -264,6 +264,18 @@ const state = { kbActive: null, asinActive: null, dataTab: 'summary' };
 // 判定结果缓存：切换 ASIN 后回来还能看到上次结果
 const judgeCache = new Map();  // key -> {result, ts}
 
+// 产品定位 / 阶段 中文映射（ERP 枚举 → 展示名）
+const POS_CN = {
+  P0_PRODUCT: '战略级产品 (P0)', P1_PRODUCT: '重点产品 (P1)',
+  P2_PRODUCT: '常规产品 (P2)', P3_PRODUCT: '长尾产品 (P3)',
+};
+const STAGE_CN = {
+  TESTING: '测试期', PROMOTING: '推进期', HARVEST_PROFIT: '收割利润期',
+  MAINTAINING: '维持期', LIQUIDATING: '清货期', 清货期: '清货期',
+};
+const posCN = v => POS_CN[v] || v || '-';
+const stageCN = v => STAGE_CN[v] || v || '-';
+
 async function api(path){ const r = await fetch(path); return r.json(); }
 
 function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
@@ -348,7 +360,7 @@ async function loadAsins(){
   document.getElementById('stat').textContent = allAsins.length + ' 个 ASIN · ' + (await api('/api/knowledge')).modules.length + ' 个知识模块';
   // 填充站点/阶段筛选下拉
   const sites = [...new Set(allAsins.map(a=>a.site_code).filter(Boolean))].sort();
-  const stages = [...new Set(allAsins.map(a=>a.product_stage).filter(Boolean))].sort();
+  const stages = [...new Set(allAsins.map(a=>stageCN(a.product_stage)).filter(v=>v&&v!=='-'))].sort();
   document.getElementById('f-site').insertAdjacentHTML('beforeend', sites.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
   document.getElementById('f-stage').insertAdjacentHTML('beforeend', stages.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
   renderAsins();
@@ -367,7 +379,7 @@ function renderAsins(){
     if (q && ![a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
         .filter(Boolean).some(v => String(v).toLowerCase().includes(q))) return false;
     if (fs && a.site_code !== fs) return false;
-    if (fst && a.product_stage !== fst) return false;
+    if (fst && stageCN(a.product_stage) !== fst) return false;
     if (fp){
       const p = priOf(a.key);
       if (fp === '__none') { if (p) return false; }
@@ -400,8 +412,8 @@ function renderAsins(){
         <div class="asin-line2">${esc(a.shop_account||'?')}</div>
         <span class="meta">
           <span class="badge b-site">${esc(a.site_code||'')}</span>
-          <span class="badge b-stage">${esc(a.product_stage||'-')}</span>
-          <span class="badge b-pos">${esc(a.product_position||'-')}</span>
+          <span class="badge b-stage">${esc(stageCN(a.product_stage))}</span>
+          <span class="badge b-pos">${esc(posCN(a.product_position))}</span>
         </span>
       </button>`);
     b.onclick = () => viewAsin(a, b);
@@ -431,8 +443,13 @@ function renderAsinView(a, data){
     product_stage: '产品阶段', product_position: '产品定位',
     target_acos_suggest: '目标 ACOS', daily_budget_suggest: '日预算建议',
   };
+  const cfgVal = (k) => {
+    if (k === 'product_position') return posCN(a[k]);
+    if (k === 'product_stage') return stageCN(a[k]);
+    return a[k] ?? '—';
+  };
   const cfgHtml = `<div class="card"><h4>产品基础信息（来自 ERP）</h4><div class="grid">` +
-    cfgFields.map(k=>`<div class="kv"><span class="k">${CN_LABEL[k]||k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${a[k]??'—'}</span></div>`).join('') +
+    cfgFields.map(k=>`<div class="kv"><span class="k">${CN_LABEL[k]||k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${esc(String(cfgVal(k)))}</span></div>`).join('') +
     `</div></div>`;
 
   const judgeHtml = `<div class="card judge-card">
