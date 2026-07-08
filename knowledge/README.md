@@ -23,6 +23,6 @@
 - **T = 产品定位**（T0/T1/T2/T3）— 权重
 - **P = 执行优先级**（P0/P1/P2）— 最终输出
 
-## 旧版对照
+## 版本
 
-旧的 8 模块版本在 `knowledge.v1_bak/` 里备份着，需要回滚就 `mv knowledge knowledge.v2 && mv knowledge.v1_bak knowledge`。
+当前为 v2 RAG 切片版（12 模块）。旧的 8 模块版本已从仓库移除，如需历史版本查 git 历史（`git log -- knowledge.v1_bak`）。

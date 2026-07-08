@@ -17,6 +17,9 @@ prefix = "weilai-HealthCheck-Agent"
 
 EXCLUDE_DIRS = {'.git', '__pycache__', '.pytest_cache', 'logs', '.venv', 'venv', 'node_modules'}
 EXCLUDE_FILES = {'.DS_Store', '.env'}  # .env 用 tmpenv 替换
+# 预同步好的本地库(healthcheck.db)一起打包，别人解压即用；但不带 WAL/SHM 临时文件
+def skip(f):
+    return f in EXCLUDE_FILES or f.endswith('.db-wal') or f.endswith('.db-shm') or f.endswith('.pyc')
 
 if os.path.exists(out):
     os.remove(out)
@@ -25,7 +28,7 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for base, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
         for f in files:
-            if f in EXCLUDE_FILES:
+            if skip(f):
                 continue
             full = os.path.join(base, f)
             rel = os.path.relpath(full, parent)
