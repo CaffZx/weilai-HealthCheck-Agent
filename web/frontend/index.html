@@ -34,6 +34,27 @@
   .filter{padding:8px 10px;border-bottom:1px solid #eef1f5;position:sticky;top:32px;background:#fff;z-index:1}
   .filter input{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none}
   .filter input:focus{border-color:#818cf8}
+  .filter-row{display:flex;gap:5px;margin-top:6px}
+  .filter-row select{flex:1;min-width:0;padding:4px 4px;border:1px solid #cbd5e1;border-radius:5px;font-size:11px;background:#fff;cursor:pointer}
+  .filter-row select:focus{border-color:#818cf8;outline:none}
+  .filter-meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#94a3b8}
+  .chk{display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none}
+  .chk input{width:auto}
+  /* 折叠知识库 */
+  .col-head{cursor:pointer;user-select:none;transition:color .15s}
+  .col-head:hover{color:#6366f1}
+  .caret{display:inline-block;transition:transform .2s;font-size:10px}
+  .kb-list.collapsed, #kb-list.collapsed{display:none}
+  .kb-item{display:flex;align-items:center;gap:8px}
+  .kb-num{background:#eef2ff;color:#6366f1;font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;min-width:18px;text-align:center}
+  /* ASIN 项优化 */
+  .asin-item{padding:8px 10px}
+  .asin-line1{display:flex;align-items:center;gap:6px;font-size:13px}
+  .asin-line2{font-size:11px;color:#64748b;margin-top:1px}
+  .asin-score{margin-left:auto;font-size:11px;color:#94a3b8;font-weight:600}
+  .asin-item.judged{border-left:3px solid transparent}
+  .pri-dot{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:16px;border-radius:3px;font-size:10px;font-weight:700;color:#fff}
+  .pri-P0{background:#dc2626}.pri-P1{background:#ea580c}.pri-P2{background:#0891b2}
   .content{padding:16px 20px}
   .tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e2e5ea}
   .tab{padding:6px 14px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;color:#64748b}
@@ -176,14 +197,33 @@
 <div class="layout">
   <!-- 知识库模块 -->
   <div class="col">
-    <h3>知识库模块</h3>
+    <h3 class="col-head" onclick="toggleKb()">
+      <span id="kb-caret" class="caret">▾</span> 知识库模块
+    </h3>
     <div class="list" id="kb-list"></div>
   </div>
 
-  <!-- 70 个 ASIN -->
+  <!-- ASIN -->
   <div class="col">
     <h3>采样 ASIN</h3>
-    <div class="filter"><input id="q" placeholder="过滤 ASIN / SKU / 店铺 …"/></div>
+    <div class="filter">
+      <input id="q" placeholder="🔍 过滤 ASIN / SKU / 店铺 …"/>
+      <div class="filter-row">
+        <select id="f-priority" onchange="renderAsins()">
+          <option value="">全部优先级</option>
+          <option value="P0">🔴 P0 当天</option>
+          <option value="P1">🟠 P1 三天</option>
+          <option value="P2">🔵 P2 七天</option>
+          <option value="__none">⚪ 未判定</option>
+        </select>
+        <select id="f-site" onchange="renderAsins()"><option value="">全部站点</option></select>
+        <select id="f-stage" onchange="renderAsins()"><option value="">全部阶段</option></select>
+      </div>
+      <div class="filter-meta">
+        <label class="chk"><input type="checkbox" id="f-sortpri" checked onchange="renderAsins()"> 按优先级排序</label>
+        <span id="asin-count"></span>
+      </div>
+    </div>
     <div class="list" id="asin-list"></div>
   </div>
 
@@ -211,10 +251,20 @@ async function loadKb(){
   const box = document.getElementById('kb-list');
   box.innerHTML = '';
   r.modules.forEach(m => {
-    const b = el(`<button class="item" data-kb="${m}">${m.replace(/\.md$/,'')}</button>`);
+    // 去掉前缀数字，标题更干净
+    const label = m.replace(/\.md$/,'').replace(/^\d+[_、]?/,'');
+    const num = (m.match(/^\d+/)||[''])[0];
+    const b = el(`<button class="item kb-item" data-kb="${m}"><span class="kb-num">${num}</span>${esc(label)}</button>`);
     b.onclick = () => viewKb(m, b);
     box.appendChild(b);
   });
+}
+
+function toggleKb(){
+  const box = document.getElementById('kb-list');
+  const caret = document.getElementById('kb-caret');
+  const collapsed = box.classList.toggle('collapsed');
+  caret.textContent = collapsed ? '▸' : '▾';
 }
 
 async function viewKb(name, btn){
@@ -263,29 +313,72 @@ function esc(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;',
 
 // ------- ASIN 列表 -------
 let allAsins = [];
+const PRI_ORDER = { P0: 0, P1: 1, P2: 2 };
+
+function priOf(key){
+  const c = judgeCache.get(key);
+  return c && !c.result.dry_run ? (c.result.judgment?.priority || null) : null;
+}
+
 async function loadAsins(){
   allAsins = await api('/api/asins');
   document.getElementById('stat').textContent = allAsins.length + ' 个 ASIN · ' + (await api('/api/knowledge')).modules.length + ' 个知识模块';
+  // 填充站点/阶段筛选下拉
+  const sites = [...new Set(allAsins.map(a=>a.site_code).filter(Boolean))].sort();
+  const stages = [...new Set(allAsins.map(a=>a.product_stage).filter(Boolean))].sort();
+  document.getElementById('f-site').insertAdjacentHTML('beforeend', sites.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
+  document.getElementById('f-stage').insertAdjacentHTML('beforeend', stages.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
   renderAsins();
 }
 
 function renderAsins(){
   const q = document.getElementById('q').value.trim().toLowerCase();
+  const fp = document.getElementById('f-priority').value;
+  const fs = document.getElementById('f-site').value;
+  const fst = document.getElementById('f-stage').value;
+  const sortPri = document.getElementById('f-sortpri').checked;
   const box = document.getElementById('asin-list');
   box.innerHTML = '';
-  const rows = allAsins.filter(a =>
-    !q || [a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
-      .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
-  );
+
+  let rows = allAsins.filter(a => {
+    if (q && ![a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
+        .filter(Boolean).some(v => String(v).toLowerCase().includes(q))) return false;
+    if (fs && a.site_code !== fs) return false;
+    if (fst && a.product_stage !== fst) return false;
+    if (fp){
+      const p = priOf(a.key);
+      if (fp === '__none') { if (p) return false; }
+      else if (p !== fp) return false;
+    }
+    return true;
+  });
+
+  if (sortPri){
+    rows.sort((a,b) => {
+      const pa = priOf(a.key), pb = priOf(b.key);
+      const oa = pa ? PRI_ORDER[pa] : 9, ob = pb ? PRI_ORDER[pb] : 9;
+      if (oa !== ob) return oa - ob;
+      // 同档按分数降序
+      const sa = judgeCache.get(a.key)?.result?.judgment?.product_execution_score ?? -1;
+      const sb = judgeCache.get(b.key)?.result?.judgment?.product_execution_score ?? -1;
+      return sb - sa;
+    });
+  }
+
+  document.getElementById('asin-count').textContent = `${rows.length} / ${allAsins.length}`;
+
   rows.forEach(a => {
+    const p = priOf(a.key);
+    const score = judgeCache.get(a.key)?.result?.judgment?.product_execution_score;
+    const priTag = p ? `<span class="pri-dot pri-${p}">${p}</span>` : '';
     const b = el(`
-      <button class="item" data-key="${a.key}">
-        <div><b>${esc(a.parent_asin||'-')}</b> · ${esc(a.shop_account||'?')}</div>
+      <button class="item asin-item ${p?'judged':''}" data-key="${a.key}">
+        <div class="asin-line1">${priTag}<b>${esc(a.parent_asin||'-')}</b>${score!=null?`<span class="asin-score">${score}</span>`:''}</div>
+        <div class="asin-line2">${esc(a.shop_account||'?')}</div>
         <span class="meta">
           <span class="badge b-site">${esc(a.site_code||'')}</span>
           <span class="badge b-stage">${esc(a.product_stage||'-')}</span>
           <span class="badge b-pos">${esc(a.product_position||'-')}</span>
-          ${esc(a.parent_seller_sku||'')}
         </span>
       </button>`);
     b.onclick = () => viewAsin(a, b);
@@ -437,6 +530,7 @@ async function runJudge(key){
     } else {
       judgeCache.set(key, {result: r, ts: Date.now()});
       box.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model);
+      renderAsins();  // 刷新左列优先级排序/筛选
     }
   } catch(e) {
     box.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
@@ -550,6 +644,7 @@ async function runBatch(){
         }
         const j = r.judgment || {};
         if (tr) tr.outerHTML = rowHtml(a, j, 'done');
+        renderAsins();  // 每完成一个就刷新左列排序
       } catch(e) {
         failed++;
         if (tr) { tr.className = 'batch-row-error'; tr.querySelector('td:nth-child(3)').setAttribute('colspan','4'); tr.innerHTML = `

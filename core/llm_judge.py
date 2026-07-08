@@ -58,13 +58,72 @@ USER_TEMPLATE = """# 待判定产品
 {config_json}
 ```
 
-## MCP 数据（近 30 天）
+## MCP 数据（近 30 天聚合）
 ```json
 {mcp_json}
 ```
-
+{local_block}
 请依照 system 中的知识库和参数，输出判定结果 JSON。
 """
+
+
+def _fmt(v, nd=2):
+    try:
+        return round(float(v), nd)
+    except (TypeError, ValueError):
+        return v
+
+
+def _local_enrichment(parent_asin: str) -> str:
+    """从本地缓存库拉精确数据（每日序列/基线/目标/库存/标签），拼成给 LLM 的补充块。
+    这些数据比 MCP 30 天聚合更精确，专供判定'连续≥3天/近7天均值'类规则。"""
+    if not parent_asin:
+        return ""
+    try:
+        from data import local_store as store
+    except Exception:
+        return ""
+    parts = []
+
+    daily = store.recent_daily_sales(parent_asin, days=14)
+    if daily:
+        lines = ["## 本地库·每日销售序列（近14天，精确到天，用于连续天数/近7天均值判定）",
+                 "日期 | 全部单量 | 全部销量 | 广告花费 | ACOS | 毛利率"]
+        for r in daily:
+            lines.append(f"{r['stat_date']} | {r['全部单量']} | {r['全部销量']} | "
+                         f"{_fmt(r['广告花费'])} | {_fmt(r['ACOS'],4)} | {_fmt(r['毛利率'],4)}")
+        # 近7天基线
+        d7 = daily[:7]
+        def avg(k):
+            vals = [x[k] for x in d7 if x[k] is not None]
+            return round(sum(vals) / len(vals), 4) if vals else None
+        lines.append(f"近7天均值 → 单量:{avg('全部单量')} 广告花费:{avg('广告花费')} ACOS:{avg('ACOS')}")
+        parts.append("\n".join(lines))
+
+    lb = store.get_one("listing_baseline", parent_asin=parent_asin)
+    if lb:
+        parts.append("## 本地库·Listing基线\n"
+                     f"链接转化率:{lb.get('链接转化率')} 类目转化率:{lb.get('类目转化率')} "
+                     f"类目退换货率:{lb.get('类目退换货率')} 16周退款率:{lb.get('16周退款率')} "
+                     f"星级:{lb.get('星级')} 评论数:{lb.get('评论数')} "
+                     f"大类排名:{lb.get('大类排名')} 小类排名:{lb.get('小类排名')}")
+
+    ss = store.get_one("stock_summary", parent_asin=parent_asin)
+    if ss:
+        parts.append("## 本地库·FBA库存\n"
+                     f"可售:{ss.get('FBA可售库存')} 入库:{ss.get('FBA入库库存')} "
+                     f"预留:{ss.get('FBA预留库存')} 不可售:{ss.get('FBA不可售库存')}")
+
+    tg = store.get_one("product_tags", asin=parent_asin)
+    if tg:
+        parts.append("## 本地库·产品标签\n"
+                     f"淡旺季:{tg.get('SEASONALITY')} 产品等级:{tg.get('PRODUCT_GRADE')} "
+                     f"目标评分:{tg.get('TARGET_STAR_RATE')} 当前星级:{tg.get('STAR_LEVEL')} "
+                     f"上架日:{tg.get('ASIN_START_SALE_DATE')} 库存:{tg.get('STOCK_INVENTORY')}")
+
+    if not parts:
+        return ""
+    return "\n## 本地缓存库·精确数据（优先采信，比上方 MCP 聚合更准）\n" + "\n\n".join(parts) + "\n"
 
 
 def _load_bundle() -> str:
@@ -87,6 +146,7 @@ def build_prompt(config_row: dict, mcp_bundle: dict) -> dict:
         "user": USER_TEMPLATE.format(
             config_json=json.dumps(config_row, ensure_ascii=False, indent=2),
             mcp_json=json.dumps(mcp_bundle, ensure_ascii=False, indent=2),
+            local_block=_local_enrichment(config_row.get("parent_asin", "")),
         ),
     }
 
