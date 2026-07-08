@@ -1,9 +1,14 @@
 """LLM 判定引擎 —— 拿知识库全文 + 热参数 + 单 ASIN 数据，交给 Claude 输出巡检结论。
 
 设计原则：
+- 提示词独立成文件：prompts/system.md、prompts/user.md，改提示词不用碰代码（热加载）
 - 知识库 md 全量塞进 system prompt，改 md 立即生效
 - 热参数 rules.yaml 单独嵌入，方便 LLM 引用具体阈值
-- 没配 ANTHROPIC_API_KEY 时进入 dry-run 模式，只返回即将发送的 prompt 供人肉审查
+- 没配 DEEPSEEK_API_KEY 时进入 dry-run 模式，只返回即将发送的 prompt 供人肉审查
+
+提示词占位符（在 prompts/*.md 里用 [[占位符]] 书写）：
+  system.md：[[KNOWLEDGE_BUNDLE]] [[RULES_YAML]]
+  user.md：  [[CONFIG_JSON]] [[MCP_JSON]] [[LOCAL_BLOCK]]
 """
 from __future__ import annotations
 import json, os, yaml
@@ -12,59 +17,20 @@ from core import knowledge_loader
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES_PATH = ROOT / "config/rules.yaml"
+PROMPTS_DIR = ROOT / "prompts"
 
-SYSTEM_TEMPLATE = """你是一个亚马逊业务巡检 Agent，遵循下方知识库和参数配置对单个产品做异常判定、严重度评级、优先级打分和处理建议输出。
 
-# 知识库（8 个模块，权威判定依据）
-{knowledge_bundle}
+def _load_prompt(name: str) -> str:
+    """读取 prompts/<name>.md（每次现读，改文件即生效）。"""
+    return (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
 
-# 热参数配置（config/rules.yaml，命中阈值以这里为准，与知识库描述冲突时优先此表）
-```yaml
-{rules_yaml}
-```
 
-# 输出要求
-严格返回一个 JSON 对象（不要有多余文字），所有文本用**中文**，措辞面向运营同学（说人话，不要机械引用条款号；如需引用规则可放括号里）。schema：
-{{
-  "headline": "一句话结论，20 字内，运营看到就能理解优先级和主要问题",
-  "human_summary": "一段 2-4 句的自然语言总结：这个产品当前的健康状况、需要重点关注什么、为什么这么判",
-  "anomalies": [
-    {{
-      "code": "异常点位（中文名）",
-      "category": "所属大类",
-      "severity": "S0 | S1 | S2",
-      "plain_reason": "用大白话解释为什么命中，一句话，不要引条款号",
-      "base_score": 数字,
-      "final_score": 数字
-    }}
-  ],
-  "product_execution_score": 数字,
-  "priority": "P0 | P1 | P2",
-  "priority_label": "当天处理 / 3天内处理 / 7天内处理（跟着 priority 走）",
-  "priority_reason": "一句话解释为什么这个档",
-  "suggested_actions": ["每条一句大白话，说清楚该做什么、目标是什么"],
-  "task_card": {{
-    "title": "任务卡标题（不超过 30 字）",
-    "brief": "一句话摘要，运营扫一眼就知道要做什么"
-  }}
-}}
-若数据不足以判定："anomalies" 空数组，priority 返回 "P2"，headline 写"数据不足，暂缓处理"，human_summary 说明缺什么数据。
-"""
-
-USER_TEMPLATE = """# 待判定产品
-
-## Config（ERP t_advert_agent_decision_config）
-```json
-{config_json}
-```
-
-## MCP 数据（近 30 天聚合）
-```json
-{mcp_json}
-```
-{local_block}
-请依照 system 中的知识库和参数，输出判定结果 JSON。
-"""
+def _fill(template: str, mapping: dict) -> str:
+    """把 [[KEY]] 占位符替换成实际内容（不用 str.format，避免 JSON 花括号转义）。"""
+    out = template
+    for k, v in mapping.items():
+        out = out.replace(f"[[{k}]]", str(v))
+    return out
 
 
 def _fmt(v, nd=2):
@@ -139,15 +105,15 @@ def _load_rules_yaml() -> str:
 
 def build_prompt(config_row: dict, mcp_bundle: dict) -> dict:
     return {
-        "system": SYSTEM_TEMPLATE.format(
-            knowledge_bundle=_load_bundle(),
-            rules_yaml=_load_rules_yaml(),
-        ),
-        "user": USER_TEMPLATE.format(
-            config_json=json.dumps(config_row, ensure_ascii=False, indent=2),
-            mcp_json=json.dumps(mcp_bundle, ensure_ascii=False, indent=2),
-            local_block=_local_enrichment(config_row.get("parent_asin", "")),
-        ),
+        "system": _fill(_load_prompt("system"), {
+            "KNOWLEDGE_BUNDLE": _load_bundle(),
+            "RULES_YAML": _load_rules_yaml(),
+        }),
+        "user": _fill(_load_prompt("user"), {
+            "CONFIG_JSON": json.dumps(config_row, ensure_ascii=False, indent=2),
+            "MCP_JSON": json.dumps(mcp_bundle, ensure_ascii=False, indent=2),
+            "LOCAL_BLOCK": _local_enrichment(config_row.get("parent_asin", "")),
+        }),
     }
 
 
