@@ -8,3 +8,9 @@ logs/*.log
 .DS_Store
 *.egg-info/
 .pytest_cache/
+
+# 本地缓存库（二进制，不入库）
+data/local/
+*.db
+*.db-wal
+*.db-shm
