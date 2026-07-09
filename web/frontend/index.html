@@ -125,7 +125,22 @@
   .score-bar-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1)}
 
   .section-title{font-size:12px;color:#475569;font-weight:600;margin:14px 0 8px;text-transform:none;letter-spacing:.3px}
-  .anomaly-list{display:flex;flex-direction:column;gap:6px}
+  .anomaly-list{display:flex;flex-direction:column;gap:8px}
+  /* 模块7 异常明细卡 */
+  .anom-card{background:#fff;border:1px solid #eef1f5;border-left:3px solid #cbd5e1;border-radius:8px;padding:10px 12px;animation:slideIn .3s ease both;transition:box-shadow .15s}
+  .anom-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.05)}
+  .anom-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .anom-idx{width:18px;height:18px;border-radius:50%;background:#f1f5f9;color:#64748b;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+  .anom-title{font-size:13px;color:#0f172a;flex:1;min-width:0}
+  .anom-score{font-size:12px;color:#94a3b8;font-weight:600;white-space:nowrap}
+  .anom-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:5px;margin-bottom:8px}
+  .anom-field{display:flex;gap:8px;font-size:12px;line-height:1.6;padding:3px 0}
+  .anom-field .af-k{color:#94a3b8;flex-shrink:0;width:52px}
+  .anom-field .af-v{color:#334155;flex:1}
+  .af-action{background:#f0f9ff;border-radius:6px;padding:6px 8px;margin-top:2px}
+  .af-action .af-v{color:#0c4a6e;font-weight:500}
+  .anom-foot{display:flex;gap:16px;margin-top:6px;padding-top:6px;border-top:1px dashed #eef1f5;font-size:11px;color:#94a3b8}
+  .anomaly-old-unused{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
   .anomaly{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
   .anomaly:hover{transform:translateX(2px);box-shadow:0 2px 8px rgba(0,0,0,.04)}
   .sev-tag{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0}
@@ -352,7 +367,7 @@ const PRI_ORDER = { P0: 0, P1: 1, P2: 2 };
 
 function priOf(key){
   const c = judgeCache.get(key);
-  return c && !c.result.dry_run ? (c.result.judgment?.priority || null) : null;
+  return c && !c.result.dry_run ? (pickPriority(c.result.judgment) || null) : null;
 }
 
 async function loadAsins(){
@@ -394,8 +409,8 @@ function renderAsins(){
       const oa = pa ? PRI_ORDER[pa] : 9, ob = pb ? PRI_ORDER[pb] : 9;
       if (oa !== ob) return oa - ob;
       // 同档按分数降序
-      const sa = judgeCache.get(a.key)?.result?.judgment?.product_execution_score ?? -1;
-      const sb = judgeCache.get(b.key)?.result?.judgment?.product_execution_score ?? -1;
+      const sa = pickScore(judgeCache.get(a.key)?.result?.judgment) ?? -1;
+      const sb = pickScore(judgeCache.get(b.key)?.result?.judgment) ?? -1;
       return sb - sa;
     });
   }
@@ -404,7 +419,7 @@ function renderAsins(){
 
   rows.forEach(a => {
     const p = priOf(a.key);
-    const score = judgeCache.get(a.key)?.result?.judgment?.product_execution_score;
+    const score = pickScore(judgeCache.get(a.key)?.result?.judgment);
     const priTag = p ? `<span class="pri-dot pri-${p}">${p}</span>` : '';
     const b = el(`
       <button class="item asin-item ${p?'judged':''}" data-key="${a.key}">
@@ -498,54 +513,87 @@ const PRI_META = {
   P2: {color:'#0891b2', bg:'linear-gradient(135deg,#cffafe,#a5f3fc)', label:'7 天内处理'},
 };
 
+// —— 从判定结果里取字段（兼容模块7新结构 + 旧结构）——
+function pickPriority(j){ return j?.优先级信息?.执行优先级 || j?.priority || null; }
+function pickScore(j){ const v=j?.优先级信息?.产品执行分数 ?? j?.product_execution_score; return v==null?null:v; }
+function pickAnomalies(j){ return j?.异常明细 || j?.anomalies || []; }
+function anomScore(a){ return a?.该条执行分数 ?? a?.final_score ?? a?.base_score ?? -1; }
+
+function kvRow(label, val){
+  const empty = (val==null || val==='' );
+  return `<div class="kv"><span class="k">${esc(label)}</span><span class="v${empty?' none':''}">${esc(String(val??'待补充'))}</span></div>`;
+}
+
 function renderJudgment(j, usage, model){
-  const P = j.priority || 'P2';
+  const P = pickPriority(j) || 'P2';
   const pm = PRI_META[P] || PRI_META.P2;
-  const score = j.product_execution_score;
-  const scorePct = Math.min(100, Math.max(0, (score ?? 0) / 150 * 100));
-
+  const score = pickScore(j);
+  const scorePct = Math.min(100, Math.max(0, (Number(score) || 0) / 150 * 100));
   const headline = j.headline || '';
-  const summary = j.human_summary || j.priority_reason || '';
+  const summary = j.human_summary || '';
 
-  const anomaliesHtml = (j.anomalies || []).map(a => {
-    const sm = SEV_META[a.severity] || SEV_META.S2;
-    return `<div class="anomaly">
-      <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
-      <div class="anomaly-body">
-        <div class="anomaly-name">${esc(a.code||'-')} <span class="anomaly-cat">${esc(a.category||'')}</span></div>
-        <div class="anomaly-reason">${esc(a.plain_reason||a.reason||'')}</div>
+  const loc = j.定位信息 || {};
+  const pri = j.优先级信息 || {};
+
+  // 异常明细按该条执行分数降序（模块7.2）
+  const anomalies = pickAnomalies(j).slice().sort((a,b)=>anomScore(b)-anomScore(a));
+  const isPerf = (t) => /交易表现|售后/.test(t||'');
+
+  const anomHtml = anomalies.map((a,i) => {
+    const sev = a.该条严重度 || a.severity || 'S2';
+    const sm = SEV_META[sev] || SEV_META.S2;
+    const type = a.异常类型 || a.category || '';
+    const point = a.问题点位 || a.code || '-';
+    const reason = a.初步原因;
+    const showReason = reason && reason!=='不适用' && isPerf(type);
+    return `<div class="anom-card">
+      <div class="anom-head">
+        <span class="anom-idx">${i+1}</span>
+        <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
+        <span class="anom-title">${esc(type)} · <b>${esc(point)}</b></span>
+        <span class="anom-score">${anomScore(a)>=0?anomScore(a)+' 分':''}</span>
       </div>
-      <div class="anomaly-score">${a.final_score ?? a.base_score ?? '-'} 分</div>
+      <div class="anom-grid">
+        ${kvRow('命中变体', a.命中变体)}
+        ${kvRow('变体重要性', a.变体重要性)}
+        ${kvRow('作用层级', a.作用层级)}
+        ${kvRow('异常状态', a.异常状态)}
+      </div>
+      <div class="anom-field"><span class="af-k">判断依据</span><span class="af-v">${esc(a.判断依据||a.plain_reason||'待补充')}</span></div>
+      ${showReason?`<div class="anom-field"><span class="af-k">初步原因</span><span class="af-v">${esc(reason)}</span></div>`:''}
+      <div class="anom-field af-action"><span class="af-k">处理建议</span><span class="af-v">${esc(a.处理建议||'待补充')}</span></div>
+      <div class="anom-foot">
+        <span>上次处理：${esc(a.上次处理记录||'无')}</span>
+        <span>复查：${esc(a.复查要求||'待补充')}</span>
+      </div>
     </div>`;
   }).join('') || '<div style="color:#94a3b8;font-size:12px;padding:6px 0">未识别到异常</div>';
 
-  const actionsHtml = (j.suggested_actions||[]).map((s,i) =>
-    `<li style="margin:4px 0">${esc(s)}</li>`
-  ).join('');
-
-  const tc = j.task_card || {};
   return `
     <div class="judge-hero" style="background:${pm.bg}">
       <div class="judge-hero-top">
         <span class="pri-badge" style="background:${pm.color}">${esc(P)}</span>
-        <span class="pri-label">${esc(pm.label)}</span>
-        <span class="judge-score">综合执行分 <b>${score ?? '-'}</b></span>
+        <span class="pri-label">${esc(pri.处理时限||pm.label)}</span>
+        <span class="judge-score">执行分 <b>${score ?? '-'}</b> · 父卡严重度 ${esc(pri.父卡严重度||'-')}</span>
       </div>
       <div class="judge-headline">${esc(headline)}</div>
       <div class="judge-summary">${esc(summary)}</div>
       <div class="score-bar"><div class="score-bar-fill" style="width:${scorePct}%;background:${pm.color}"></div></div>
     </div>
 
-    <div class="section-title">🎯 识别到的异常（${(j.anomalies||[]).length} 项）</div>
-    <div class="anomaly-list">${anomaliesHtml}</div>
+    <div class="section-title">📍 定位信息</div>
+    <div class="card"><div class="grid">
+      ${kvRow('店铺/站点', loc.店铺站点)}
+      ${kvRow('负责人', loc.负责人)}
+      ${kvRow('产品定位', loc.产品定位)}
+      ${kvRow('产品阶段', loc.产品阶段)}
+      ${kvRow('淡旺季', loc.淡旺季)}
+      ${kvRow('下次复查', pri.下一次复查时间)}
+      ${kvRow('当前状态', pri.当前状态)}
+    </div></div>
 
-    ${actionsHtml ? `<div class="section-title">✅ 处理建议</div><ol class="actions-list">${actionsHtml}</ol>` : ''}
-
-    ${tc.title ? `<div class="section-title">📋 任务卡</div>
-      <div class="task-card">
-        <div class="task-card-title">${esc(tc.title)}</div>
-        <div class="task-card-brief">${esc(tc.brief||'')}</div>
-      </div>` : ''}
+    <div class="section-title">🎯 异常明细（${anomalies.length} 项，按执行分数降序）</div>
+    <div class="anomaly-list">${anomHtml}</div>
 
     <div class="judge-meta">模型 ${esc(model||'-')} · 输入 ${usage?.input_tokens ?? '-'} tokens · 输出 ${usage?.output_tokens ?? '-'} tokens</div>
     <details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:#94a3b8">查看原始 JSON</summary>
@@ -626,15 +674,16 @@ function renderBatchTable(list){
 }
 
 function rowHtml(a, j, status){
-  const P = j.priority || 'P2';
+  const P = pickPriority(j) || 'P2';
   const pm = PRI_META[P] || PRI_META.P2;
+  const 时限 = j?.优先级信息?.处理时限 || pm.label;
   return `<tr data-key="${a.key}" class="batch-row-${status}">
     <td><b>${esc(a.parent_asin||'-')}</b><br><span style="font-size:11px;color:#94a3b8">${esc(a.parent_seller_sku||'')}</span></td>
     <td>${esc(a.shop_account||'')}<br><span style="font-size:11px;color:#94a3b8">${esc(a.site_code||'')}</span></td>
     <td><span class="pri-mini" style="background:${pm.color}">${esc(P)}</span></td>
-    <td style="font-size:12px">${esc(pm.label)}</td>
-    <td><b>${j.product_execution_score ?? '-'}</b></td>
-    <td style="max-width:340px">${esc(j.headline||j.priority_reason||'-')}</td>
+    <td style="font-size:12px">${esc(时限)}</td>
+    <td><b>${pickScore(j) ?? '-'}</b></td>
+    <td style="max-width:340px">${esc(j.headline||'-')}</td>
     <td><button class="mini-btn" onclick="goToAsin('${a.key}')">查看详情</button></td>
   </tr>`;
 }
@@ -708,12 +757,13 @@ function exportBatch(){
     const cached = judgeCache.get(a.key);
     if (!cached) continue;
     const j = cached.result.judgment || {};
+    const anoms = pickAnomalies(j);
     rows.push([
       a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code,
-      j.priority, j.priority_label, j.product_execution_score,
+      pickPriority(j), j?.优先级信息?.处理时限, pickScore(j),
       (j.headline||'').replace(/,/g,'，'),
-      (j.anomalies||[]).length,
-      (j.suggested_actions||[]).join(' | ').replace(/,/g,'，'),
+      anoms.length,
+      anoms.map(x=>x.处理建议||'').join(' | ').replace(/,/g,'，'),
     ]);
   }
   const csv = '﻿' + rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
