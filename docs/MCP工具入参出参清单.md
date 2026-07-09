@@ -28,7 +28,7 @@ Fetch full ASIN data including link status, inventory, price, seller, BuyBox, Am
 | `reviewMaxStar` | 字符串 |  | Review max star |
 | `reviewWithinDays` | 字符串 |  | Review within days |
 
-**出参**：data[{ asin, siteCode, linkStatus{⚠️实测空}, images{⚠️实测空}, aplus, bonus, reviews{lowStarRecentCount, lowStarRecentList} }] —— 声明有链接状态/BuyBox但实测未落数据
+**出参**：data[{ asin, siteCode, linkStatus, images, aplus, bonus, reviews{lowStarRecentCount,lowStarRecentList} }] —— ❌ 命门1：17个ASIN重测 linkStatus/images/aplus 全空，工具声明有BuyBox/链接状态但爬虫数据未落库；reviews.lowStarRecent 结构可用
 
 ---
 
@@ -376,7 +376,7 @@ Query product information by parent ASIN, including parent-child relations, fine
 | `pageNo` | 整数 |  | 页码，默认1 |
 | `pageSize` | 整数 |  | 每页条数，默认10 |
 
-**出参**：⚠️ HTTP 400（竞品爬虫库，参数待确认）
+**出参**：✅ 可用（分页竞品爬虫库 total/pageNo/pageSize/data）——注意：不要传 siteCode，会触发 HTTP 400
 
 ---
 
@@ -928,7 +928,7 @@ Query product information by parent ASIN, including parent-child relations, fine
 | `parent_seller_sku` | 字符串 | ✅ | 父Seller SKU |
 | `shop_account` | 字符串 | ✅ | 店铺账号 |
 
-**出参**：（需该产品在该关键词下有排名数据，测试产品多为空）
+**出参**：❌ 多ASIN×真实关键词重测仍全空（数据源对我方ASIN无数据）
 
 ---
 
@@ -944,7 +944,7 @@ Query product information by parent ASIN, including parent-child relations, fine
 | `asin` | 字符串 | ✅ | 竞品 ASIN |
 | `site_code` | 字符串 | ✅ | 站点代码: Amazon_US / Amazon_UK / Amazon_DE，也支持 US/DE 简写 |
 
-**出参**：（同上）
+**出参**：（同上，数据稀疏）
 
 ---
 
@@ -962,7 +962,7 @@ Query product information by parent ASIN, including parent-child relations, fine
 | `parent_seller_sku` | 字符串 | ✅ | 父Seller SKU |
 | `shop_account` | 字符串 | ✅ | 店铺账号 |
 
-**出参**：（同上，多为空）
+**出参**：❌ 多ASIN×真实关键词重测仍全空（卡位异常数据链断）
 
 ---
 
@@ -1010,7 +1010,7 @@ Listing库存快照：按父ASIN、父Seller SKU、店铺账号，返回各子AS
 | `parent_seller_sku` | 字符串 | ✅ | 父Seller SKU |
 | `shop_account` | 字符串 | ✅ | 店铺账号 (如 am_example_us) |
 
-**出参**：⚠️ 实测所有产品均返回空（子体库存快照数据源未落数据）
+**出参**：❌ 父+子参数多ASIN重测全空，确认数据源未落数据（改用 azlisting 的 erp_listing_stock_alert）
 
 ---
 
