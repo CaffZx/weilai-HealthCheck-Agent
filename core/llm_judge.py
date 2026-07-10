@@ -3,7 +3,7 @@
 设计原则：
 - 提示词独立成文件：prompts/system.md、prompts/user.md，改提示词不用碰代码（热加载）
 - 知识库 md 全量塞进 system prompt，改 md 立即生效
-- 热参数 rules.yaml 单独嵌入，方便 LLM 引用具体阈值
+- 热参数 R4_打分参数.yaml 单独嵌入，方便 LLM 引用具体阈值（与代码判定共用同一份，避免阈值分裂）
 - 没配 DEEPSEEK_API_KEY 时进入 dry-run 模式，只返回即将发送的 prompt 供人肉审查
 
 提示词占位符（在 prompts/*.md 里用 [[占位符]] 书写）：
@@ -16,7 +16,7 @@ from pathlib import Path
 from core import knowledge_loader
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES_PATH = ROOT / "config/rules.yaml"
+RULES_PATH = ROOT / "inspector/rules/R4_打分参数.yaml"
 PROMPTS_DIR = ROOT / "prompts"
 
 

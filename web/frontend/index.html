@@ -63,19 +63,44 @@
   .caret{display:inline-block;transition:transform .2s;font-size:10px}
   .kb-item{display:flex;align-items:center;gap:8px}
   .kb-num{background:#eef2ff;color:#6366f1;font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;min-width:18px;text-align:center}
-  /* ASIN 项优化 */
-  .asin-item{padding:8px 10px}
-  .asin-line1{display:flex;align-items:center;gap:6px;font-size:13px}
-  .asin-line2{font-size:11px;color:#64748b;margin-top:1px}
-  .asin-score{margin-left:auto;font-size:11px;color:#94a3b8;font-weight:600}
-  .asin-item.judged{border-left:3px solid transparent}
-  .pri-dot{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:16px;border-radius:3px;font-size:10px;font-weight:700;color:#fff}
+  /* ASIN 卡片 — 高密度运营视图 */
+  .asin-item{padding:6px 8px;border-left:3px solid transparent;transition:all .15s}
+  .asin-item.judged{border-left-color:#e2e8f0}
+  .asin-item.llm-analyzed{border-left-color:#7c3aed;box-shadow:inset 0 0 0 1px rgba(124,58,237,.08)}
+  .asin-item.llm-analyzed:hover{border-left-color:#a78bfa;box-shadow:0 2px 8px rgba(124,58,237,.12)}
+  .asin-row{display:flex;align-items:center;gap:8px}
+  .asin-img{flex-shrink:0;width:36px;height:36px;border-radius:3px;overflow:hidden;background:#f1f5f9}
+  .asin-img img{width:100%;height:100%;object-fit:contain}
+  .asin-img-empty{background:#f1f5f9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23cbd5e1' stroke-width='1.5'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'/%3E%3Cpath d='m21 15-5-5L5 21'/%3E%3C/svg%3E") center/14px no-repeat}
+  .asin-divider{flex-shrink:0;width:1px;height:32px;background:#e2e8f0}
+  .asin-body{flex:1;min-width:0}
+  .asin-line1{display:flex;align-items:center;gap:5px;font-size:12px}
+  .asin-line2{display:flex;align-items:center;gap:6px;font-size:10px;color:#64748b;margin-top:2px}
+  .asin-score{margin-left:auto;font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap}
+  .asin-score .src{font-size:9px;font-weight:400;color:#94a3b8;margin-left:1px}
+  /* 优先级 + LLM 标签 */
+  .pri-dot{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:15px;border-radius:3px;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
   .pri-P0{background:#dc2626}.pri-P1{background:#ea580c}.pri-P2{background:#0891b2}
+  .pri-none{background:#cbd5e1;color:#64748b;min-width:20px}
+  .llm-badge{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:3px;font-size:10px;font-weight:700;flex-shrink:0}
+  .llm-badge-done{background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd}
+  .llm-badge-pending{background:#fef3c7;color:#d97706;border:1px solid #fcd34d;animation:pulse2 1.5s ease-in-out infinite}
+  .anom-count{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:#94a3b8;flex-shrink:0}
+  .anom-count b{color:#475569;font-size:11px}
+  @keyframes pulse2{0%,100%{opacity:1}50%{opacity:.35}}
   .content{padding:16px 20px}
   .tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e2e5ea}
   .tab{padding:6px 14px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;color:#64748b}
   .tab:hover{color:#3730a3}
   .tab.active{color:#3730a3;border-bottom-color:#6366f1;font-weight:500}
+  .tab-panel{animation:fadeIn .2s ease}
+  /* 紧凑信息栏 */
+  .info-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;flex-wrap:wrap}
+  .info-chips{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+  .info-chip{display:inline-flex;align-items:baseline;gap:4px;background:#f8fafc;padding:3px 8px;border-radius:4px;font-size:12px}
+  .info-chip-k{color:#94a3b8;font-size:10px}
+  .info-chip-v{color:#0f172a;font-weight:500}
+  .info-thumb{width:48px;height:48px;border-radius:4px;object-fit:contain;border:1px solid #e2e8f0;flex-shrink:0}
   pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;overflow:auto;font:12px/1.6 "SF Mono",Monaco,monospace;margin:0;max-height:calc(100vh - 200px)}
   .md{background:#fff;padding:20px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);font:13px/1.7 -apple-system,sans-serif;max-height:calc(100vh - 200px);overflow:auto;word-break:break-word}
   .md p{margin:.4em 0}
@@ -113,33 +138,41 @@
 
   /* 判定结果卡片 */
   .judge-card{background:linear-gradient(180deg,#fff,#fafbff)}
-  .judge-hero{padding:14px 16px;border-radius:10px;margin-bottom:14px;animation:fadeUp .4s cubic-bezier(.4,0,.2,1) both}
-  .judge-hero-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
-  .pri-badge{color:#fff;padding:4px 12px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
-  .pri-label{font-weight:600;color:#0f172a;font-size:14px}
-  .judge-score{margin-left:auto;font-size:12px;color:#475569}
-  .judge-score b{font-size:18px;color:#0f172a;margin-left:4px}
-  .judge-headline{font-size:16px;font-weight:600;color:#0f172a;margin:6px 0 4px;line-height:1.4}
-  .judge-summary{font-size:13px;color:#334155;line-height:1.7;margin-bottom:10px}
-  .score-bar{height:6px;background:rgba(255,255,255,.5);border-radius:3px;overflow:hidden}
-  .score-bar-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1)}
-
-  .section-title{font-size:12px;color:#475569;font-weight:600;margin:14px 0 8px;text-transform:none;letter-spacing:.3px}
-  .anomaly-list{display:flex;flex-direction:column;gap:8px}
-  /* 模块7 异常明细卡 */
-  .anom-card{background:#fff;border:1px solid #eef1f5;border-left:3px solid #cbd5e1;border-radius:8px;padding:10px 12px;animation:slideIn .3s ease both;transition:box-shadow .15s}
-  .anom-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.05)}
-  .anom-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-  .anom-idx{width:18px;height:18px;border-radius:50%;background:#f1f5f9;color:#64748b;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
-  .anom-title{font-size:13px;color:#0f172a;flex:1;min-width:0}
-  .anom-score{font-size:12px;color:#94a3b8;font-weight:600;white-space:nowrap}
-  .anom-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:5px;margin-bottom:8px}
-  .anom-field{display:flex;gap:8px;font-size:12px;line-height:1.6;padding:3px 0}
-  .anom-field .af-k{color:#94a3b8;flex-shrink:0;width:52px}
-  .anom-field .af-v{color:#334155;flex:1}
-  .af-action{background:#f0f9ff;border-radius:6px;padding:6px 8px;margin-top:2px}
-  .af-action .af-v{color:#0c4a6e;font-weight:500}
-  .anom-foot{display:flex;gap:16px;margin-top:6px;padding-top:6px;border-top:1px dashed #eef1f5;font-size:11px;color:#94a3b8}
+  .judge-hero{padding:12px 14px;border-radius:10px;margin-bottom:10px;animation:fadeUp .3s ease both}
+  .judge-hero-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pri-badge{color:#fff;padding:3px 10px;border-radius:5px;font-weight:700;font-size:13px;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+  .pri-label{font-weight:600;color:#0f172a;font-size:13px}
+  .judge-score{margin-left:auto;font-size:11px;color:#475569}
+  .judge-score b{font-size:16px;color:#0f172a;margin:0 2px}
+  .judge-count{font-size:11px;color:#64748b;background:rgba(255,255,255,.6);padding:2px 8px;border-radius:3px}
+  .judge-asin{font-size:11px;color:#475569;background:rgba(255,255,255,.5);padding:2px 8px;border-radius:3px;margin-right:auto}
+  .judge-summary{font-size:12px;color:#334155;line-height:1.5;margin:6px 0 4px}
+  .score-bar{height:4px;background:rgba(255,255,255,.5);border-radius:2px;overflow:hidden;margin-top:6px}
+  .score-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
+  /* 定位 chips */
+  .loc-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .loc-chip{font-size:10px;color:#475569;background:rgba(255,255,255,.55);padding:2px 6px;border-radius:3px}
+  .loc-chip b{font-weight:500;color:#94a3b8;margin-right:2px}
+  /* 异常明细 — 紧凑行 */
+  .anom-compact{background:#fff;border:1px solid #eef1f5;border-radius:8px;overflow:hidden}
+  .anom-header{display:flex;justify-content:space-between;padding:6px 10px;font-size:11px;color:#94a3b8;background:#fafbfc;border-bottom:1px solid #eef1f5}
+  .anom-row{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;border-bottom:1px solid #f8fafc}
+  .anom-row:last-child{border-bottom:none}
+  .anom-row .sev-tag{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;white-space:nowrap;flex-shrink:0}
+  .anom-point{font-weight:600;color:#0f172a;white-space:nowrap}
+  .anom-type{font-size:10px;color:#94a3b8;white-space:nowrap}
+  .anom-basis{flex:1;color:#64748b;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .anom-af{font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap;flex-shrink:0}
+  .anom-suggest{font-size:10px;color:#0c4a6e;background:#f0f9ff;padding:1px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0}
+  .judge-meta{margin-top:6px;font-size:10px;color:#cbd5e1;text-align:right}
+  /* 处理任务表 */
+  .task-list{background:#fff;border:1px solid #eef1f5;border-radius:8px;overflow:hidden;margin-top:8px}
+  .task-header{padding:6px 10px;font-size:11px;font-weight:600;color:#0c4a6e;background:#f0f9ff;border-bottom:1px solid #e0f2fe}
+  .task-row{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;border-bottom:1px solid #f8fafc}
+  .task-row:last-child{border-bottom:none}
+  .task-row .sev-tag{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;white-space:nowrap;flex-shrink:0}
+  .task-point{font-weight:600;color:#0f172a;white-space:nowrap;flex-shrink:0}
+  .task-action{color:#0c4a6e;font-size:12px}
   .anomaly-old-unused{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
   .anomaly{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
   .anomaly:hover{transform:translateX(2px);box-shadow:0 2px 8px rgba(0,0,0,.04)}
@@ -278,6 +311,7 @@
 const state = { kbActive: null, asinActive: null, dataTab: 'summary' };
 // 判定结果缓存：切换 ASIN 后回来还能看到上次结果
 const judgeCache = new Map();  // key -> {result, ts}
+	const inspectCache = new Map();  // key -> {result, ts}  // 代码管线缓存
 
 // 产品定位 / 阶段 中文映射（ERP 枚举 → 展示名）
 const POS_CN = {
@@ -363,6 +397,7 @@ function esc(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;',
 
 // ------- ASIN 列表 -------
 let allAsins = [];
+let batchReady = false;
 const PRI_ORDER = { P0: 0, P1: 1, P2: 2 };
 
 function priOf(key){
@@ -370,8 +405,34 @@ function priOf(key){
   return c && !c.result.dry_run ? (pickPriority(c.result.judgment) || null) : null;
 }
 
+// 获取产品排序分数（LLM 优先，否则代码批量结果）
+function sortScore(a){
+  // LLM 结果（judgeCache 只存 LLM 结果，不存代码结果）
+  const jc = judgeCache.get(a.key);
+  if (jc && !jc.result.dry_run && jc.result.model !== 'code-pipeline') {
+    const s = pickScore(jc.result.judgment);
+    if (s != null) return { score: s, source: 'llm' };
+  }
+  // 代码批量结果（来自 /api/asins）
+  if (a.llm_status === 'llm_done' && a.llm_score != null) {
+    return { score: a.llm_score, source: 'llm' };
+  }
+  if (a.score != null) return { score: a.score, source: 'code' };
+  return { score: -1, source: 'none' };
+}
+
+function prioritySort(a, b){
+  const pa = a.priority || priOf(a.key) || 'P2';
+  const pb = b.priority || priOf(b.key) || 'P2';
+  const oa = PRI_ORDER[pa] ?? 9, ob = PRI_ORDER[pb] ?? 9;
+  if (oa !== ob) return oa - ob;
+  // 同优先级内按分数降序
+  return (sortScore(b).score || 0) - (sortScore(a).score || 0);
+}
+
 async function loadAsins(){
   allAsins = await api('/api/asins');
+  batchReady = allAsins.length > 0 && allAsins[0].batch_ready;
   document.getElementById('stat').textContent = allAsins.length + ' 个 ASIN · ' + (await api('/api/knowledge')).modules.length + ' 个知识模块';
   // 填充站点/阶段筛选下拉
   const sites = [...new Set(allAsins.map(a=>a.site_code).filter(Boolean))].sort();
@@ -379,6 +440,25 @@ async function loadAsins(){
   document.getElementById('f-site').insertAdjacentHTML('beforeend', sites.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
   document.getElementById('f-stage').insertAdjacentHTML('beforeend', stages.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
   renderAsins();
+
+  // 如果批量还没跑完，轮询刷新
+  if (!batchReady) {
+    const poll = async () => {
+      const status = await api('/api/batch/status');
+      if (status.ready && !batchReady) {
+        batchReady = true;
+        allAsins = await api('/api/asins');
+        renderAsins();
+      }
+      if (status.llm_pending > 0 || !status.ready) {
+        // LLM 还在跑，继续轮询
+        allAsins = await api('/api/asins');
+        renderAsins();
+        if (status.llm_pending > 0) setTimeout(poll, 3000);
+      }
+    };
+    setTimeout(poll, 2000);
+  }
 }
 
 function renderAsins(){
@@ -396,7 +476,7 @@ function renderAsins(){
     if (fs && a.site_code !== fs) return false;
     if (fst && stageCN(a.product_stage) !== fst) return false;
     if (fp){
-      const p = priOf(a.key);
+      const p = a.priority || priOf(a.key);
       if (fp === '__none') { if (p) return false; }
       else if (p !== fp) return false;
     }
@@ -404,32 +484,65 @@ function renderAsins(){
   });
 
   if (sortPri){
-    rows.sort((a,b) => {
-      const pa = priOf(a.key), pb = priOf(b.key);
-      const oa = pa ? PRI_ORDER[pa] : 9, ob = pb ? PRI_ORDER[pb] : 9;
-      if (oa !== ob) return oa - ob;
-      // 同档按分数降序
-      const sa = pickScore(judgeCache.get(a.key)?.result?.judgment) ?? -1;
-      const sb = pickScore(judgeCache.get(b.key)?.result?.judgment) ?? -1;
-      return sb - sa;
-    });
+    rows.sort((a, b) => prioritySort(a, b));
   }
 
   document.getElementById('asin-count').textContent = `${rows.length} / ${allAsins.length}`;
 
   rows.forEach(a => {
-    const p = priOf(a.key);
-    const score = pickScore(judgeCache.get(a.key)?.result?.judgment);
-    const priTag = p ? `<span class="pri-dot pri-${p}">${p}</span>` : '';
+    const p = a.priority || '';
+    const isLLM = a.llm_status === 'llm_done';
+    const displayScore = isLLM && a.llm_score != null ? a.llm_score : (a.score || 0);
+    const scoreNum = displayScore > 0 ? Math.round(displayScore) : 0;
+
+    // 优先级标签
+    const priTag = p ? `<span class="pri-dot pri-${p}">${p}</span>`
+      : (scoreNum > 0 ? `<span class="pri-dot pri-P2">P2</span>` : '');
+
+    // LLM 紫色徽章
+    let llmBadge = '';
+    if (isLLM) {
+      llmBadge = '<span class="llm-badge llm-badge-done" title="LLM 深度分析已完成">L</span>';
+    } else if (a.llm_status === 'llm_pending') {
+      llmBadge = '<span class="llm-badge llm-badge-pending" title="LLM 分析中…">⏳</span>';
+    }
+
+    // 主图
+    const imgSrc = a.image_url || '';
+    const imgHtml = imgSrc
+      ? `<div class="asin-img"><img src="${esc(imgSrc)}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`
+      : `<div class="asin-img asin-img-empty"></div>`;
+
+    // 分数
+    const scoreHtml = scoreNum > 0
+      ? `<span class="asin-score">${scoreNum}<span class="src">${isLLM ? 'LLM' : ''}</span></span>`
+      : '';
+
+    // 异常数量 & 站点
+    const anomN = a.anomaly_count ?? '';
+    const siteLabel = esc(a.site_code||'');
+
+    // LLM 分析的卡片加紫色左边框
+    const llmClass = isLLM ? ' llm-analyzed' : '';
+    const judgedClass = p ? ' judged' : '';
+
     const b = el(`
-      <button class="item asin-item ${p?'judged':''}" data-key="${a.key}">
-        <div class="asin-line1">${priTag}<b>${esc(a.parent_asin||'-')}</b>${score!=null?`<span class="asin-score">${score}</span>`:''}</div>
-        <div class="asin-line2">${esc(a.shop_account||'?')}</div>
-        <span class="meta">
-          <span class="badge b-site">${esc(a.site_code||'')}</span>
-          <span class="badge b-stage">${esc(stageCN(a.product_stage))}</span>
-          <span class="badge b-pos">${esc(posCN(a.product_position))}</span>
-        </span>
+      <button class="item asin-item${judgedClass}${llmClass}" data-key="${a.key}">
+        <div class="asin-row">
+          ${imgHtml}
+          <div class="asin-divider"></div>
+          <div class="asin-body">
+            <div class="asin-line1">
+              ${priTag}${llmBadge}<b>${esc(a.parent_asin||'-')}</b>${scoreHtml}
+            </div>
+            <div class="asin-line2">
+              <span>${esc(a.shop_account||'?')}</span>
+              <span class="badge b-site">${siteLabel}</span>
+              <span class="badge b-stage">${esc(stageCN(a.product_stage))}</span>
+              <span class="badge b-pos">${esc(posCN(a.product_position))}</span>
+            </div>
+          </div>
+        </div>
       </button>`);
     b.onclick = () => viewAsin(a, b);
     box.appendChild(b);
@@ -447,14 +560,59 @@ async function viewAsin(a, btn){
   document.getElementById('viewer-title').textContent = 'ASIN · ' + a.parent_asin;
   const r = await api('/api/fixture/' + encodeURIComponent(a.key));
   renderAsinView(a, r.data);
+
+  // 代码结果：从后端缓存拉取（秒返）
+  if (!inspectCache.has(a.key) && batchReady) {
+    try {
+      const codeR = await fetch('/api/inspect/' + encodeURIComponent(a.key), {method:'POST'}).then(r=>r.json());
+      inspectCache.set(a.key, {result: codeR, ts: Date.now()});
+    } catch(e) {}
+  }
+
+  // 填充代码 tab
+  const cachedCode = inspectCache.get(a.key);
+  const codeBox = document.getElementById('judge-result');
+  if (codeBox && cachedCode) {
+    codeBox.innerHTML = renderJudgment(cachedCode.result.judgment || {}, cachedCode.result.usage, cachedCode.result.model);
+  } else if (codeBox && !cachedCode) {
+    codeBox.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:12px 0">未检测到异常</div>';
+    if (!batchReady) runInspect(a.key, /* silent */ true);
+  }
+
+  // 填充 LLM tab
+  const cachedLLM = judgeCache.get(a.key);
+  const llmBox = document.getElementById('llm-result');
+  if (llmBox && cachedLLM && !cachedLLM.result.dry_run) {
+    llmBox.innerHTML = renderJudgment(cachedLLM.result.judgment || {}, cachedLLM.result.usage, cachedLLM.result.model)
+      + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">📌 LLM 判定于 ${new Date(cachedLLM.ts).toLocaleString('zh-CN')} · 模型 ${cachedLLM.result.model||'-'}</div>`;
+    // LLM tab 高亮
+    const llmTab = document.querySelector('#viewer .tab[data-tab="tab-llm"]');
+    if (llmTab) llmTab.style.cssText = 'color:#7c3aed;font-weight:600;border-bottom-color:#7c3aed';
+  } else if (llmBox && (!cachedLLM || cachedLLM.result.dry_run)) {
+    const hasHigh = (a.score||0) >= 90;
+    llmBox.innerHTML = `<div style="padding:16px;text-align:center;color:#94a3b8">
+      <div style="font-size:13px;margin-bottom:8px">${hasHigh ? '⚠️ 代码分析检测到高严重度异常，建议 LLM 深度分析' : '尚未进行 LLM 深度分析'}</div>
+      <button class="run-btn" onclick="runJudge('${a.key}')" style="font-size:12px">🔍 开始 LLM 分析</button>
+    </div>`;
+  }
+
+  // 操作区（代码 tab 底部）
+  const actionsBox = document.getElementById('judge-actions');
+  if (actionsBox) {
+    actionsBox.style.display = 'block';
+    actionsBox.innerHTML = `<div style="display:flex;gap:8px;margin-top:10px">
+      <button class="run-btn" onclick="runInspect('${a.key}')" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#059669,#047857)">⚡ 重新代码分析</button>
+      <button class="run-btn" onclick="runJudge('${a.key}')" style="font-size:11px;padding:6px 12px">🔍 ${cachedLLM && !cachedLLM.result.dry_run ? '重新 LLM 分析' : 'LLM 分析'}</button>
+    </div>`;
+  }
 }
 
 function renderAsinView(a, data){
-  const cfgFields = ['parent_asin','parent_seller_sku','shop_id','shop_account','site_code',
+  const cfgFields = ['parent_asin','parent_seller_sku','shop_account','site_code',
                      'product_stage','product_position','target_acos_suggest','daily_budget_suggest'];
   const CN_LABEL = {
     parent_asin: '父 ASIN', parent_seller_sku: '父 SKU',
-    shop_id: '店铺 ID', shop_account: '店铺账号', site_code: '站点',
+    shop_account: '店铺账号', site_code: '站点',
     product_stage: '产品阶段', product_position: '产品定位',
     target_acos_suggest: '目标 ACOS', daily_budget_suggest: '日预算建议',
   };
@@ -463,43 +621,71 @@ function renderAsinView(a, data){
     if (k === 'product_stage') return stageCN(a[k]);
     return a[k] ?? '—';
   };
-  const cfgHtml = `<div class="card"><h4>产品基础信息（来自 ERP）</h4><div class="grid">` +
-    cfgFields.map(k=>`<div class="kv"><span class="k">${CN_LABEL[k]||k}</span><span class="v${a[k]==null||a[k]===''?' none':''}">${esc(String(cfgVal(k)))}</span></div>`).join('') +
-    `</div></div>`;
 
-  const judgeHtml = `<div class="card judge-card">
-    <h4>巡检判定结果</h4>
-    <div style="color:#64748b;font-size:12px;margin-bottom:10px">点击下方按钮，让 Agent 依据知识库和热参数对该产品做一次巡检</div>
-    <button class="run-btn" onclick="runJudge('${a.key}')">🔍 运行巡检判定</button>
-    <div id="judge-result" style="margin-top:14px"></div>
+  // 紧凑型基础信息栏（横向排列，不占太多空间）
+  const infoChips = cfgFields.map(k => {
+    const v = cfgVal(k);
+    return `<span class="info-chip"><span class="info-chip-k">${CN_LABEL[k]||k}</span><span class="info-chip-v">${esc(String(v))}</span></span>`;
+  }).join('');
+
+  const infoHtml = `<div class="card info-bar">
+    <div class="info-chips">${infoChips}</div>
+    ${a.image_url ? `<img class="info-thumb" src="${esc(a.image_url)}" alt="" onerror="this.style.display='none'">` : ''}
   </div>`;
 
+  // Tab 切换：代码判定 | LLM 判定  | 原始数据
+  const tabsHtml = `<div class="tabs" style="margin-top:8px">
+    <button class="tab active" data-tab="tab-code">⚡ 代码判定</button>
+    <button class="tab" data-tab="tab-llm">🔍 LLM 判定</button>
+    <button class="tab" data-tab="tab-data">📦 原始数据</button>
+  </div>
+  <div id="tab-code" class="tab-panel">
+    <div id="judge-result" style="margin-top:4px">
+      <div style="color:#94a3b8;font-size:12px;padding:12px 0">⚡ 加载中…</div>
+    </div>
+    <div id="judge-actions" style="margin-top:10px;display:none"></div>
+  </div>
+  <div id="tab-llm" class="tab-panel" style="display:none">
+    <div id="llm-result" style="margin-top:4px">
+      <div style="color:#94a3b8;font-size:12px;padding:12px 0">🔍 加载中…</div>
+    </div>
+  </div>
+  <div id="tab-data" class="tab-panel" style="display:none">
+    <div id="data-result"></div>
+  </div>`;
+
+  // 原始数据
   const KIND_CN = {
     listing: { title: '商品基础信息', desc: '标题 / 星级 / 售价 / 退款率' },
     sales:   { title: '销售与广告',   desc: '销量 / 广告花费 / ACOS / 毛利率' },
     campaigns:{title: '广告活动',     desc: '所有 Campaign 清单' },
   };
-  const dataHtml = ['listing','sales','campaigns'].map(kind => {
-    const d = data[kind] || {};
-    const meta = KIND_CN[kind];
-    const status = d.found ? `<span style="color:#059669">✓ 有数据（${d.count??0} 条）</span>` : `<span style="color:#94a3b8">— 无匹配</span>`;
-    return `<div class="card"><h4>${meta.title} <span style="font-weight:400;color:#94a3b8;font-size:11px">· ${meta.desc}</span></h4>
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">${status}</div>
-      <details><summary style="cursor:pointer;font-size:12px;color:#475569">查看原始 JSON</summary>
-      <pre style="max-height:260px;margin-top:6px">${esc(JSON.stringify(d, null, 2))}</pre></details></div>`;
-  }).join('');
+  setTimeout(() => {
+    const dataHtml = ['listing','sales','campaigns'].map(kind => {
+      const d = data[kind] || {};
+      const meta = KIND_CN[kind];
+      const status = d.found ? `<span style="color:#059669">✓ 有数据（${d.count??0} 条）</span>` : `<span style="color:#94a3b8">— 无匹配</span>`;
+      return `<div class="card"><h4>${meta.title} <span style="font-weight:400;color:#94a3b8;font-size:11px">· ${meta.desc}</span></h4>
+        <div style="font-size:12px;color:#64748b;margin-bottom:6px">${status}</div>
+        <details><summary style="cursor:pointer;font-size:12px;color:#475569">查看原始 JSON</summary>
+        <pre style="max-height:260px;margin-top:6px">${esc(JSON.stringify(d, null, 2))}</pre></details></div>`;
+    }).join('');
+    const dataBox = document.getElementById('data-result');
+    if (dataBox) dataBox.innerHTML = dataHtml;
+  }, 0);
 
-  document.getElementById('viewer').innerHTML = cfgHtml + judgeHtml + dataHtml;
+  document.getElementById('viewer').innerHTML = infoHtml + tabsHtml;
 
-  // 回填之前的判定结果（如果有）
-  const cached = judgeCache.get(a.key);
-  if (cached){
-    document.getElementById('judge-result').innerHTML =
-      renderJudgment(cached.result.judgment || {}, cached.result.usage, cached.result.model)
-      + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">📌 上次判定于 ${new Date(cached.ts).toLocaleString('zh-CN')}</div>`;
-    const btn = document.querySelector('.run-btn');
-    if (btn) btn.innerHTML = '🔄 重新运行判定';
-  }
+  // Tab 切换事件
+  document.querySelectorAll('#viewer .tab').forEach(t => {
+    t.onclick = () => {
+      document.querySelectorAll('#viewer .tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      document.querySelectorAll('#viewer .tab-panel').forEach(p => p.style.display = 'none');
+      const target = document.getElementById(t.dataset.tab);
+      if (target) target.style.display = '';
+    };
+  });
 }
 
 const SEV_META = {
@@ -528,102 +714,150 @@ function renderJudgment(j, usage, model){
   const P = pickPriority(j) || 'P2';
   const pm = PRI_META[P] || PRI_META.P2;
   const score = pickScore(j);
-  const scorePct = Math.min(100, Math.max(0, (Number(score) || 0) / 150 * 100));
-  const headline = j.headline || '';
+  const scorePct = Math.min(100, Math.max(0, (Number(score) || 0) / 200 * 100));
   const summary = j.human_summary || '';
 
   const loc = j.定位信息 || {};
   const pri = j.优先级信息 || {};
 
-  // 异常明细按该条执行分数降序（模块7.2）
+  // 异常明细按该条执行分数降序
   const anomalies = pickAnomalies(j).slice().sort((a,b)=>anomScore(b)-anomScore(a));
-  const isPerf = (t) => /交易表现|售后/.test(t||'');
 
-  const anomHtml = anomalies.map((a,i) => {
+  // 紧凑异常行：一行异常 = 严重度 + 点位 + 判断依据 + 建议 + 分数
+  const anomRows = anomalies.map((a,i) => {
     const sev = a.该条严重度 || a.severity || 'S2';
     const sm = SEV_META[sev] || SEV_META.S2;
-    const type = a.异常类型 || a.category || '';
-    const point = a.问题点位 || a.code || '-';
-    const reason = a.初步原因;
-    const showReason = reason && reason!=='不适用' && isPerf(type);
-    return `<div class="anom-card">
-      <div class="anom-head">
-        <span class="anom-idx">${i+1}</span>
-        <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
-        <span class="anom-title">${esc(type)} · <b>${esc(point)}</b></span>
-        <span class="anom-score">${anomScore(a)>=0?anomScore(a)+' 分':''}</span>
-      </div>
-      <div class="anom-grid">
-        ${kvRow('命中变体', a.命中变体)}
-        ${kvRow('变体重要性', a.变体重要性)}
-        ${kvRow('作用层级', a.作用层级)}
-        ${kvRow('异常状态', a.异常状态)}
-      </div>
-      <div class="anom-field"><span class="af-k">判断依据</span><span class="af-v">${esc(a.判断依据||a.plain_reason||'待补充')}</span></div>
-      ${showReason?`<div class="anom-field"><span class="af-k">初步原因</span><span class="af-v">${esc(reason)}</span></div>`:''}
-      <div class="anom-field af-action"><span class="af-k">处理建议</span><span class="af-v">${esc(a.处理建议||'待补充')}</span></div>
-      <div class="anom-foot">
-        <span>上次处理：${esc(a.上次处理记录||'无')}</span>
-        <span>复查：${esc(a.复查要求||'待补充')}</span>
-      </div>
+    const type = a.异常类型 || '';
+    const point = a.问题点位 || '-';
+    const basis = (a.判断依据||'').substring(0, 80);
+    const suggest = (a.处理建议 && a.处理建议 !== '待补充') ? a.处理建议 : '';
+    const af = anomScore(a);
+    return `<div class="anom-row">
+      <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
+      <span class="anom-point">${esc(point)}</span>
+      <span class="anom-basis">${esc(basis)}</span>
+      ${suggest ? `<span class="anom-suggest">💡 ${esc(suggest)}</span>` : ''}
+      ${af >= 0 ? `<span class="anom-af">${af}</span>` : ''}
     </div>`;
-  }).join('') || '<div style="color:#94a3b8;font-size:12px;padding:6px 0">未识别到异常</div>';
+  }).join('');
+
+  // 定位信息 → 紧凑 chips
+  const locChips = [
+    {k:'店铺/站点', v:loc.店铺站点},
+    {k:'定位', v:loc.产品定位},
+    {k:'阶段', v:loc.产品阶段},
+    {k:'淡旺季', v:loc.淡旺季},
+  ].filter(x => x.v).map(x => `<span class="loc-chip"><b>${esc(x.k)}</b> ${esc(String(x.v))}</span>`).join('');
+
+  const isLLMModel = model && model !== 'code-pipeline';
+  const metaLine = [
+    isLLMModel ? `模型 ${esc(model)}` : '',
+    usage?.input_tokens ? `入 ${usage.input_tokens}` : '',
+    usage?.output_tokens ? `出 ${usage.output_tokens}` : '',
+  ].filter(Boolean).join(' · ');
 
   return `
     <div class="judge-hero" style="background:${pm.bg}">
       <div class="judge-hero-top">
         <span class="pri-badge" style="background:${pm.color}">${esc(P)}</span>
         <span class="pri-label">${esc(pri.处理时限||pm.label)}</span>
-        <span class="judge-score">执行分 <b>${score ?? '-'}</b> · 父卡严重度 ${esc(pri.父卡严重度||'-')}</span>
+        ${j.定位信息?.店铺站点 ? `<span class="judge-asin">${esc(j.定位信息.店铺站点)}</span>` : ''}
+        <span class="judge-score">执行分 <b>${score ?? '-'}</b> · 严重度 ${esc(pri.父卡严重度||'-')}</span>
+        <span class="judge-count">${anomalies.length} 项异常</span>
       </div>
-      <div class="judge-headline">${esc(headline)}</div>
-      <div class="judge-summary">${esc(summary)}</div>
+      ${summary ? `<div class="judge-summary">${esc(summary)}</div>` : ''}
       <div class="score-bar"><div class="score-bar-fill" style="width:${scorePct}%;background:${pm.color}"></div></div>
     </div>
 
-    <div class="section-title">📍 定位信息</div>
-    <div class="card"><div class="grid">
-      ${kvRow('店铺/站点', loc.店铺站点)}
-      ${kvRow('负责人', loc.负责人)}
-      ${kvRow('产品定位', loc.产品定位)}
-      ${kvRow('产品阶段', loc.产品阶段)}
-      ${kvRow('淡旺季', loc.淡旺季)}
-      ${kvRow('下次复查', pri.下一次复查时间)}
-      ${kvRow('当前状态', pri.当前状态)}
-    </div></div>
+    ${anomalies.length ? `
+    <div class="anom-compact">
+      <div class="anom-header"><span>异常明细</span><span>${anomalies.length} 项</span></div>
+      ${anomRows}
+    </div>
+    <div class="task-list">
+      <div class="task-header">📋 处理任务</div>
+      ${anomalies.filter(a => (a.处理建议 && a.处理建议 !== '待补充')).map(a => {
+        const sev = a.该条严重度 || a.severity || 'S2';
+        const sm = SEV_META[sev] || SEV_META.S2;
+        return `<div class="task-row">
+          <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
+          <span class="task-point">${esc(a.问题点位||'')}</span>
+          <span class="task-action">${esc(a.处理建议)}</span>
+        </div>`;
+      }).join('') || '<div class="task-row"><span style="color:#94a3b8">处理建议待补充，请根据异常明细判断</span></div>'}
+    </div>` : '<div style="color:#94a3b8;font-size:12px;padding:8px 0">✅ 未识别到异常</div>'}
 
-    <div class="section-title">🎯 异常明细（${anomalies.length} 项，按执行分数降序）</div>
-    <div class="anomaly-list">${anomHtml}</div>
-
-    <div class="judge-meta">模型 ${esc(model||'-')} · 输入 ${usage?.input_tokens ?? '-'} tokens · 输出 ${usage?.output_tokens ?? '-'} tokens</div>
-    <details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:#94a3b8">查看原始 JSON</summary>
-    <pre style="max-height:300px;margin-top:6px">${esc(JSON.stringify(j, null, 2))}</pre></details>
+    ${metaLine ? `<div class="judge-meta">${metaLine}</div>` : ''}
+    <details style="margin-top:4px"><summary style="cursor:pointer;font-size:10px;color:#cbd5e1">JSON</summary>
+    <pre style="max-height:200px;margin-top:4px;font-size:11px">${esc(JSON.stringify(j, null, 2))}</pre></details>
   `;
 }
 
 async function runJudge(key){
-  const box = document.getElementById('judge-result');
-  const btn = document.querySelector('.run-btn');
-  if (btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 判定中…'; }
-  box.innerHTML = '<div style="color:#64748b;animation:pulse 1.4s ease-in-out infinite">📊 拼装 prompt · 调用 DeepSeek…</div>';
+  const llmBox = document.getElementById('llm-result');
+  const btn = document.querySelector('#tab-llm .run-btn');
+  if (llmBox) llmBox.innerHTML = '<div style="color:#64748b;animation:pulse 1.4s ease-in-out infinite;padding:16px;text-align:center">📊 拼装 prompt · 调用 DeepSeek…</div>';
+  // 切换到 LLM tab
+  const llmTab = document.querySelector('#viewer .tab[data-tab="tab-llm"]');
+  if (llmTab) llmTab.click();
+
   try {
     const r = await fetch('/api/judge/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
     if (r.dry_run){
-      box.innerHTML = `<div style="background:#fef3c7;padding:10px 12px;border-radius:6px;color:#92400e;font-size:12px">
+      if (llmBox) llmBox.innerHTML = `<div style="background:#fef3c7;padding:10px 12px;border-radius:6px;color:#92400e;font-size:12px">
         ⚠️ ${esc(r.note)}<br>提示词长度：system ${r.system_length} 字符 · user ${r.user_length} 字符
-        </div>
-        <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:#475569">查看即将发送的提示词</summary>
-        <pre style="max-height:400px;margin-top:6px">${esc(r.system_preview + '\n\n===用户消息===\n' + r.user_preview)}</pre>
-        </details>`;
+        </div>`;
     } else {
       judgeCache.set(key, {result: r, ts: Date.now()});
-      box.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model);
-      renderAsins();  // 刷新左列优先级排序/筛选
+      if (llmBox) {
+        llmBox.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model)
+          + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">📌 LLM 判定于 ${new Date().toLocaleString('zh-CN')} · 模型 ${r.model||'-'}</div>`;
+      }
+      // LLM tab 高亮
+      if (llmTab) llmTab.style.cssText = 'color:#7c3aed;font-weight:600;border-bottom-color:#7c3aed';
+      renderAsins();  // 刷新左列
     }
   } catch(e) {
-    box.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
-  } finally {
-    if (btn){ btn.disabled = false; btn.innerHTML = '🔍 重新运行判定'; }
+    if (llmBox) llmBox.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
+  }
+}
+
+// ------- 代码巡检 -------
+function showInspectResult(key, r){
+  const box = document.getElementById('judge-result');
+  const actionsBox = document.getElementById('judge-actions');
+  if (box) {
+    box.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model);
+  }
+  if (actionsBox) {
+    actionsBox.style.display = 'block';
+    actionsBox.innerHTML = `<div style="display:flex;gap:8px;margin-top:10px">
+      <button class="run-btn" onclick="runInspect('${key}')" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#059669,#047857)">⚡ 重新代码分析</button>
+      <button class="run-btn" onclick="runJudge('${key}')" style="font-size:11px;padding:6px 12px">🔍 LLM 分析</button>
+    </div>`;
+  }
+  // 排序分数更新
+  const pri = (r.judgment || {}).优先级信息 || {};
+  const aInfo = allAsins.find(x => x.key === key);
+  if (aInfo && !judgeCache.has(key)) {
+    aInfo.score = pri.产品执行分数 || 0;
+    aInfo.priority = pri.执行优先级 || 'P2';
+  }
+}
+
+async function runInspect(key, silent){
+  const box = document.getElementById('judge-result');
+  if (!silent) {
+    box.innerHTML = '<div style="color:#059669;animation:pulse 1.4s ease-in-out infinite">⚡ 代码巡检中…（本地判定，通常 1-2 秒）</div>';
+  }
+
+  try {
+    const r = await fetch('/api/inspect/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
+    inspectCache.set(key, {result: r, ts: Date.now()});
+    showInspectResult(key, r);
+    renderAsins();
+  } catch(e) {
+    box.innerHTML = `<div style="color:#dc2626;font-size:12px">⚡ 代码巡检错误：${esc(String(e))}</div>`;
   }
 }
 

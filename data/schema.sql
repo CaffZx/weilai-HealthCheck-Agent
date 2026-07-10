@@ -194,6 +194,97 @@ CREATE TABLE IF NOT EXISTS sync_log (
 CREATE INDEX IF NOT EXISTS idx_synclog ON sync_log(tool, target_key, stat_date);
 
 -- ============================================================
+-- 10. 事件池 (event_pool)
+-- 来源：docs/业务巡检Agent-代码实现版.md §3.5、§5，巡检频次方案 §9
+-- 一条事件 = 一个"父ASIN × 问题点位 × 命中变体" 的生命周期实例
+-- 10 态状态机（新发现/待确认/处理中/待观察/长期跟进/已处理待复扫/已关闭/误报/忽略/人工中断）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS event_pool (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  唯一识别              TEXT NOT NULL UNIQUE,        -- 店铺+父ASIN+问题点位+命中变体的 hash
+  -- 定位（对齐模块 7.1 A 段）
+  店铺账号              TEXT NOT NULL,
+  站点                  TEXT,
+  父ASIN                TEXT NOT NULL,
+  父SKU                 TEXT,
+  -- 异常内容（对齐模块 7.1 C 段）
+  异常大类              TEXT,                        -- 如 '2.4 库存与可售'
+  问题点位              TEXT NOT NULL,               -- 如 'FBA可售库存为0'
+  作用层级              TEXT NOT NULL,               -- '链接级' | '变体级'
+  命中变体              TEXT,                        -- 子ASIN，如 'B0XXX' 或 '黑色/M'
+  变体重要性            TEXT,                        -- '主要色' | '次要色' | '长尾色' | null
+  异常类型              TEXT,                        -- '现象即原因型' | '表现型'
+  -- 判定结果
+  严重度                TEXT,                        -- 'S0' | 'S1' | 'S2'
+  是否共因上调          INTEGER DEFAULT 0,           -- 0/1
+  初判严重度            TEXT,                        -- 未上调前的原始 S
+  单异常执行分数        REAL,
+  -- 状态机（§5）
+  当前状态              TEXT NOT NULL DEFAULT '新发现',
+  -- 生命周期时间
+  首次命中时间          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  最近命中时间          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  下一次复查时间        TEXT,                        -- 由 R_巡检频次 或运营设置
+  复查时间来源          TEXT,                        -- 'default' | 'manual'
+  关闭时间              TEXT,
+  关闭原因              TEXT,                        -- '自动恢复' | '人工已处理' | '误报' | '忽略'
+  -- 处理动作历史
+  上次处理动作          TEXT,
+  上次处理时间          TEXT,
+  上次处理人            TEXT,
+  -- 复发跟踪
+  复发次数              INTEGER DEFAULT 0,
+  -- 判定依据全量存 JSON（可扩展，不动 schema）
+  判定依据              TEXT NOT NULL,               -- {判定过程, 触发字段, 判定日志}
+  处理备注              TEXT,                        -- JSON: {误报原因/忽略期限/长期跟进类型 等}
+  -- 关联
+  最近巡检批次          TEXT,                        -- 巡检批次号
+  参数版本              TEXT,                        -- 用哪一版 R2/R3/R4 判的
+  -- 追踪
+  创建时间              TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  更新时间              TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_event_asin ON event_pool(父ASIN, 当前状态);
+CREATE INDEX IF NOT EXISTS idx_event_status ON event_pool(当前状态);
+CREATE INDEX IF NOT EXISTS idx_event_recheck ON event_pool(下一次复查时间, 当前状态);
+CREATE INDEX IF NOT EXISTS idx_event_shop ON event_pool(店铺账号);
+
+-- ============================================================
+-- 11. 事件状态流转日志 (event_state_log)
+-- 每次状态变更留痕，用于回溯"这个事件为什么升级/关闭"
+-- ============================================================
+CREATE TABLE IF NOT EXISTS event_state_log (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id              INTEGER NOT NULL REFERENCES event_pool(id) ON DELETE CASCADE,
+  变更时间              TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  变更前状态            TEXT,
+  变更后状态            TEXT,
+  变更前严重度          TEXT,
+  变更后严重度          TEXT,
+  变更类型              TEXT NOT NULL,               -- 'auto升级' | 'auto降级' | '人工降级' | '共因上调' | '共因回落' | '状态流转' | '解除关闭'
+  变更原因              TEXT NOT NULL,               -- 一句人话
+  操作人                TEXT,                        -- 系统|运营账号
+  上下文                TEXT                          -- JSON 附加信息
+);
+CREATE INDEX IF NOT EXISTS idx_event_log_eid ON event_state_log(event_id, 变更时间);
+
+-- ============================================================
+-- 12. 巡检批次 (inspection_batch)
+-- 一次巡检运行的元数据，方便按批次查历史
+-- ============================================================
+CREATE TABLE IF NOT EXISTS inspection_batch (
+  批次号                TEXT PRIMARY KEY,            -- 如 '20260709-1030'
+  开始时间              TEXT NOT NULL,
+  结束时间              TEXT,
+  触发类型              TEXT NOT NULL,               -- 'daily' | '变更触发' | '表现触发' | '广告触发' | '高风险触发' | '人工触发' | '心跳'
+  触发人                TEXT,
+  巡检范围              TEXT NOT NULL,               -- JSON: {父ASIN列表, 模块列表}
+  参数版本              TEXT,                        -- R2/R3/R4/R5 版本
+  统计                  TEXT,                        -- JSON: {扫描父ASIN数, 命中异常数, 观察数, 数据不足数}
+  状态                  TEXT NOT NULL DEFAULT '进行中'  -- '进行中' | '完成' | '失败'
+);
+
+-- ============================================================
 -- 加新字段示例（后续需要提升某个 data 里的原生字段为可查询列时）：
 --   ALTER TABLE daily_product_sales ADD COLUMN "新字段名" REAL
 --     GENERATED ALWAYS AS (json_extract(data,'$."新字段名"')) VIRTUAL;

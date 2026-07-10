@@ -16,6 +16,17 @@ llm:
   model: claude-opus-4-8
   temperature: 0
   max_tokens: 4096
+  # LLM 触发门槛（代码巡检完成后，符合任一条件才调 LLM 做查因/文案）
+  # 设计原则：LLM 只做代码算不了的事，所以门槛按"值得花 token 的严重程度"设
+  trigger:
+    最低分数: 90                       # 产品执行分数 >= 此值 → 触发（P0 门槛）
+    最少S0异常数: 1                    # 有 S0 且总异常数 ≥ 下面
+    最少异常数: 2                      # 与 最少S0异常数 联合生效
+
+# 服务启动行为
+startup:
+  auto_batch_inspect: false            # 启动即跑代码批量巡检（生产建议 false，按需触发）
+  auto_batch_llm: false                # 代码巡检完对达门槛的自动跑 LLM（成本高）
 
 logging:
   level: INFO
