@@ -15,9 +15,11 @@ import logging
 import threading
 import yaml
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Response, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import datetime as _dt
+import json as _json_module
 
 import sqlite3
 
@@ -533,6 +535,315 @@ def inspect_batch(
     except Exception as e:
         log.exception("代码批量巡检失败")
         raise HTTPException(500, f"代码批量巡检失败: {e}")
+
+
+# ============================================================
+# 运营工作台 API（Phase 1）
+# ============================================================
+
+_MANAGER_MAP_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "manager_map.yaml"
+
+def _load_manager_map() -> dict[int, list[int]]:
+    """{主管 user_id: [下属 user_id]}。每次读，改配置不重启。"""
+    if not _MANAGER_MAP_PATH.exists():
+        return {}
+    try:
+        with open(_MANAGER_MAP_PATH, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        return {int(k): [int(x) for x in (v or [])] for k, v in raw.items()}
+    except Exception as e:
+        log.warning("manager_map.yaml 解析失败: %s", e)
+        return {}
+
+
+_SEV_TO_PRIORITY = {"S0": "P0", "S1": "P1", "S2": "P2"}
+_POSITION_TO_TIER = {"P0_PRODUCT": "T0", "P1_PRODUCT": "T1", "P2_PRODUCT": "T2", "P3_PRODUCT": "T3"}
+_TIER_ORDER = {"T0": 0, "T1": 1, "T2": 2, "T3": 3, "": 4}
+_PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
+
+
+def _days_since(iso_ts: str | None) -> int:
+    if not iso_ts:
+        return 0
+    try:
+        d = _dt.datetime.fromisoformat(iso_ts).date()
+        return max(0, (_dt.date.today() - d).days)
+    except Exception:
+        return 0
+
+
+def _resolve_target_user(viewer_id: int | None, target_id: int | None) -> int | None:
+    """主管可以查看下属；普通运营只能查自己；target_id=None 表示查自己。"""
+    if viewer_id is None:
+        return None
+    if target_id is None or target_id == viewer_id:
+        return viewer_id
+    reports = _load_manager_map().get(viewer_id, [])
+    if target_id in reports:
+        return target_id
+    # 权限不足，回退到查自己
+    return viewer_id
+
+
+def _fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
+    """拉出该用户名下所有事件，附带产品定位/持续天数/最新 action 状态。"""
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute("""
+            SELECT e.*
+            FROM event_pool e
+            WHERE e.父ASIN IN (
+                SELECT DISTINCT asin FROM asin_owner
+                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+            )
+        """, (user_id,)).fetchall()
+
+        # 产品定位（父ASIN → position）
+        pos_rows = c.execute("SELECT parent_asin, product_position FROM erp_config").fetchall()
+        pos_map = {r["parent_asin"]: r["product_position"] for r in pos_rows}
+
+    name_map = local_store.query_product_names()
+    img_map = local_store.query_image_urls()
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+
+        # 最新 action per event_uid
+        act_rows = c.execute("""
+            SELECT event_uid, action_type, result, actual_action, review_at, notes, effect, created_at
+            FROM task_action
+            WHERE id IN (SELECT MAX(id) FROM task_action GROUP BY event_uid)
+        """).fetchall()
+        act_map = {r["event_uid"]: dict(r) for r in act_rows}
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        uid = d["唯一识别"]
+        latest_action = act_map.get(uid)
+        # 状态：优先看 task_action，否则用 event_pool.当前状态
+        status = d.get("当前状态") or "新发现"
+        if latest_action:
+            if latest_action.get("action_type") == "完成":
+                status = "已完成"
+            elif latest_action.get("action_type") == "不处理":
+                status = "已关闭"
+            elif latest_action.get("action_type") == "标记处理中":
+                status = "处理中"
+            elif latest_action.get("action_type") == "待复查":
+                status = "待复查"
+        if only_open and status in ("已关闭", "已完成"):
+            continue
+
+        sev = d.get("严重度") or "S2"
+        position = pos_map.get(d.get("父ASIN"), "") or ""
+        tier = _POSITION_TO_TIER.get(position, "")
+        priority = _SEV_TO_PRIORITY.get(sev, "P2")
+        days = _days_since(d.get("首次命中时间"))
+        try:
+            judge_basis = _json_module.loads(d.get("判定依据") or "{}")
+        except Exception:
+            judge_basis = {"命中依据": d.get("判定依据") or ""}
+
+        out.append({
+            "event_uid": uid,
+            "parent_asin": d.get("父ASIN"),
+            "product_name": name_map.get(d.get("父ASIN")),
+            "image_url": img_map.get(d.get("父ASIN")),
+            "parent_sku": d.get("父SKU"),
+            "shop_account": d.get("店铺账号"),
+            "site": d.get("站点"),
+            "category": d.get("异常大类") or "其他",
+            "issue": d.get("问题点位"),
+            "scope": d.get("作用层级"),
+            "variant": d.get("命中变体"),
+            "variant_importance": d.get("变体重要性"),
+            "severity": sev,
+            "priority": priority,
+            "score": d.get("单异常执行分数") or 0,
+            "position": position,
+            "tier": tier,
+            "days": days,
+            "status": status,
+            "first_seen": d.get("首次命中时间"),
+            "last_seen": d.get("最近命中时间"),
+            "last_action": d.get("上次处理动作"),
+            "last_action_at": d.get("上次处理时间"),
+            "last_action_by": d.get("上次处理人"),
+            "judge_basis": judge_basis,
+            "latest_action": latest_action,
+        })
+    return out
+
+
+@app.get("/api/reports")
+def api_reports(userId: int = Query(..., description="登录人 user_id")):
+    """返回登录人的角色 + 下属列表（仅主管有下属）。"""
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        me = c.execute("SELECT id, user_name FROM sys_user WHERE id=?", (userId,)).fetchone()
+        if not me:
+            return {"self": None, "role": "unknown", "reports": []}
+        mm = _load_manager_map()
+        report_ids = mm.get(userId, [])
+        reports = []
+        if report_ids:
+            qs = ",".join("?" * len(report_ids))
+            rrows = c.execute(f"SELECT id, user_name FROM sys_user WHERE id IN ({qs})", report_ids).fetchall()
+            reports = [dict(r) for r in rrows]
+        return {
+            "self": dict(me),
+            "role": "manager" if report_ids else "operator",
+            "reports": reports,
+        }
+
+
+@app.get("/api/tasks/today")
+def api_tasks_today(
+    userId: int = Query(..., description="登录人 user_id"),
+    targetId: int | None = Query(None, description="主管查看下属时传下属 user_id"),
+):
+    """今日任务池：该用户名下所有开放事件，按 P0→P2 / score↓ / T0→T3 / days↓ 排序。"""
+    target = _resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    events = _fetch_events_for_user(target, only_open=True)
+    events.sort(key=lambda e: (
+        _PRIORITY_ORDER.get(e["priority"], 3),
+        -float(e["score"] or 0),
+        _TIER_ORDER.get(e["tier"], 4),
+        -e["days"],
+    ))
+    # 汇总
+    p0 = sum(1 for e in events if e["priority"] == "P0")
+    p1 = sum(1 for e in events if e["priority"] == "P1")
+    p2 = sum(1 for e in events if e["priority"] == "P2")
+    done_today = 0
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        today = _dt.date.today().isoformat()
+        # 归属该 target 的事件，今天有人（自己或主管代操作）标记完成 = done
+        done_today = c.execute("""
+            SELECT COUNT(DISTINCT a.event_uid) FROM task_action a
+            JOIN event_pool e ON e.唯一识别 = a.event_uid
+            WHERE a.action_type='完成' AND date(a.created_at)=?
+              AND e.父ASIN IN (
+                SELECT DISTINCT asin FROM asin_owner
+                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+              )
+        """, (today, target)).fetchone()[0]
+    return {
+        "target_user_id": target,
+        "total": len(events),
+        "p0": p0, "p1": p1, "p2": p2,
+        "done_today": done_today,
+        "events": events,
+    }
+
+
+@app.get("/api/anomalies")
+def api_anomalies(
+    userId: int = Query(...),
+    targetId: int | None = Query(None),
+    priority: str | None = Query(None),
+    category: str | None = Query(None),
+    status: str | None = Query(None),
+    q: str | None = Query(None),
+):
+    """全部异常池（含已关闭）。同 today 但不过滤开放状态，且支持筛选。"""
+    target = _resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    events = _fetch_events_for_user(target, only_open=False)
+    if priority:
+        events = [e for e in events if e["priority"] == priority]
+    if category:
+        events = [e for e in events if e["category"] == category]
+    if status:
+        events = [e for e in events if e["status"] == status]
+    if q:
+        ql = q.lower()
+        events = [e for e in events if ql in (e.get("parent_asin") or "").lower() or ql in (e.get("issue") or "").lower()]
+    events.sort(key=lambda e: (
+        _PRIORITY_ORDER.get(e["priority"], 3),
+        -float(e["score"] or 0),
+    ))
+    return {"target_user_id": target, "total": len(events), "events": events}
+
+
+@app.post("/api/tasks/{event_uid}/action")
+def api_task_action(event_uid: str, payload: dict = Body(...)):
+    """写入一条 task_action。前端每次点"完成/不处理/待复查/备注"都调这里。
+    payload: {userId, action_type, result?, actual_action?, review_at?, notes?, before_metrics?, after_metrics?, effect?}"""
+    user_id = payload.get("userId")
+    action_type = payload.get("action_type")
+    if not action_type:
+        raise HTTPException(400, "action_type required")
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.execute("""
+            INSERT INTO task_action
+              (event_uid, user_id, action_type, result, actual_action, review_at, notes, before_metrics, after_metrics, effect)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (
+            event_uid, user_id, action_type,
+            payload.get("result"), payload.get("actual_action"),
+            payload.get("review_at"), payload.get("notes"),
+            _json_module.dumps(payload["before_metrics"], ensure_ascii=False) if payload.get("before_metrics") else None,
+            _json_module.dumps(payload["after_metrics"], ensure_ascii=False) if payload.get("after_metrics") else None,
+            payload.get("effect"),
+        ))
+        c.commit()
+    return {"ok": True, "event_uid": event_uid}
+
+
+@app.get("/api/review/due")
+def api_review_due(
+    userId: int = Query(...),
+    targetId: int | None = Query(None),
+    period: str = Query("today", description="today|3d|7d|all"),
+):
+    """调整复盘：已执行过动作且到达复查时间的事件。"""
+    target = _resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    today = _dt.date.today()
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute("""
+            SELECT a.*, e.父ASIN, e.父SKU, e.店铺账号, e.问题点位, e.严重度
+            FROM task_action a
+            JOIN event_pool e ON e.唯一识别 = a.event_uid
+            WHERE a.review_at IS NOT NULL
+              AND e.父ASIN IN (
+                SELECT DISTINCT asin FROM asin_owner
+                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+              )
+            ORDER BY a.review_at ASC
+        """, (target,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        review_at = d.get("review_at")
+        try:
+            rd = _dt.datetime.fromisoformat(review_at).date() if review_at else None
+        except Exception:
+            rd = None
+        delta = (rd - today).days if rd else None
+        if period == "today" and delta != 0:
+            continue
+        if period == "3d" and (delta is None or not (0 <= delta <= 3)):
+            continue
+        if period == "7d" and (delta is None or not (0 <= delta <= 7)):
+            continue
+        out.append(d)
+    return {"target_user_id": target, "period": period, "total": len(out), "records": out}
+
+
+@app.get("/legacy")
+def legacy_page():
+    """旧版技术台前端：改判定参数、看知识库、单产品跑判定用。"""
+    idx = FRONT / "index.legacy.html"
+    if not idx.exists():
+        raise HTTPException(404, "legacy frontend missing")
+    return FileResponse(idx, headers={"Cache-Control": "private, max-age=300, stale-while-revalidate=600"})
 
 
 @app.get("/report")

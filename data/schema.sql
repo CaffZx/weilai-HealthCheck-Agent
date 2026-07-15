@@ -555,6 +555,29 @@ CREATE TABLE IF NOT EXISTS ad_target (
 );
 
 -- ============================================================
+-- 任务处理记录（运营工作台）
+--   一个 event_pool.唯一识别 → 多条 action 记录（每次处理/复查/备注都追加一条）
+--   最新一条 = 该事件的当前状态；历史条 = 复盘用。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS task_action (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_uid      TEXT NOT NULL,             -- 对应 event_pool.唯一识别
+  user_id        INTEGER,                   -- 操作人 sys_user.id
+  action_type    TEXT NOT NULL,             -- '标记处理中'|'完成'|'不处理'|'待复查'|'备注'
+  result         TEXT,                      -- '已按建议执行'|'部分执行'|'建议不适用'|'转人工复核'
+  actual_action  TEXT,                      -- 实际动作（自由文本）
+  review_at      TEXT,                      -- 复查时间（ISO date）
+  notes          TEXT,                      -- 运营备注
+  before_metrics TEXT,                      -- JSON snapshot（处理前关键指标）
+  after_metrics  TEXT,                      -- JSON snapshot（复查后指标）
+  effect         TEXT,                      -- '变好'|'变差'|'待观察'（复查时填）
+  created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_task_action_uid ON task_action(event_uid);
+CREATE INDEX IF NOT EXISTS idx_task_action_user ON task_action(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_action_created ON task_action(created_at);
+
+-- ============================================================
 -- 加新字段示例（后续需要提升某个 data 里的原生字段为可查询列时）：
 --   ALTER TABLE daily_product_sales ADD COLUMN "新字段名" REAL
 --     GENERATED ALWAYS AS (json_extract(data,'$."新字段名"')) VIRTUAL;

@@ -1,1883 +1,821 @@
-<!doctype html>
-<html lang="zh">
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<title>weilai-HealthCheck-Agent · 本地测试台</title>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>业务巡检 Agent · 运营工作台</title>
 <style>
+  :root{
+    --bg:#f3f5f8;--panel:#fff;--line:#e7eaf0;--text:#172033;--muted:#6f7787;
+    --nav:#111827;--blue:#2764e7;--blue-soft:#eef4ff;--red:#d74343;--red-soft:#fff1f0;
+    --amber:#b87512;--amber-soft:#fff7e8;--green:#17805c;--green-soft:#ebf8f3;--purple:#7357cf;
+    --shadow:0 8px 26px rgba(31,42,68,.08);--r:12px;
+  }
   *{box-sizing:border-box}
-  :root{--indigo:#6366f1;--indigo-d:#4f46e5;--slate:#0f172a}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-  @keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:none}}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
-  body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#f4f5f7;color:#1c2126;animation:fadeIn .4s ease}
-  header{background:linear-gradient(90deg,#1e293b,#334155);color:#fff;padding:10px 20px;font-weight:600;display:flex;gap:16px;align-items:center}
-  header .tag{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:400}
-  /* 数据健康度心跳 — 暂时关闭 */
-  /* .health-chip{...} .health-mask{...} 等样式已注释 */
-  .layout{display:grid;grid-template-columns:minmax(160px,200px) minmax(260px,340px) minmax(0,1fr);height:calc(100vh - 43px);transition:grid-template-columns .34s cubic-bezier(.4,0,.2,1)}
-  .layout.kb-collapsed{grid-template-columns:46px minmax(260px,340px) minmax(0,1fr)}
-  /* 收起竖条：默认隐藏，收起态显示 */
-  .kb-col{position:relative;overflow:hidden}
-  .kb-strip{display:none}
-  .layout.kb-collapsed .kb-col>h3,
-  .layout.kb-collapsed .kb-col>.list{opacity:0;pointer-events:none;transition:opacity .12s}
-  .layout.kb-collapsed .kb-strip{
-    display:flex;flex-direction:column;align-items:center;gap:14px;
-    position:absolute;inset:0;padding-top:16px;cursor:pointer;
-    background:linear-gradient(180deg,#f8fafc,#eef2ff);border-right:1px solid #e2e5ea;
-    animation:fadeIn .3s ease .1s both}
-  .kb-strip:hover{background:linear-gradient(180deg,#eef2ff,#e0e7ff)}
-  .kb-strip .strip-icon{font-size:18px}
-  .kb-strip .strip-text{writing-mode:vertical-rl;letter-spacing:3px;font-size:12px;color:#475569;font-weight:600;white-space:nowrap}
-  .kb-strip .strip-caret{margin-top:auto;margin-bottom:14px;color:#6366f1;font-size:14px;animation:pulse 1.8s ease-in-out infinite}
-  .collapse-hint{margin-left:auto;font-size:10px;color:#cbd5e1;font-weight:400;transition:color .15s}
-  .col-head:hover .collapse-hint{color:#6366f1}
-  .col{overflow:auto;background:#fff;border-right:1px solid #e2e5ea}
-  .col:last-child{border-right:none;background:#fafbfc}
-  .col h3{margin:0;padding:12px 14px 8px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600;position:sticky;top:0;background:#fff;border-bottom:1px solid #eef1f5;z-index:1}
-  .col:last-child h3{background:#fafbfc}
-  .list{padding:6px 8px}
-  .item{display:block;padding:8px 10px;margin:2px 0;background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;text-align:left;width:100%;font-size:13px;color:#334155;transition:all .18s cubic-bezier(.4,0,.2,1)}
-  .item:hover{background:#eef2ff;border-color:#c7d2fe;transform:translateX(2px)}
-  .item.active{background:linear-gradient(135deg,#eef2ff,#e0e7ff);border-color:#818cf8;color:#3730a3;font-weight:500;box-shadow:0 2px 6px rgba(99,102,241,.15)}
-  .item:active{transform:scale(.98)}
-  .item .meta{display:block;font-size:11px;color:#94a3b8;margin-top:2px}
-  .item.active .meta{color:#6366f1}
-  .badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-right:4px;font-weight:500}
-  .b-stage{background:#dbeafe;color:#1e40af}
-  .b-pos{background:#fef3c7;color:#92400e}
-  .b-site{background:#dcfce7;color:#166534}
-  /* ASIN 卡片：聚合处理状态徽章 —— 待处理按优先级分色 */
-  .b-hs-todo-P0{background:#fee2e2;color:#dc2626;font-weight:600}   /* 红 - P0 待处理 */
-  .b-hs-todo-P1{background:#ffedd5;color:#c2410c;font-weight:600}   /* 橙 - P1 待处理（原黄色改成橙色，避免和处理中撞色）*/
-  .b-hs-todo-P2{background:#dbeafe;color:#1d4ed8;font-weight:600}   /* 蓝 - P2 待处理 */
-  .b-hs-doing{background:#fef3c7;color:#b45309;font-weight:600}     /* 浅黄 - 处理中 */
-  .b-hs-done{background:#dcfce7;color:#166534;font-weight:600}      /* 绿 - 处理完成 */
-  .b-hs-config{background:#e0f2fe;color:#0369a1;font-weight:600}    /* 天蓝 - 配置待补 */
-  .b-hs-empty{background:#f1f5f9;color:#64748b}                     /* 灰 - 无异常 */
-  .b-hs-cooling{background:#e0e7ff;color:#4338ca;font-weight:600}   /* 靛蓝 - 冷却中 */
-  /* 详情表格：冷却状态展示 */
-  .tc-cool{display:flex;flex-direction:column;align-items:center;gap:4px;white-space:nowrap;font-size:11px}
-  .tc-cool-badge{display:inline-flex;align-items:center;gap:3px;background:#e0e7ff;color:#4338ca;padding:3px 10px;border-radius:12px;font-weight:600;font-size:11.5px}
-  .tc-cool-meta{color:#94a3b8;font-size:10.5px}
-  /* 冷却确认弹窗 */
-  .cd-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:150;align-items:center;justify-content:center;animation:fadeIn .2s}
-  .cd-mask.open{display:flex}
-  .cd-card{background:#fff;border-radius:14px;width:min(420px,90vw);padding:26px 28px;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:fadeUp .3s cubic-bezier(.4,0,.2,1);text-align:center}
-  .cd-icon{font-size:38px;margin-bottom:10px}
-  .cd-title{font-size:17px;font-weight:600;color:#0f172a;margin:0 0 10px}
-  .cd-desc{font-size:13px;color:#475569;line-height:1.65;margin:0 0 20px}
-  .cd-desc b{color:#4338ca}
-  .cd-actions{display:flex;gap:10px;justify-content:center}
-  .cd-actions .mini-btn{padding:8px 20px;font-size:13px}
-  .cd-actions .run-btn{padding:8px 20px;font-size:13px}
-  .filter{padding:8px 10px;border-bottom:1px solid #eef1f5;position:sticky;top:32px;background:#fff;z-index:1}
-  .filter > input{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none}
-  .filter > input:focus{border-color:#818cf8}
-  .filter-row{display:flex;gap:5px;margin-top:6px}
-  .filter-row select{flex:1;min-width:0;padding:4px 4px;border:1px solid #cbd5e1;border-radius:5px;font-size:11px;background:#fff;cursor:pointer}
-  .filter-row select:focus{border-color:#818cf8;outline:none}
-  .filter-meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#94a3b8}
-  /* 搜索框 + 排序按钮 + 计数徽章 一行 */
-  .q-row{display:flex;align-items:center;gap:6px}
-  .q-row input{flex:1;min-width:0;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;background:#fff}
-  .q-row input:focus{border-color:#818cf8}
-  .sortpri-btn{flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:#94a3b8;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;padding:0}
-  .sortpri-btn:hover{border-color:#818cf8;color:#4f46e5}
-  .sortpri-btn.active{background:#eef2ff;border-color:#818cf8;color:#4f46e5}
-  .asin-count-pill{flex-shrink:0;font-size:11px;color:#64748b;background:#f1f5f9;padding:3px 8px;border-radius:12px;font-weight:500;white-space:nowrap}
-  .chk{display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none}
-  .chk input{width:auto}
-  /* 报告页 /report：隐藏知识库侧边栏 */
-  .layout.report-mode{grid-template-columns:minmax(260px,340px) minmax(0,1fr)}
-  .layout.report-mode>.kb-col{display:none}
-  .layout.report-mode>.col:nth-child(2)>.filter>.filter-row:first-of-type{display:none}
-  /* 折叠知识库 */
-  .col-head{cursor:pointer;user-select:none;transition:color .15s}
-  .col-head:hover{color:#6366f1}
-  .caret{display:inline-block;transition:transform .2s;font-size:10px}
-  .kb-item{display:flex;align-items:center;gap:8px}
-  .kb-num{background:#eef2ff;color:#6366f1;font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;min-width:18px;text-align:center}
-  /* ASIN 卡片 — 高密度运营视图 */
-  .asin-item{padding:6px 8px;border-left:3px solid transparent;transition:all .15s}
-  .asin-item.judged{border-left-color:#e2e8f0}
-  .asin-row{display:flex;align-items:center;gap:8px}
-  .asin-img{flex-shrink:0;width:36px;height:36px;border-radius:3px;overflow:hidden;background:#f1f5f9}
-  .asin-img img{width:100%;height:100%;object-fit:contain}
-  .asin-img-empty{background:#f1f5f9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23cbd5e1' stroke-width='1.5'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'/%3E%3Cpath d='m21 15-5-5L5 21'/%3E%3C/svg%3E") center/14px no-repeat}
-  .asin-divider{flex-shrink:0;width:1px;height:32px;background:#e2e8f0}
-  .asin-body{flex:1;min-width:0}
-  .asin-line1{display:flex;align-items:center;gap:5px;font-size:12px}
-  .asin-line2{display:flex;align-items:center;gap:6px;font-size:10px;color:#64748b;margin-top:2px}
-  .asin-time{margin-left:auto;font-size:10px;color:#94a3b8;white-space:nowrap;cursor:help}
-  .asin-time.stale{color:#dc2626}
-  .asin-score{margin-left:auto;font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap}
-  /* 优先级 pill */
-  .pri-dot{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:15px;border-radius:3px;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
-  .pri-P0{background:#dc2626}.pri-P1{background:#ea580c}.pri-P2{background:#0891b2}
-  .pri-none{background:#cbd5e1;color:#64748b;min-width:20px}
-  .anom-count{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:#94a3b8;flex-shrink:0}
-  .anom-count b{color:#475569;font-size:11px}
-  .content{padding:16px 20px}
-  .tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e2e5ea}
-  .tab{padding:6px 14px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;color:#64748b}
-  .tab:hover{color:#3730a3}
-  .tab.active{color:#3730a3;border-bottom-color:#6366f1;font-weight:500}
-  .tab-panel{animation:fadeIn .2s ease}
-  /* 紧凑信息栏 */
-  .info-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;flex-wrap:wrap}
-  .info-chips{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
-  .info-chip{display:inline-flex;align-items:baseline;gap:4px;background:#f8fafc;padding:3px 8px;border-radius:4px;font-size:12px}
-  .info-chip-k{color:#94a3b8;font-size:10px}
-  .info-chip-v{color:#0f172a;font-weight:500}
-  .info-thumb{width:48px;height:48px;border-radius:4px;object-fit:contain;border:1px solid #e2e8f0;flex-shrink:0}
-  pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;overflow:auto;font:12px/1.6 "SF Mono",Monaco,monospace;margin:0;max-height:calc(100vh - 200px)}
-  .md{background:#fff;padding:20px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);font:13px/1.7 -apple-system,sans-serif;max-height:calc(100vh - 200px);overflow:auto;word-break:break-word}
-  .md p{margin:.4em 0}
-  .md h1,.md h2,.md h3{margin:1em 0 .5em}
-  .md h1{font-size:20px;color:#0f172a;border-bottom:2px solid #e2e8f0;padding-bottom:6px}
-  .md h2{font-size:16px;color:#1e293b}
-  .md h3{font-size:14px;color:#334155}
-  .md table{border-collapse:collapse;margin:8px 0;background:#f8fafc}
-  .md th,.md td{border:1px solid #e2e8f0;padding:6px 10px;font-size:12px;text-align:left}
-  .md th{background:#f1f5f9;font-weight:600}
-  .card{background:#fff;padding:14px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px;animation:fadeUp .35s cubic-bezier(.4,0,.2,1) both;transition:box-shadow .2s}
-  .card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
-  .card:nth-child(2){animation-delay:.05s}
-  .card:nth-child(3){animation-delay:.1s}
-  .card:nth-child(4){animation-delay:.15s}
-  .card:nth-child(5){animation-delay:.2s}
-  .card h4{margin:0 0 8px;font-size:12px;color:#64748b;text-transform:uppercase;font-weight:600}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
-  .kv{background:#f8fafc;padding:6px 10px;border-radius:6px;font-size:12px}
-  .kv .k{color:#64748b;display:block;margin-bottom:2px}
-  .kv .v{font-weight:500;color:#0f172a;word-break:break-all}
-  .kv .v.none{color:#cbd5e1;font-style:italic;font-weight:400}
-  .placeholder{color:#94a3b8;text-align:center;padding:60px 20px;font-size:13px}
-  .run-btn{background:linear-gradient(135deg,var(--indigo),var(--indigo-d));color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;box-shadow:0 2px 6px rgba(99,102,241,.3);transition:all .2s;display:inline-flex;align-items:center;gap:6px}
-  .run-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,.4)}
-  .run-btn:active{transform:translateY(0)}
-  .run-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
-  .spinner{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
-  .md{animation:fadeUp .3s cubic-bezier(.4,0,.2,1) both}
-  .placeholder{animation:pulse 2s ease-in-out infinite}
-  .badge{transition:transform .15s}
-  .item:hover .badge{transform:scale(1.03)}
-  header .tag{transition:background .2s}
-  header:hover .tag{background:rgba(255,255,255,.25)}
-
-  /* 判定结果卡片 */
-  .judge-card{background:linear-gradient(180deg,#fff,#fafbff)}
-  .judge-hero{padding:12px 14px;border-radius:10px;margin-bottom:10px;animation:fadeUp .3s ease both}
-  .judge-hero-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .pri-badge{color:#fff;padding:3px 10px;border-radius:5px;font-weight:700;font-size:13px;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
-  .pri-label{font-weight:600;color:#0f172a;font-size:13px}
-  .judge-score{margin-left:auto;font-size:11px;color:#475569}
-  .judge-score b{font-size:16px;color:#0f172a;margin:0 2px}
-  .judge-count{font-size:11px;color:#64748b;background:rgba(255,255,255,.6);padding:2px 8px;border-radius:3px}
-  .judge-asin{font-size:11px;color:#475569;background:rgba(255,255,255,.5);padding:2px 8px;border-radius:3px;margin-right:auto}
-  .judge-summary{font-size:12px;color:#334155;line-height:1.5;margin:6px 0 4px}
-  .score-bar{height:4px;background:rgba(255,255,255,.5);border-radius:2px;overflow:hidden;margin-top:6px}
-  .score-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
-  /* 定位 chips */
-  .loc-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-  .loc-chip{font-size:10px;color:#475569;background:rgba(255,255,255,.55);padding:2px 6px;border-radius:3px}
-  .loc-chip b{font-weight:500;color:#94a3b8;margin-right:2px}
-  /* 异常明细 — 紧凑行 */
-  .anom-compact{background:#fff;border:1px solid #eef1f5;border-radius:8px;overflow:hidden}
-  .anom-header{display:flex;justify-content:space-between;padding:6px 10px;font-size:11px;color:#94a3b8;background:#fafbfc;border-bottom:1px solid #eef1f5}
-  .anom-row{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;border-bottom:1px solid #f8fafc}
-  .anom-row:last-child{border-bottom:none}
-  .anom-row .sev-tag{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;white-space:nowrap;flex-shrink:0}
-  .anom-point{font-weight:600;color:#0f172a;white-space:nowrap}
-  .anom-type{font-size:10px;color:#94a3b8;white-space:nowrap}
-  .anom-basis{flex:1;color:#64748b;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .anom-af{font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap;flex-shrink:0}
-  .anom-suggest{font-size:10px;color:#0c4a6e;background:#f0f9ff;padding:1px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0}
-  .judge-meta{margin-top:6px;font-size:10px;color:#cbd5e1;text-align:right}
-  /* 处理任务表 */
-  .task-list{background:#fff;border:1px solid #eef1f5;border-radius:8px;overflow:hidden;margin-top:8px}
-  .task-header{padding:6px 10px;font-size:11px;font-weight:600;color:#0c4a6e;background:#f0f9ff;border-bottom:1px solid #e0f2fe}
-  .task-row{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;border-bottom:1px solid #f8fafc}
-  .task-row:last-child{border-bottom:none}
-  .task-row .sev-tag{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;white-space:nowrap;flex-shrink:0}
-  .task-point{font-weight:600;color:#0f172a;white-space:nowrap;flex-shrink:0}
-  .task-action{color:#0c4a6e;font-size:12px}
-  .anomaly-old-unused{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
-  .anomaly{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px;border-left:3px solid #cbd5e1;transition:transform .15s,box-shadow .15s;animation:slideIn .3s ease both}
-  .anomaly:hover{transform:translateX(2px);box-shadow:0 2px 8px rgba(0,0,0,.04)}
-  .sev-tag{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0}
-  .anomaly-body{flex:1;min-width:0}
-  .anomaly-name{font-weight:500;color:#0f172a;font-size:13px}
-  .anomaly-cat{font-weight:400;color:#94a3b8;font-size:11px;margin-left:6px}
-  .anomaly-reason{color:#475569;font-size:12px;margin-top:3px;line-height:1.5}
-  .anomaly-score{font-size:12px;color:#64748b;white-space:nowrap;align-self:center}
-  .actions-list{margin:0;padding-left:20px;color:#334155;font-size:13px;line-height:1.7}
-  .task-card{background:#f0f9ff;border-left:3px solid #0284c7;padding:10px 12px;border-radius:8px}
-  .task-card-title{font-weight:600;color:#0c4a6e;font-size:13px}
-  .task-card-brief{color:#475569;font-size:12px;margin-top:4px;line-height:1.5}
-  .judge-meta{margin-top:12px;font-size:11px;color:#94a3b8;text-align:right}
-
-  /* ===== 任务卡 · 设计图表格版 ===== */
-  .tc-header{background:#1e293b;border-radius:12px;padding:20px 26px;color:#e2e8f0;display:flex;align-items:center;gap:32px;flex-wrap:wrap}
-  .tc-col{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;align-items:center;font-size:13px}
-  .tc-col .tc-k{color:#94a3b8}
-  .tc-col .tc-v{color:#f1f5f9;font-weight:500}
-  .tc-col .tc-v.hl{color:#fff;font-weight:600}
-  .tc-owner{font-size:13px;color:#94a3b8;font-style:italic}
-  .tc-pri{margin-left:auto;display:flex;align-items:center;gap:14px}
-  .tc-pri-badge{border-radius:22px;padding:8px 22px;font-size:20px;font-weight:700;color:#fff;line-height:1}
-  .tc-pri-time{font-size:15px;font-weight:600;color:#e2e8f0;white-space:nowrap}
-  .tc-sev-badge{border:1.5px solid rgba(255,255,255,.5);border-radius:16px;padding:3px 20px;font-size:14px;font-weight:600;color:#fff}
-  .tc-caption{font-size:12px;color:#94a3b8;margin:14px 2px 6px}
-  .tc-anom-title{font-size:17px;font-weight:600;color:#0f172a;margin:18px 2px 12px}
-  /* 表格 */
-  .tc-table-wrap{overflow-x:auto;border-radius:10px;border:1px solid #eef1f5}
-  table.tc-table{width:100%;border-collapse:collapse;font-size:13px;min-width:920px}
-  table.tc-table thead th{background:#0f172a;color:#cbd5e1;font-weight:600;text-align:left;padding:12px 14px;white-space:nowrap;font-size:12px}
-  table.tc-table tbody td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:top;color:#334155;line-height:1.55;word-break:break-word}
-  /* 各列宽度约束，避免撑爆横向 */
-  table.tc-table tbody td:nth-child(3){max-width:150px}     /* 具体表现 */
-  table.tc-table tbody td:nth-child(4){max-width:120px;font-family:ui-monospace,monospace;font-size:12px}  /* 命中ASIN */
-  table.tc-table tbody td:nth-child(7){max-width:280px}     /* 判断依据 */
-  table.tc-table tbody td:nth-child(8){max-width:260px}     /* 处理建议 */
-  .tc-asin{white-space:normal !important;word-break:break-all}
-  table.tc-table tbody tr:last-child td{border-bottom:none}
-  table.tc-table tbody tr:hover{background:#fafbfc}
-  .tc-sev{display:inline-block;padding:3px 12px;border-radius:14px;font-size:12px;font-weight:600;white-space:nowrap}
-  .tc-cat{font-size:12px;font-weight:500;margin-bottom:3px}
-  .tc-point{font-weight:700;color:#0f172a;font-size:13px;white-space:nowrap}
-  /* AI 补录标签 */
-  .tc-ai-tag{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:linear-gradient(135deg,#ede9fe,#e0e7ff);color:#5b21b6;border:1px solid #c4b5fd;margin-left:6px;vertical-align:middle}
-  .tc-asin{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#334155;white-space:nowrap}
-  .tc-asin.link{color:#2563eb}
-  .tc-var{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:500;background:#eef2ff;color:#4f46e5}
-  .tc-var.main{background:#fee2e2;color:#dc2626}
-  .tc-level{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:500;background:#dcfce7;color:#16a34a}
-  .tc-level.variant{background:#fef3c7;color:#b45309}
-  .tc-basis{color:#475569;font-size:12.5px}
-  .tc-basis .num{color:#0f172a;font-weight:600}
-  /* 数据快照渲染：字段-值紧凑列表 + 逐日序列多行 */
-  .tc-snap{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#334155}
-  .tc-snap-kv{display:flex;flex-wrap:wrap;gap:4px 10px}
-  .tc-snap-kv .kv{background:#f8fafc;border:1px solid #e2e8f0;padding:2px 8px;border-radius:10px;white-space:nowrap;font-size:11.5px}
-  .tc-snap-kv .kv .k{color:#94a3b8;margin-right:4px;font-weight:400}
-  .tc-snap-kv .kv .v{color:#0f172a;font-weight:600}
-  .tc-snap-series{background:#eff6ff;border-left:2px solid #60a5fa;padding:4px 8px;border-radius:0 4px 4px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#1e3a8a;white-space:nowrap;overflow-x:auto}
-  .tc-snap-series .k{color:#3730a3;font-weight:600;margin-right:6px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
-  .tc-actions{margin:0;padding-left:16px;color:#334155;font-size:12.5px;line-height:1.7}
-  .tc-actions li{margin:0}
-  .tc-status{display:flex;flex-direction:column;align-items:center;gap:6px;white-space:nowrap}
-  .tc-status select{border:1px solid transparent;border-radius:14px;padding:3px 10px 3px 12px;font-size:11.5px;font-weight:600;cursor:pointer;outline:none;background:transparent;transition:all .15s}
-  .tc-status select:hover{border-color:#cbd5e1;background:#fff}
-  .tc-status select.st-todo{background:#fef3c7;color:#92400e}
-  .tc-status select.st-doing{background:#dbeafe;color:#1e40af}
-  .tc-status select.st-done{background:#dcfce7;color:#166534}
-  .tc-adlink{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#4f46e5;text-decoration:none;padding:3px 9px;border:1px solid #c7d2fe;border-radius:6px;background:#eef2ff;transition:all .15s;white-space:nowrap}
-  .tc-adlink:hover{background:#e0e7ff;border-color:#818cf8}
-  .tc-expand{color:#2563eb;font-size:13px;cursor:pointer;padding:12px 2px;user-select:none}
-  .tc-expand:hover{text-decoration:underline}
-  .tc-note{font-size:12px;color:#94a3b8;margin:12px 2px}
-
-  /* 批量判定 */
-  .batch-btn{margin-left:12px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.2);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:13px;transition:all .18s}
-  .batch-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.4)}
-  .batch-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100;align-items:center;justify-content:center;animation:fadeIn .2s}
-  .batch-mask.open{display:flex}
-  .batch-modal{background:#fff;border-radius:12px;width:min(1000px,92vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:fadeUp .3s cubic-bezier(.4,0,.2,1)}
-  .batch-head{padding:18px 22px;border-bottom:1px solid #eef1f5;display:flex;justify-content:space-between;align-items:flex-start}
-  .batch-toolbar{padding:12px 22px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:#f8fafc;border-bottom:1px solid #eef1f5}
-  .batch-toolbar label{font-size:12px;color:#475569;display:flex;align-items:center;gap:6px}
-  .batch-toolbar select{padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;background:#fff}
-  .mini-btn{background:#fff;color:#334155;border:1px solid #cbd5e1;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px;transition:all .15s}
-  .mini-btn:hover{background:#f1f5f9;border-color:#94a3b8}
-  .batch-progress{padding:8px 22px;font-size:12px;color:#475569;background:#fafbfc;min-height:0}
-  .batch-progress .bar{height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;margin-top:6px}
-  .batch-progress .bar-fill{height:100%;background:linear-gradient(90deg,var(--indigo),var(--indigo-d));transition:width .3s}
-  .batch-table-wrap{overflow:auto;flex:1;padding:0 22px 22px}
-  .batch-table{width:100%;border-collapse:collapse;font-size:13px}
-  .batch-table th{background:#f8fafc;text-align:left;padding:8px 10px;font-weight:600;color:#475569;font-size:12px;position:sticky;top:0}
-  .batch-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
-  .batch-table tr{transition:background .15s}
-  .batch-table tr:hover{background:#fafbff}
-  .pri-mini{color:#fff;padding:2px 7px;border-radius:3px;font-weight:600;font-size:11px}
-  .batch-row-pending td{color:#94a3b8}
-  .batch-row-running td{background:linear-gradient(90deg,#fff,#eef2ff,#fff);background-size:400px 100%;animation:shimmer 1.4s linear infinite}
-  .batch-row-error td{color:#dc2626;background:#fef2f2}
-
-  /* LLM 顶置 + 代码折叠 */
-  .llm-block-header{background:linear-gradient(135deg,#ede9fe,#e0e7ff);border:1px solid #c4b5fd;color:#5b21b6;padding:8px 14px;border-radius:8px 8px 0 0;font-size:12.5px;font-weight:600;margin-top:6px}
-  .llm-block-header .meta{font-size:11px;color:#7c3aed;font-weight:400;margin-left:6px}
-  .llm-block-body{border:1px solid #c4b5fd;border-top:0;border-radius:0 0 8px 8px;padding:10px 12px 12px;background:#fafaff}
-  .code-fold{margin-top:14px;border:1px solid #eef1f5;border-radius:8px;background:#fff}
-  .code-fold[open]{background:#fafbfc}
-  .code-fold > summary{cursor:pointer;padding:9px 14px;font-size:12.5px;font-weight:600;color:#475569;list-style:none;display:flex;align-items:center;gap:8px;user-select:none;border-radius:8px}
-  .code-fold > summary::-webkit-details-marker{display:none}
-  .code-fold > summary::before{content:'▸';color:#94a3b8;transition:transform .18s;flex-shrink:0}
-  .code-fold[open] > summary::before{transform:rotate(90deg)}
-  .code-fold > summary:hover{background:#f8fafc}
-  .code-fold-body{padding:0 12px 14px}
-  /* 数据问题反馈占位 */
-  .feedback-placeholder{padding:32px 20px;text-align:center;color:#94a3b8;background:#fff;border-radius:10px;border:1px dashed #cbd5e1}
-  .feedback-placeholder .icon{font-size:34px;margin-bottom:12px}
-  .feedback-placeholder .title{font-size:14px;color:#475569;margin-bottom:6px;font-weight:500}
-  .feedback-placeholder .desc{font-size:12px;line-height:1.7}
-
-  /* 用户门控遮罩 */
-  .user-gate{display:none;position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:200;align-items:center;justify-content:center;animation:fadeIn .3s}
-  .user-gate.open{display:flex}
-  .user-gate-card{background:#fff;border-radius:14px;padding:36px 40px;width:min(420px,90vw);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:fadeUp .4s cubic-bezier(.4,0,.2,1)}
-  .user-gate-select{width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;cursor:pointer;background:#f8fafc;margin-bottom:14px;color:#0f172a}
-  .user-gate-select:focus{border-color:#6366f1}
-  /* 负责人筛选 — 高亮激活态 */
-  #f-user.locked{background:#eef2ff;border-color:#818cf8;color:#3730a3;font-weight:500}
+  html,body{margin:0;height:100%;font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--text);background:var(--bg)}
+  button,input,select{font:inherit}
+  button{cursor:pointer}
+  .app{height:100vh;display:grid;grid-template-rows:58px 1fr;overflow:hidden}
+  .topbar{background:var(--nav);color:#fff;display:flex;align-items:center;padding:0 18px;gap:20px;border-bottom:1px solid #202a3b}
+  .brand{display:flex;align-items:center;gap:10px;min-width:220px;font-weight:700;letter-spacing:.2px}
+  .brand-mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#5790ff,#335fe6);display:grid;place-items:center;font-size:14px;box-shadow:0 5px 14px rgba(49,98,231,.35)}
+  .nav{display:flex;height:100%;align-items:center;gap:4px}
+  .nav-item{height:100%;padding:0 15px;display:flex;align-items:center;color:#aeb8ca;font-size:14px;border-bottom:3px solid transparent;cursor:pointer;user-select:none}
+  .nav-item.active{color:#fff;border-color:#6ea1ff;background:rgba(255,255,255,.03)}
+  .top-spacer{flex:1}
+  .fresh{font-size:12px;color:#b9c4d6;display:flex;align-items:center;gap:7px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#40ca8c;box-shadow:0 0 0 3px rgba(64,202,140,.14)}
+  .top-user{display:flex;align-items:center;gap:8px;font-size:12px;color:#dce4f0}
+  .top-user select{background:#1f2a3d;color:#fff;border:1px solid #2f3a52;border-radius:6px;padding:4px 8px;font-size:12px}
+  .avatar{width:31px;height:31px;border-radius:50%;background:#374151;display:grid;place-items:center;font-size:12px;color:#fff}
+  .layout{display:grid;grid-template-columns:244px minmax(720px,1fr) 382px;min-height:0;height:100%}
+  .sidebar,.detail{background:var(--panel);min-height:0;overflow:auto}
+  .sidebar{border-right:1px solid var(--line);padding:15px 13px}
+  .detail{border-left:1px solid var(--line);display:flex;flex-direction:column}
+  .main{min-width:0;overflow:auto;padding:15px}
+  .date{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .side-title{font-size:17px;font-weight:750;margin-bottom:13px}
+  .goal-card{background:linear-gradient(145deg,#1c2536,#27364f);color:#fff;border-radius:13px;padding:15px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .goal-line{display:flex;align-items:end;justify-content:space-between}
+  .goal-num{font-size:30px;font-weight:800;line-height:1}
+  .goal-num span{font-size:14px;font-weight:500;color:#bac6d8}
+  .goal-pct{font-size:12px;color:#cbd6e6}
+  .progress{height:7px;border-radius:8px;background:rgba(255,255,255,.15);overflow:hidden;margin:12px 0 9px}
+  .progress>i{display:block;height:100%;width:0%;background:#5fa0ff;border-radius:8px;transition:width .3s}
+  .goal-meta{font-size:12px;color:#b8c4d5;display:flex;justify-content:space-between}
+  .side-section{margin:17px 3px 8px}
+  .side-head{font-size:12px;font-weight:700;color:#8b93a2;letter-spacing:.5px;margin:0 5px 8px}
+  .queue{display:flex;flex-direction:column;gap:5px}
+  .queue-item{border:1px solid transparent;border-radius:9px;padding:9px 10px;display:grid;grid-template-columns:9px 1fr auto;align-items:center;gap:9px;font-size:13px;cursor:pointer}
+  .queue-item:hover,.queue-item.active{background:#f4f7fc;border-color:#e3e9f4}
+  .qdot{width:8px;height:8px;border-radius:50%}
+  .qname small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .qcount{font-weight:750}
+  .red{background:var(--red)}.amber{background:#e09a32}.blue{background:var(--blue)}.green{background:var(--green)}.gray{background:#a4abb7}
+  .dist{display:grid;gap:8px;padding:4px 6px}
+  .dist-row{font-size:12px}
+  .dist-top{display:flex;justify-content:space-between;margin-bottom:4px}
+  .mini-bar{height:5px;background:#edf0f5;border-radius:4px;overflow:hidden}
+  .mini-bar i{display:block;height:100%;border-radius:4px;background:#7b91b5}
+  .tip{background:#f6f8fb;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;line-height:1.6;color:#657083;margin:15px 4px}
+  .summary{display:grid;grid-template-columns:1.2fr repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .sum-card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 13px;min-height:76px;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s}
+  .sum-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(31,42,68,.11);border-color:#b9c9e8}
+  .sum-card.primary{background:linear-gradient(145deg,#eef4ff,#fff);border-color:#cfe0ff}
+  .sum-card.active-quick{border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue),0 8px 20px rgba(39,100,231,.12);background:#f5f8ff}
+  .sum-label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+  .sum-value{font-size:24px;font-weight:800;margin-top:5px}
+  .sum-sub{font-size:11px;color:var(--muted);margin-top:3px}
+  .danger-text{color:var(--red)}.good-text{color:var(--green)}
+  .toolbar{background:#fff;border:1px solid var(--line);border-radius:11px 11px 0 0;padding:10px;display:flex;align-items:center;gap:8px}
+  .search{width:195px;position:relative}
+  .search input{width:100%;height:34px;border:1px solid #dce1e9;border-radius:8px;padding:0 10px 0 31px;outline:none}
+  .search:before{content:'⌕';position:absolute;left:10px;top:6px;color:#8791a1}
+  .filter{height:34px;border:1px solid #dce1e9;border-radius:8px;background:#fff;padding:0 9px;color:#444d5e;font-size:12px}
+  .toolbar-spacer{flex:1}
+  .btn{height:34px;border-radius:8px;border:1px solid #d9dee7;background:#fff;color:#344056;padding:0 10px;font-size:12px;font-weight:650;white-space:nowrap}
+  .btn:hover{background:#f6f8fb}
+  .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn.ghost-blue{color:var(--blue);border-color:#bed0fa;background:#f4f7ff}
+  .sort-note{background:#f8fafc;border:1px solid var(--line);border-top:0;padding:8px 12px;color:#697386;font-size:11px;display:flex;justify-content:space-between}
+  .sort-rule b{color:#334155}
+  .legend span{margin-left:12px}
+  .table-wrap{background:#fff;border:1px solid var(--line);border-top:0;overflow:auto;flex:1;border-radius:0 0 11px 11px;max-height:calc(100vh - 273px)}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+  thead{background:#f8fafc;color:#778193;position:sticky;top:0;z-index:4}
+  th{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);font-weight:650}
+  td{padding:9px 8px;border-bottom:1px solid #edf0f4;vertical-align:middle;word-break:break-word}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#fafcff}
+  tbody tr.selected{background:#f1f6ff;box-shadow:inset 3px 0 0 var(--blue)}
+  .check{width:14px;height:14px}
+  .rank{font-weight:750;color:#737d8d}
+  .priority{display:inline-flex;align-items:center;justify-content:center;min-width:31px;height:22px;border-radius:6px;font-weight:800;font-size:11px}
+  .p0{background:var(--red-soft);color:#c73535}.p1{background:var(--amber-soft);color:#a76a10}.p2{background:var(--blue-soft);color:#3160c9}
+  .prod{display:flex;align-items:center;gap:8px;min-width:0}
+  .thumb{width:38px;height:46px;border-radius:7px;background:linear-gradient(155deg,#dfe7f5,#f8fafc);border:1px solid #dce3ed;display:grid;place-items:center;flex:0 0 auto;color:#6b7b98;font-size:10px;overflow:hidden}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .prod-txt{min-width:0}
+  .prod-name{font-weight:700;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+  .prod-meta{color:#7d8797;margin-top:4px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;font-size:10px}
+  .score{font-size:15px;font-weight:800}
+  .score small{font-size:9px;color:#929aaa;font-weight:500}
+  .tag{display:inline-block;border-radius:5px;padding:3px 5px;margin:1px 2px 1px 0;background:#f0f2f6;color:#5f6978;font-size:10px}
+  .tag.s0{background:#fff0ef;color:#c93c38}.tag.s1{background:#fff6e8;color:#a96e17}.tag.t{background:#f0edff;color:#664eb5}
+  .metric{line-height:1.45}
+  .action{font-weight:650;color:#334155;line-height:1.35}
+  .status{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+  .status:before{content:'';width:6px;height:6px;border-radius:50%;background:#9ca3af}
+  .status.doing:before{background:#3772e8}.status.done:before{background:#1f9d71}.status.wait:before{background:#d38a24}.status.pending:before{background:#9ca3af}
+  .detail-head{padding:14px 15px 12px;border-bottom:1px solid var(--line);background:#fff}
+  .detail-kicker{font-size:11px;color:#7d8796;display:flex;justify-content:space-between}
+  .detail-title{font-size:16px;font-weight:800;margin:7px 0 5px}
+  .detail-meta{font-size:11px;color:#7c8595}
+  .detail-scroll{padding:13px 14px 20px;overflow-y:auto;flex:1}
+  .decision{border-radius:11px;padding:13px;background:linear-gradient(145deg,#fff3f1,#fff);border:1px solid #ffd4cf;margin-bottom:12px}
+  .decision-top{display:flex;align-items:center;justify-content:space-between}
+  .decision-label{font-size:11px;color:#a8615b;font-weight:700}
+  .decision h3{font-size:15px;line-height:1.45;margin:7px 0 5px}
+  .decision p{font-size:11px;line-height:1.55;color:#766360;margin:0}
+  .risk-badge{background:#d9473f;color:#fff;border-radius:6px;padding:4px 7px;font-size:10px;font-weight:800}
+  .section{border:1px solid var(--line);border-radius:10px;margin-bottom:11px;overflow:hidden}
+  .section-head{padding:10px 11px;background:#f8fafc;border-bottom:1px solid var(--line);font-size:12px;font-weight:750;display:flex;justify-content:space-between}
+  .section-body{padding:10px 11px}
+  .why{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .why-item{background:#f7f9fc;border-radius:8px;padding:8px}
+  .why-item b{display:block;font-size:14px}
+  .why-item span{font-size:10px;color:#7d8796}
+  .evidence{display:flex;flex-direction:column;gap:8px;font-size:11px}
+  .e-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #eef1f5}
+  .e-row:last-child{border-bottom:0}
+  .e-row b{color:#334155}
+  .op-form{display:grid;gap:8px}
+  .op-row{display:grid;grid-template-columns:78px 1fr;align-items:center;gap:8px;font-size:11px}
+  .op-row select,.op-row input{height:31px;border:1px solid #dfe4ea;border-radius:7px;padding:0 8px;background:#fff}
+  .detail-actions{background:#fff;border-top:1px solid var(--line);padding:10px 14px;display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:7px}
+  .detail-actions .btn{padding:0 7px}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1f2937;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:.25s;z-index:200}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .view{display:none;height:100%;min-height:0;overflow:hidden}
+  .view.active{display:block}
+  .view>.layout{height:100%}
+  .workspace-page{height:100%;overflow:auto;padding:22px 24px 28px;background:var(--bg)}
+  .page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
+  .page-head h1{font-size:25px;margin:2px 0 7px}
+  .page-head p{margin:0;color:var(--muted);font-size:13px;line-height:1.7}
+  .page-eyebrow{font-size:11px;color:var(--blue);font-weight:800;letter-spacing:1px}
+  .page-actions{display:flex;align-items:center;gap:8px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+  .kpi-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px 16px;box-shadow:0 3px 12px rgba(31,42,68,.04)}
+  .kpi-card span{display:block;font-size:12px;color:var(--muted)}
+  .kpi-card b{display:block;font-size:27px;margin:7px 0 4px}
+  .kpi-card small{font-size:11px;color:var(--muted)}
+  .danger-card{border-left:4px solid var(--red)}.good-card{border-left:4px solid var(--green)}.warning-card{border-left:4px solid #dc942d}
+  .page-panel{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 16px rgba(31,42,68,.045);overflow:hidden}
+  .filter-row{display:flex;align-items:center;gap:9px;padding:12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .filter-row select{height:34px;border:1px solid #dce1e9;border-radius:8px;padding:0 28px 0 10px;background:#fff;color:#40495a;font-size:12px}
+  .search.wide{width:270px}
+  .filter-result{margin-left:auto;color:var(--muted);font-size:12px}
+  .data-table-scroll{overflow:auto;max-height:calc(100vh - 320px)}
+  .data-table{width:100%;border-collapse:collapse;min-width:1020px}
+  .data-table th{height:42px;padding:0 10px;text-align:left;background:#f8f9fb;border-bottom:1px solid var(--line);font-size:11px;color:#70798a;white-space:nowrap;position:sticky;top:0;z-index:2}
+  .data-table td{padding:10px;border-bottom:1px solid #edf0f4;font-size:12px;vertical-align:middle}
+  .data-table tbody tr:hover{background:#f8fbff}
+  .mini-product b{display:block;font-size:12px}
+  .mini-product span{display:block;color:var(--muted);font-size:10px;margin-top:3px}
+  .issue-type{display:inline-flex;padding:4px 7px;border-radius:6px;background:#f2f5fa;color:#536077;font-size:11px}
+  .panel-title{display:flex;align-items:center;justify-content:space-between;padding:14px 15px;border-bottom:1px solid var(--line)}
+  .panel-title b{display:block;font-size:13px}
+  .panel-title span{font-size:10px;color:var(--muted);display:block;margin-top:3px}
+  .source-list{padding:6px 14px 13px}
+  .source-card{display:grid;grid-template-columns:43px 1fr auto;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid #edf0f4}
+  .source-card:last-child{border-bottom:0}
+  .source-icon{width:39px;height:39px;border-radius:9px;background:#eef3fa;display:grid;place-items:center;font-size:10px;font-weight:800;color:#587096}
+  .source-card b{display:block;font-size:12px}
+  .source-card span{font-size:10px;color:var(--muted);display:block;margin-top:4px}
+  .source-card em{font-style:normal;font-size:10px;font-weight:750;padding:4px 7px;border-radius:10px}
+  .source-card.ok em{color:var(--green);background:var(--green-soft)}
+  .source-card.warn em{color:var(--amber);background:var(--amber-soft)}
+  .source-card.fail em{color:var(--red);background:var(--red-soft)}
+  .coverage{display:flex;align-items:center;gap:8px}
+  .coverage-bar{width:70px;height:5px;background:#edf0f5;border-radius:4px;overflow:hidden}
+  .coverage-bar i{display:block;height:100%;background:#6f8dbc}
+  .health-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:14px;margin-bottom:14px}
+  .empty-row td{text-align:center;color:#8a93a2;padding:34px 10px}
+  .loading{padding:40px;text-align:center;color:#8a93a2;font-size:13px}
+  .user-gate{display:none;position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:300;align-items:center;justify-content:center}
+  .user-gate.show{display:flex}
+  .user-gate-card{background:#fff;border-radius:16px;padding:32px 28px;width:min(420px,92vw);text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+  .user-gate-card h2{margin:0 0 6px;font-size:20px}
+  .user-gate-card p{margin:0 0 20px;color:var(--muted);font-size:13px}
+  .user-gate-card select{width:100%;height:40px;border:1px solid #dce1e9;border-radius:8px;padding:0 10px;font-size:14px;margin-bottom:14px}
+  .user-gate-card button{width:100%;height:42px;border:0;background:var(--blue);color:#fff;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+  @media(max-width:1200px){.layout{grid-template-columns:220px minmax(650px,1fr)}.detail{display:none}.summary{grid-template-columns:repeat(3,1fr)}.sum-card:nth-child(n+4){display:none}}
 </style>
 </head>
 <body>
-<header>
-  🩺 业务巡检 Agent
-  <span class="tag" id="stat" style="margin-left:auto">加载中…</span>
-  <!-- 数据健康度暂时关闭
-  <span id="health-chip" class="health-chip none" onclick="openHealthPanel()" title="数据抓取健康度（点击查看详情）">
-    <span class="dot"></span><span id="health-chip-text">数据 加载中</span>
-  </span>
-  -->
+<div class="app">
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">巡</div><span>业务巡检 Agent</span></div>
+  <nav class="nav">
+    <div class="nav-item active" data-view="today">今日任务</div>
+    <div class="nav-item" data-view="all">全部异常</div>
+    <div class="nav-item" data-view="review">调整复盘</div>
+    <div class="nav-item" data-view="health">数据健康</div>
+  </nav>
+  <div class="top-spacer"></div>
+  <div class="fresh"><i class="dot"></i><span id="freshInfo">加载中…</span></div>
+  <div class="top-user" id="topUser" style="display:none">
+    <span id="viewerName"></span>
+    <select id="targetSelect" style="display:none"></select>
+  </div>
+  <div class="avatar" id="topAvatar">·</div>
 </header>
 
-<!-- 数据健康度面板 — 暂时关闭
-<div id="health-mask" class="health-mask" onclick="if(event.target===this) closeHealthPanel()">
-  <div class="health-card">
-    <div class="health-head">
-      <div>
-        <h2 style="margin:0;font-size:16px">📊 数据抓取健康度</h2>
-        <div id="health-summary" style="font-size:12px;color:#64748b;margin-top:4px"></div>
+<!-- 视图1: 今日任务 -->
+<div class="view active" id="viewToday"><div class="layout">
+  <aside class="sidebar">
+    <div class="date" id="sideDate"></div>
+    <div class="side-title">我的运营任务</div>
+    <div class="goal-card">
+      <div class="goal-line">
+        <div class="goal-num"><b id="doneNum">0</b><span> / <span id="totalNum">0</span> 条</span></div>
+        <div class="goal-pct" id="goalPct">完成 0%</div>
       </div>
-      <button onclick="closeHealthPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>
+      <div class="progress"><i id="goalBar"></i></div>
+      <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 条</span><span>今日完成 <span id="doneTodayNum">0</span> 条</span></div>
     </div>
-    <div class="health-body" id="health-body"></div>
-  </div>
-</div>
--->
+    <div class="side-section">
+      <div class="side-head">任务池</div>
+      <div class="queue" id="queueList"></div>
+    </div>
+    <div class="side-section">
+      <div class="side-head">异常结构</div>
+      <div class="dist" id="distList"></div>
+    </div>
+    <div class="tip"><b>排序口径</b><br/>P0 → P1 → P2；同优先级按执行分降序；再按产品重要级 T0→T3、异常持续天数降序。</div>
+  </aside>
+  <main class="main">
+    <section class="summary" id="summaryCards"></section>
+    <div class="toolbar">
+      <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
+      <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
+      <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="新发现">新发现</option><option value="处理中">处理中</option><option value="待复查">待复查</option><option value="已完成">已完成</option></select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn" id="reloadBtn">刷新</button>
+    </div>
+    <div class="sort-note"><span class="sort-rule">排序：<b>优先级</b> ＞ <b>执行分</b> ＞ <b>产品定位</b> ＞ 异常持续天数</span><span class="legend"><span>当前显示 <b id="taskResultCount">0</b> 条</span></span></div>
+    <div class="table-wrap">
+      <table>
+        <colgroup><col style="width:36px"/><col style="width:50px"/><col style="width:230px"/><col style="width:56px"/><col style="width:200px"/><col style="width:130px"/><col style="width:120px"/><col style="width:76px"/></colgroup>
+        <thead><tr><th>#</th><th>优先</th><th>产品</th><th>执行分</th><th>异常判定</th><th>关键证据</th><th>建议动作</th><th>状态</th></tr></thead>
+        <tbody id="taskBody"><tr><td colspan="8" class="loading">加载中…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+  <aside class="detail">
+    <div class="detail-head">
+      <div class="detail-kicker"><span>任务详情 · <b id="detailPriority">-</b></span><span id="detailScore">执行分 -</span></div>
+      <div class="detail-title" id="detailTitle">请从左侧选择一条任务</div>
+      <div class="detail-meta" id="detailMeta">-</div>
+    </div>
+    <div class="detail-scroll" id="detailScroll">
+      <div style="padding:30px;text-align:center;color:#8a93a2;font-size:12px">点击任务行查看详情</div>
+    </div>
+    <div class="detail-actions">
+      <button class="btn" id="rejectBtn" disabled>不处理</button>
+      <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
+      <button class="btn primary" id="completeBtn" disabled>完成并下一条</button>
+    </div>
+  </aside>
+</div></div>
 
-<!-- 冷却确认弹窗 -->
-<div id="cd-mask" class="cd-mask" onclick="if(event.target===this) cooldownConfirmCancel()">
-  <div class="cd-card">
-    <div class="cd-icon">❄</div>
-    <h3 class="cd-title">确认这个待办已经完成了吗？</h3>
-    <p class="cd-desc">
-      选择「完成」后：<br>
-      <b>该产品的广告异常将进入 2 天冷却期</b><br>
-      期间不再对该产品进行广告异常检查<br>
-      <span style="font-size:11px;color:#94a3b8">2 天后系统会自动恢复检查</span>
-    </p>
-    <div class="cd-actions">
-      <button class="mini-btn" onclick="cooldownConfirmCancel()">取消</button>
-      <button class="run-btn" onclick="cooldownConfirmOk()">✓ 完成，进入冷却</button>
+<!-- 视图2: 全部异常 -->
+<div class="view" id="viewAll">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">全量事件池</div><h1>全部异常</h1><p>该负责人名下所有异常（含已关闭）。今日任务页只显示待处理的开放事件。</p></div>
+      <div class="page-actions"><button class="btn" id="allReloadBtn">刷新</button></div>
     </div>
-  </div>
-</div>
-
-<!-- 负责人门控遮罩 -->
-<div id="user-gate" class="user-gate">
-  <div class="user-gate-card">
-    <div style="font-size:40px;margin-bottom:14px">👤</div>
-    <h2 style="margin:0 0 6px;font-size:20px;color:#0f172a">请选择负责人</h2>
-    <p style="color:#64748b;font-size:13px;margin:0 0 20px;line-height:1.5">选择后进入您的专属巡检视图，<br>也可通过顶部下拉随时切换。</p>
-    <select id="user-gate-select" class="user-gate-select">
-      <option value="">-- 请选择 --</option>
-    </select>
-    <button class="run-btn" style="width:100%;justify-content:center;padding:10px 0;font-size:14px" onclick="confirmUserGate()">进入</button>
-  </div>
-</div>
-
-<!-- 批量判定弹层 -->
-<div id="batch-mask" class="batch-mask" onclick="if(event.target===this) closeBatch()">
-  <div class="batch-modal">
-    <div class="batch-head">
-      <div>
-        <h2 style="margin:0;font-size:16px">📊 批量判定</h2>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">对多个 ASIN 并行运行判定，每个约 15-30 秒</div>
-      </div>
-      <button onclick="closeBatch()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>
-    </div>
-    <div class="batch-toolbar">
-      <label>数量
-        <select id="batch-limit" onchange="refreshBatchTable()"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="70">全部 70</option></select>
-      </label>
-      <label>并发
-        <select id="batch-conc"><option value="1">1</option><option value="3" selected>3</option><option value="5">5</option></select>
-      </label>
-      <label>范围
-        <select id="batch-scope" onchange="refreshBatchTable()">
-          <option value="filter">当前过滤结果</option>
-          <option value="all">所有 ASIN</option>
-          <option value="uncached">未跑过的</option>
-        </select>
-      </label>
-      <button class="run-btn" id="batch-run-btn" onclick="runBatch()">▶ 开始批量判定</button>
-      <button class="mini-btn" onclick="exportBatch()">⬇ 导出 CSV</button>
-    </div>
-    <div class="batch-progress" id="batch-progress"></div>
-    <div class="batch-table-wrap"><table class="batch-table" id="batch-table">
-      <thead><tr><th>ASIN</th><th>店铺</th><th>优先级</th><th>处理时限</th><th>分数</th><th>结论</th><th>操作</th></tr></thead>
-      <tbody id="batch-tbody"></tbody>
-    </table></div>
-  </div>
-</div>
-<div class="layout kb-collapsed">
-  <!-- 知识库模块 -->
-  <div class="col kb-col" id="kb-col">
-    <h3 class="col-head" onclick="toggleKb()" title="收起知识库">
-      <span id="kb-caret" class="caret">▸</span> 知识库模块
-      <span class="collapse-hint">收起 ⇤</span>
-    </h3>
-    <div class="list" id="kb-list"></div>
-    <!-- 收起后的竖条 -->
-    <div class="kb-strip" onclick="toggleKb()" title="展开知识库">
-      <span class="strip-icon">📚</span>
-      <span class="strip-text">知识库模块</span>
-      <span class="strip-caret">▸</span>
-    </div>
-  </div>
-
-  <!-- ASIN -->
-  <div class="col">
-    <h3>采样 ASIN</h3>
-    <div class="filter">
-      <div class="q-row">
-        <input id="q" placeholder="🔍 过滤 ASIN / SKU / 店铺 …"/>
-        <button id="sortpri-btn" class="sortpri-btn active" onclick="toggleSortPri()" title="按优先级排序（点击切换）">↕</button>
-        <span id="asin-count" class="asin-count-pill" title="已筛选 / 总数"></span>
-      </div>
+    <div class="kpi-grid" id="allKpi"></div>
+    <div class="page-panel">
       <div class="filter-row">
-        <select id="f-user" onchange="onUserFilterChange()" style="flex:1.4"><option value="">全部负责人</option></select>
+        <div class="search wide"><input id="allSearch" placeholder="搜索 ASIN / 问题点位"/></div>
+        <select id="allPriority"><option value="">全部优先级</option><option>P0</option><option>P1</option><option>P2</option></select>
+        <select id="allCategory"><option value="">全部异常大类</option></select>
+        <select id="allStatus"><option value="">全部状态</option><option>新发现</option><option>处理中</option><option>待复查</option><option>已完成</option><option>已关闭</option></select>
+        <span class="filter-result">共 <b id="allResultCount">0</b> 条</span>
       </div>
-      <div class="filter-row">
-        <select id="f-priority" onchange="renderAsins()">
-          <option value="">全部优先级</option>
-          <option value="P0">🔴 P0 当天</option>
-          <option value="P1">🟠 P1 三天</option>
-          <option value="P2">🔵 P2 七天</option>
-          <option value="__none">⚪ 未判定</option>
-        </select>
-        <select id="f-handle" onchange="renderAsins()">
-          <option value="">全部处理状态</option>
-          <option value="待处理">🔴 待处理</option>
-          <option value="处理中">🟡 处理中</option>
-          <option value="处理完成">🟢 处理完成</option>
-          <option value="冷却中">🟣 冷却中</option>
-          <option value="配置待补">🔵 配置待补</option>
-          <option value="无异常">⚪ 无异常</option>
-        </select>
-        <select id="f-site" onchange="renderAsins()"><option value="">全部站点</option></select>
-        <select id="f-stage" onchange="renderAsins()"><option value="">全部阶段</option></select>
-      </div>
-      <input type="checkbox" id="f-sortpri" checked style="display:none">
-    </div>
-    <div class="list" id="asin-list"></div>
-  </div>
-
-  <!-- 内容展示 -->
-  <div class="col">
-    <h3 id="viewer-title">详情</h3>
-    <div class="content" id="viewer">
-      <div class="placeholder">← 从左侧选一个知识库模块，或从中间选一个 ASIN 查看详情</div>
-    </div>
-  </div>
-</div>
-
-<script>
-
-// 报告模式 /report?userId=xxx 或 /report?parentAsin=xxx&shopId=xxx
-const REPORT_MODE = window.location.pathname.startsWith("/report");
-const REPORT_KEY = (() => {
-  if (!REPORT_MODE) return null;
-  const p = new URLSearchParams(window.location.search);
-  const uid = p.get("userId");
-  const asin = p.get("parentAsin"); const sid = p.get("shopId");
-  const singleKey = asin && sid ? decodeURIComponent(asin) + "__" + decodeURIComponent(sid) : null;
-  if (uid && singleKey) return { type: "both", userId: uid, key: singleKey };
-  if (uid) return { type: "user", userId: uid };
-  if (singleKey) return { type: "single", key: singleKey };
-  return null;
-})();
-const state = { kbActive: null, asinActive: null, dataTab: 'summary' };
-// 判定结果缓存：切换 ASIN 后回来还能看到上次结果
-const judgeCache = new Map();  // key -> {result, ts}
-	const inspectCache = new Map();  // key -> {result, ts}  // 代码管线缓存
-
-// —— iframe 重建友好：Map miss 时穿透 localStorage，让详情视图重新挂载时秒回上次结果 ——
-function inspectCacheGet(k){
-  if (inspectCache.has(k)) return inspectCache.get(k);
-  const v = swrGet('inspect:' + k);
-  if (v){ inspectCache.set(k, v); return v; }
-  return null;
-}
-function inspectCacheHas(k){ return !!inspectCacheGet(k); }
-function inspectCacheSet(k, v){ inspectCache.set(k, v); swrSet('inspect:' + k, v); }
-
-function judgeCacheGet(k){
-  if (judgeCache.has(k)) return judgeCache.get(k);
-  const v = swrGet('judge:' + k);
-  if (v){ judgeCache.set(k, v); return v; }
-  return null;
-}
-function judgeCacheHas(k){ return !!judgeCacheGet(k); }
-function judgeCacheSet(k, v){ judgeCache.set(k, v); swrSet('judge:' + k, v); }
-
-// ------- URL / 用户门控 -------
-let allUsers = [];
-
-function getUrlUserId(){ return new URLSearchParams(location.search).get('userId') || ''; }
-
-function setUrlUserId(id){
-  const u = new URL(location.href);
-  if (id) u.searchParams.set('userId', id);
-  else u.searchParams.delete('userId');
-  history.pushState({}, '', u.toString());
-}
-
-// 用户下拉数据应用到 DOM（去重清空后重填，可反复调用）
-function _applyUsersToSelectors(users){
-  allUsers = users || [];
-  const optHtml = allUsers.map(u =>
-    `<option value="${u.user_id}">${esc(u.user_name)}（${u.asin_count} 个 ASIN）</option>`
-  ).join('');
-  const gsel = document.getElementById('user-gate-select');
-  if (gsel) gsel.innerHTML = '<option value="">-- 请选择 --</option>' + optHtml;
-
-  const fuser = document.getElementById('f-user');
-  if (fuser){
-    const cur = fuser.value;
-    fuser.innerHTML = '<option value="">全部负责人</option>' + allUsers.map(u =>
-      `<option value="${u.user_id}">${esc(u.user_name)}</option>`
-    ).join('');
-    if (cur) fuser.value = cur;
-  }
-}
-
-async function initUserGate(){
-  // SWR：iframe 重建先用缓存（0 延迟），后台刷新
-  const users = await swrFetch('users', () => api('/api/users').catch(() => []), (fresh) => {
-    _applyUsersToSelectors(fresh);
-  });
-  _applyUsersToSelectors(users);
-
-  const uid = getUrlUserId();
-  if (!uid && allUsers.length > 0){
-    document.getElementById('user-gate').classList.add('open');
-  } else {
-    _syncUserFilter(uid);
-  }
-}
-
-function _syncUserFilter(uid){
-  const fuser = document.getElementById('f-user');
-  if (!fuser) return;
-  fuser.value = uid;
-  if (uid) fuser.classList.add('locked'); else fuser.classList.remove('locked');
-}
-
-function confirmUserGate(){
-  const sel = document.getElementById('user-gate-select');
-  const uid = sel.value;
-  if (!uid){ sel.focus(); return; }
-  setUrlUserId(uid);
-  document.getElementById('user-gate').classList.remove('open');
-  _syncUserFilter(uid);
-  allAsins = [];
-  loadAsins();
-}
-
-function toggleSortPri(){
-  const chk = document.getElementById('f-sortpri');
-  const btn = document.getElementById('sortpri-btn');
-  chk.checked = !chk.checked;
-  btn.classList.toggle('active', chk.checked);
-  renderAsins();
-}
-
-function onUserFilterChange(){
-  if (REPORT_MODE) return;
-  const uid = document.getElementById('f-user').value;
-  setUrlUserId(uid);
-  _syncUserFilter(uid);
-  allAsins = [];
-  loadAsins();
-}
-
-// 产品定位 / 阶段 中文映射（ERP 枚举 → 展示名）
-const POS_CN = {
-  P0_PRODUCT: '战略级产品 (P0)', P1_PRODUCT: '重点产品 (P1)',
-  P2_PRODUCT: '常规产品 (P2)', P3_PRODUCT: '长尾产品 (P3)',
-};
-const STAGE_CN = {
-  TESTING: '测试期', PROMOTING: '推进期', HARVEST_PROFIT: '收割利润期',
-  MAINTAINING: '维持期', LIQUIDATING: '清货期', 清货期: '清货期',
-};
-const SEASON_CN = {
-  OFF_SEASON:'淡季', BIG_PEAK_SEASON:'旺季', PEAK_SEASON_PREPARE:'旺季前期',
-  LATE_PEAK_SEASON:'旺季后期', EARLY_PEAK_SEASON:'旺季前期', NORMAL:'平季',
-};
-const posCN = v => POS_CN[v] || v || '-';
-const stageCN = v => STAGE_CN[v] || v || '-';
-const seasonCN = v => SEASON_CN[v] || v || '-';
-
-async function api(path){ const r = await fetch(path); return r.json(); }
-
-// —— localStorage stale-while-revalidate 缓存 ——
-// iframe 每次重建时先用上次的数据渲染（0 延迟），同时后台刷新
-// 用途：/api/users /api/asins，减少 iframe 冷启动感知
-const _SWR_PREFIX = 'hcAgent.swr::';
-function swrGet(cacheKey){
-  try {
-    const raw = localStorage.getItem(_SWR_PREFIX + cacheKey);
-    if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
-    // 超过 30 分钟的缓存也不再当热缓存用（避免陈旧数据误导）
-    if (Date.now() - ts > 30 * 60 * 1000) return null;
-    return data;
-  } catch { return null; }
-}
-function swrSet(cacheKey, data){
-  try {
-    localStorage.setItem(_SWR_PREFIX + cacheKey, JSON.stringify({ data, ts: Date.now() }));
-  } catch {}   // localStorage 满时静默失败
-}
-// 用法：await swrFetch('users', () => api('/api/users'), (fresh) => renderXXX(fresh))
-// 命中缓存：立即返回缓存 + 后台刷新，刷新完成回调 onFresh(freshData)
-// 未命中：等 fetch 返回
-async function swrFetch(cacheKey, fetcher, onFresh){
-  const cached = swrGet(cacheKey);
-  if (cached){
-    // 有缓存：立即返回 + 后台刷新
-    fetcher().then(fresh => {
-      swrSet(cacheKey, fresh);
-      // 只在数据真变了才回调（避免无必要 rerender）
-      try {
-        if (JSON.stringify(fresh) !== JSON.stringify(cached)) onFresh && onFresh(fresh);
-      } catch { onFresh && onFresh(fresh); }
-    }).catch(() => {});
-    return cached;
-  }
-  // 无缓存：等 fetch
-  const fresh = await fetcher();
-  swrSet(cacheKey, fresh);
-  return fresh;
-}
-
-function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
-
-// ------- 知识库 -------
-async function loadKb(){
-  const r = await api('/api/knowledge');
-  const box = document.getElementById('kb-list');
-  box.innerHTML = '';
-  r.modules.forEach(m => {
-    // 去掉前缀数字，标题更干净
-    const label = m.replace(/\.md$/,'').replace(/^\d+[_、]?/,'');
-    const num = (m.match(/^\d+/)||[''])[0];
-    const b = el(`<button class="item kb-item" data-kb="${m}"><span class="kb-num">${num}</span>${esc(label)}</button>`);
-    b.onclick = () => viewKb(m, b);
-    box.appendChild(b);
-  });
-}
-
-function toggleKb(){
-  const layout = document.querySelector('.layout');
-  const collapsed = layout.classList.toggle('kb-collapsed');
-  const caret = document.getElementById('kb-caret');
-  if (caret) caret.textContent = collapsed ? '▸' : '▾';
-}
-
-async function viewKb(name, btn){
-  document.querySelectorAll('#kb-list .item').forEach(x => x.classList.remove('active'));
-  document.querySelectorAll('#asin-list .item').forEach(x => x.classList.remove('active'));
-  btn && btn.classList.add('active');
-  state.kbActive = name;
-  const r = await api('/api/knowledge/' + encodeURIComponent(name));
-  document.getElementById('viewer-title').textContent = '知识库模块 · ' + name.replace(/\.md$/,'');
-  document.getElementById('viewer').innerHTML = `<div class="md">${renderMd(r.content)}</div>`;
-}
-
-function renderMd(src){
-  // 极简 markdown 渲染（够看即可）
-  const lines = src.split('\n');
-  let out = [], inTable = false, tableRows = [];
-  for (const L of lines){
-    if (/^\| /.test(L)){
-      if (!inTable){ inTable = true; tableRows = []; }
-      tableRows.push(L);
-      continue;
-    } else if (inTable){
-      out.push(renderTable(tableRows));
-      inTable = false;
-    }
-    if (/^### /.test(L)) out.push('<h3>'+esc(L.slice(4))+'</h3>');
-    else if (/^## /.test(L)) out.push('<h2>'+esc(L.slice(3))+'</h2>');
-    else if (/^# /.test(L)) out.push('<h1>'+esc(L.slice(2))+'</h1>');
-    else if (L.trim()==='') out.push('');
-    else out.push('<p>'+esc(L)+'</p>');
-  }
-  if (inTable) out.push(renderTable(tableRows));
-  return out.join('\n');
-}
-
-function renderTable(rows){
-  if (!rows.length) return '';
-  const parse = r => r.slice(1,-1).split('|').map(c=>c.trim());
-  const head = parse(rows[0]);
-  const body = rows.slice(rows.length>1 && /^\| *[-: ]+ *\|/.test(rows[1]) ? 2 : 1).map(parse);
-  return '<table><thead><tr>'+head.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead><tbody>'
-    + body.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('') + '</tbody></table>';
-}
-
-function esc(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-
-// ------- ASIN 列表 -------
-let allAsins = [];
-let batchReady = false;
-const PRI_ORDER = { P0: 0, P1: 1, P2: 2 };
-
-function priOf(key){
-  const c = judgeCacheGet(key);
-  return c && !c.result.dry_run ? (pickPriority(c.result.judgment) || null) : null;
-}
-
-// 获取产品排序分数（LLM 优先，否则代码批量结果）
-function sortScore(a){
-  // LLM 结果（judgeCache 只存 LLM 结果，不存代码结果）
-  const jc = judgeCacheGet(a.key);
-  if (jc && !jc.result.dry_run && jc.result.model !== 'code-pipeline') {
-    const s = pickScore(jc.result.judgment);
-    if (s != null) return { score: s, source: 'llm' };
-  }
-  // 代码批量结果（来自 /api/asins）
-  if (a.llm_status === 'llm_done' && a.llm_score != null) {
-    return { score: a.llm_score, source: 'llm' };
-  }
-  if (a.score != null) return { score: a.score, source: 'code' };
-  return { score: -1, source: 'none' };
-}
-
-function prioritySort(a, b){
-  const pa = a.priority || priOf(a.key) || 'P2';
-  const pb = b.priority || priOf(b.key) || 'P2';
-  const oa = PRI_ORDER[pa] ?? 9, ob = PRI_ORDER[pb] ?? 9;
-  if (oa !== ob) return oa - ob;
-  // 同优先级内按分数降序
-  return (sortScore(b).score || 0) - (sortScore(a).score || 0);
-}
-
-// 应用 ASIN 数据到界面（stat + 站点/阶段下拉 + 列表）
-function _applyAsinsList(list, uid){
-  allAsins = list;
-  batchReady = list.length > 0 && list[0].batch_ready;
-
-  const userName = uid ? (allUsers.find(u=>String(u.user_id)===String(uid))?.user_name || '') : '';
-  const statEl = document.getElementById('stat');
-  if (statEl) statEl.textContent = (userName ? `${userName} · ` : '') + list.length + ' 个 ASIN';
-
-  const sites = [...new Set(list.map(a=>a.site_code).filter(Boolean))].sort();
-  const stages = [...new Set(list.map(a=>stageCN(a.product_stage)).filter(v=>v&&v!=='-'))].sort();
-  const fSiteEl = document.getElementById('f-site');
-  const fStageEl = document.getElementById('f-stage');
-  if (fSiteEl){
-    const cur = fSiteEl.value;
-    fSiteEl.innerHTML = '<option value="">全部站点</option>' + sites.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
-    if (sites.includes(cur)) fSiteEl.value = cur;
-  }
-  if (fStageEl){
-    const cur = fStageEl.value;
-    fStageEl.innerHTML = '<option value="">全部阶段</option>' + stages.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
-    if (stages.includes(cur)) fStageEl.value = cur;
-  }
-  renderAsins();
-}
-
-// iframe 重挂载时自动恢复上次查看的 ASIN（选中态 + 详情视图）
-// 只在还没有选中态时恢复；REPORT_KEY 单产品模式已经指定了目标，跳过
-function _restoreLastAsin(uid){
-  if (state.asinActive) return;                       // 已选中，别覆盖
-  if (window.REPORT_KEY && REPORT_KEY.type !== 'user') return;  // 单产品模式自己会打开
-  let lastKey;
-  try { lastKey = localStorage.getItem('hcAgent.lastAsin::' + (uid || 'all')); } catch { return; }
-  if (!lastKey) return;
-  const a = allAsins.find(x => x.key === lastKey);
-  if (!a) return;
-  const btn = document.querySelector(`#asin-list button[data-key="${CSS.escape(lastKey)}"]`);
-  viewAsin(a, btn);
-  // 滚到中间 让用户看到"回到了刚才那里"
-  if (btn) setTimeout(() => btn.scrollIntoView({behavior:'auto', block:'center'}), 50);
-}
-
-async function loadAsins(){
-  const uid = getUrlUserId();
-  const url = uid ? `/api/asins?userId=${encodeURIComponent(uid)}` : '/api/asins';
-  const cacheKey = 'asins:' + (uid || 'all');
-
-  // SWR：iframe 重建时 → 命中 localStorage 缓存立即渲染（0 延迟）
-  const list = await swrFetch(cacheKey, () => api(url), (fresh) => {
-    // 后台刷新完成、数据有变化 → 更新界面
-    _applyAsinsList(fresh, uid);
-    _restoreLastAsin(uid);
-  });
-  _applyAsinsList(list, uid);
-  _restoreLastAsin(uid);
-
-  // 如果批量还没跑完，轮询刷新
-  if (!batchReady) {
-    const poll = async () => {
-      const status = await api('/api/batch/status');
-      if (status.ready && !batchReady) {
-        batchReady = true;
-        const fresh = await api(url); swrSet(cacheKey, fresh);
-        _applyAsinsList(fresh, uid);
-      }
-      if (status.llm_pending > 0 || !status.ready) {
-        const fresh = await api(url); swrSet(cacheKey, fresh);
-        _applyAsinsList(fresh, uid);
-        if (status.llm_pending > 0) setTimeout(poll, 3000);
-      }
-    };
-    setTimeout(poll, 2000);
-  }
-}
-
-function renderAsins(){
-  const q = document.getElementById('q').value.trim().toLowerCase();
-  const fp = document.getElementById('f-priority').value;
-  const fh = document.getElementById('f-handle')?.value || '';
-  const fs = document.getElementById('f-site').value;
-  const fst = document.getElementById('f-stage').value;
-  const sortPri = document.getElementById('f-sortpri').checked;
-  const box = document.getElementById('asin-list');
-  box.innerHTML = '';
-
-  let rows = allAsins.filter(a => {
-    if (q && ![a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
-        .filter(Boolean).some(v => String(v).toLowerCase().includes(q))) return false;
-    if (fs && a.site_code !== fs) return false;
-    if (fst && stageCN(a.product_stage) !== fst) return false;
-    if (fp){
-      const p = a.priority || priOf(a.key);
-      if (fp === '__none') { if (p) return false; }
-      else if (p !== fp) return false;
-    }
-    if (fh && aggregateHandleStatus(a).kind !== fh) return false;
-    return true;
-  });
-
-  if (sortPri){
-    rows.sort((a, b) => prioritySort(a, b));
-  }
-
-  document.getElementById('asin-count').textContent = `${rows.length} / ${allAsins.length}`;
-
-  rows.forEach(a => {
-    const p = a.priority || '';
-    const scoreNum = a.score > 0 ? Math.round(a.score) : 0;
-
-    // 优先级标签
-    const priTag = p ? `<span class="pri-dot pri-${p}">${p}</span>`
-      : (scoreNum > 0 ? `<span class="pri-dot pri-P2">P2</span>` : '');
-
-    // 主图
-    const imgSrc = a.image_url || '';
-    const imgHtml = imgSrc
-      ? `<div class="asin-img"><img src="${esc(imgSrc)}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`
-      : `<div class="asin-img asin-img-empty"></div>`;
-
-    // 分数
-    const scoreHtml = scoreNum > 0 ? `<span class="asin-score">${scoreNum}</span>` : '';
-
-    // 异常数量 & 站点
-    const anomN = a.anomaly_count ?? '';
-    const siteLabel = esc(a.site_code||'');
-    const hs = aggregateHandleStatus(a);
-    const inspectTs = parseServerTime(a.last_inspect_at);
-    const judgedClass = p ? ' judged' : '';
-
-    const b = el(`
-      <button class="item asin-item${judgedClass}" data-key="${a.key}">
-        <div class="asin-row">
-          ${imgHtml}
-          <div class="asin-divider"></div>
-          <div class="asin-body">
-            <div class="asin-line1">
-              ${priTag}<b>${esc(a.parent_asin||'-')}</b>${scoreHtml}
-            </div>
-            <div class="asin-line2">
-              <span>${esc(a.shop_account||'?')}</span>
-              <span class="badge b-site">${siteLabel}</span>
-              <span class="badge ${hs.cls}">${esc(hs.label)}</span>
-              ${inspectTs > 0 ? `<span class="asin-time ${isInspectStale(inspectTs)?'stale':''}" title="上次巡检 ${esc(a.last_inspect_at||'')}">${esc(formatRelativeTime(inspectTs))}</span>` : ''}
-            </div>
-          </div>
-        </div>
-      </button>`);
-    b.onclick = () => viewAsin(a, b);
-    box.appendChild(b);
-  });
-
-  // 重建 DOM 后恢复"当前查看产品"的选中态
-  // 避免详情页任意按钮触发 renderAsins() 后左侧选中态丢失
-  if (state.asinActive){
-    const activeBtn = box.querySelector(`button[data-key="${CSS.escape(state.asinActive.key)}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
-  }
-}
-
-document.getElementById('q').addEventListener('input', renderAsins);
-
-// ------- ASIN 详情 -------
-async function viewAsin(a, btn){
-  document.querySelectorAll('#kb-list .item').forEach(x => x.classList.remove('active'));
-  document.querySelectorAll('#asin-list .item').forEach(x => x.classList.remove('active'));
-  btn && btn.classList.add('active');
-  state.asinActive = a;
-  document.getElementById('viewer-title').textContent = 'ASIN · ' + a.parent_asin;
-
-  // 记住"当前查看的 ASIN"到 localStorage —— iframe 重挂载时自动恢复视图
-  try { localStorage.setItem('hcAgent.lastAsin::' + (getUrlUserId()||'all'), a.key); } catch {}
-
-  // fixture 走 SWR：命中缓存立即渲染（0 延迟），后台再拉最新
-  const fixture = await swrFetch('fixture:' + a.key,
-    () => api('/api/fixture/' + encodeURIComponent(a.key)),
-    (fresh) => { renderAsinView(a, fresh.data); _layoutJudgeTab(a); }
-  );
-  renderAsinView(a, fixture.data);
-
-  // 巡检结果 tab 立即渲染（inspectCacheGet 会穿透 localStorage）
-  _layoutJudgeTab(a);
-
-  // 后台补充：如果 inspect 缓存空，从后端拉一次
-  if (!inspectCacheHas(a.key) && batchReady) {
-    try {
-      const codeR = await fetch('/api/inspect/' + encodeURIComponent(a.key), {method:'POST'}).then(r=>r.json());
-      inspectCacheSet(a.key, {result: codeR, ts: Date.now()});
-      _layoutJudgeTab(a);
-    } catch(e) {}
-  } else if (!inspectCacheHas(a.key) && !batchReady) {
-    runInspect(a.key, /* silent */ true);
-  }
-}
-
-// 巡检结果 tab 的统一布局：LLM 顶置 + 代码折叠（无 LLM 时代码直接展示）
-function _layoutJudgeTab(a){
-  const cachedCode = inspectCacheGet(a.key);
-  const cachedLLM = judgeCacheGet(a.key);
-  const hasLLM = cachedLLM && cachedLLM.result && !cachedLLM.result.dry_run;
-
-  const llmSlot = document.getElementById('llm-result-slot');
-  const codeSlot = document.getElementById('code-result-slot');
-  const actionsBox = document.getElementById('judge-actions');
-  if (!llmSlot || !codeSlot) return;
-
-  // 代码巡检 HTML
-  const codeInner = cachedCode
-    ? renderJudgment(cachedCode.result.judgment || {}, cachedCode.result.usage, cachedCode.result.model)
-    : '<div style="color:#94a3b8;font-size:12px;padding:12px 0">' + (batchReady ? '未检测到异常' : '⚡ 加载中…') + '</div>';
-
-  if (hasLLM){
-    // LLM 顶置
-    const ts = new Date(cachedLLM.ts).toLocaleString('zh-CN');
-    llmSlot.style.display = 'block';
-    llmSlot.innerHTML = `
-      <div class="llm-block-header">🔍 AI 深度分析结果<span class="meta">· 模型 ${esc(cachedLLM.result.model||'-')} · ${ts}</span></div>
-      <div class="llm-block-body">${renderJudgment(cachedLLM.result.judgment || {}, cachedLLM.result.usage, cachedLLM.result.model)}</div>
-    `;
-    // 代码结果折叠
-    codeSlot.innerHTML = `
-      <details class="code-fold">
-        <summary>📋 代码规则判定结果（点击展开对照）</summary>
-        <div class="code-fold-body"><div id="judge-result">${codeInner}</div></div>
-      </details>
-    `;
-  } else {
-    llmSlot.style.display = 'none';
-    llmSlot.innerHTML = '';
-    codeSlot.innerHTML = `<div id="judge-result" style="margin-top:4px">${codeInner}</div>`;
-  }
-
-  // 操作按钮：AI 深度分析
-  if (actionsBox){
-    actionsBox.style.display = 'block';
-    actionsBox.innerHTML = `<div style="display:flex;gap:8px;margin-top:10px">
-      <button class="run-btn" onclick="runJudge('${a.key}')" style="font-size:11px;padding:6px 12px">
-        🔍 ${hasLLM ? '重新 AI 深度分析' : 'AI 深度分析'}
-      </button>
-    </div>`;
-  }
-}
-
-function renderAsinView(a, data){
-  const cfgFields = ['parent_asin','parent_seller_sku','shop_account','site_code',
-                     'product_stage','product_position','target_acos_suggest','daily_budget_suggest'];
-  const CN_LABEL = {
-    parent_asin: '父 ASIN', parent_seller_sku: '父 SKU',
-    shop_account: '店铺账号', site_code: '站点',
-    product_stage: '产品阶段', product_position: '产品定位',
-    target_acos_suggest: '目标 ACOS', daily_budget_suggest: '日预算建议',
-  };
-  const cfgVal = (k) => {
-    if (k === 'product_position') return posCN(a[k]);
-    if (k === 'product_stage') return stageCN(a[k]);
-    if (k === 'target_acos_suggest') { const v = a[k]; return v != null ? (v * 100).toFixed(0) + '%' : '—'; }
-    if (k === 'daily_budget_suggest') { const v = a[k]; return v != null ? '$' + Number(v).toFixed(0) : '—'; }
-    return a[k] ?? '—';
-  };
-
-  // 紧凑型基础信息栏（横向排列，不占太多空间）
-  const infoChips = cfgFields.map(k => {
-    const v = cfgVal(k);
-    return `<span class="info-chip"><span class="info-chip-k">${CN_LABEL[k]||k}</span><span class="info-chip-v">${esc(String(v))}</span></span>`;
-  }).join('');
-
-  // 上次巡检时间 chip
-  const inspectTs = parseServerTime(a.last_inspect_at);
-  const inspectChip = inspectTs > 0
-    ? `<span class="info-chip" title="${esc(a.last_inspect_at||'')}" style="background:${isInspectStale(inspectTs)?'#fee2e2':'#f0f9ff'};color:${isInspectStale(inspectTs)?'#dc2626':'#0369a1'}">
-         <span class="info-chip-k">上次巡检</span><span class="info-chip-v">${esc(formatRelativeTime(inspectTs))}</span></span>`
-    : '';
-
-  const infoHtml = `<div class="card info-bar">
-    <div class="info-chips">${infoChips}${inspectChip}</div>
-    ${a.image_url ? `<img class="info-thumb" src="${esc(a.image_url)}" alt="" onerror="this.style.display='none'">` : ''}
-  </div>`;
-
-  // Tab：巡检结果（含 AI 深度分析 + 代码巡检）| 数据问题反馈
-  const tabsHtml = `<div class="tabs" style="margin-top:8px">
-    <button class="tab active" data-tab="tab-code">⚡ 巡检结果</button>
-    <button class="tab" data-tab="tab-data">📝 数据问题反馈</button>
-  </div>
-  <div id="tab-code" class="tab-panel">
-    <!-- LLM 结果 slot：仅在有 LLM 结果时展开 -->
-    <div id="llm-result-slot" style="display:none"></div>
-    <!-- 代码巡检 slot：无 LLM 时直接展示；有 LLM 时被折叠 -->
-    <div id="code-result-slot">
-      <div id="judge-result" style="margin-top:4px">
-        <div style="color:#94a3b8;font-size:12px;padding:12px 0">⚡ 加载中…</div>
-      </div>
-    </div>
-    <div id="judge-actions" style="margin-top:10px;display:none"></div>
-  </div>
-  <div id="tab-data" class="tab-panel" style="display:none">
-    <div id="data-result"></div>
-  </div>`;
-
-  // 数据问题反馈 tab —— 目前为占位，后续接入表单
-  setTimeout(() => {
-    const dataBox = document.getElementById('data-result');
-    if (dataBox) dataBox.innerHTML = `
-      <div class="feedback-placeholder">
-        <div class="icon">📝</div>
-        <div class="title">数据问题反馈</div>
-        <div class="desc">遇到数据缺失、数值异常或字段错位？<br>此功能开发中，稍后将支持一键提交反馈到 IT 处理。</div>
-      </div>`;
-  }, 0);
-
-  document.getElementById('viewer').innerHTML = infoHtml + tabsHtml;
-
-  // Tab 切换事件
-  document.querySelectorAll('#viewer .tab').forEach(t => {
-    t.onclick = () => {
-      document.querySelectorAll('#viewer .tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      document.querySelectorAll('#viewer .tab-panel').forEach(p => p.style.display = 'none');
-      const target = document.getElementById(t.dataset.tab);
-      if (target) target.style.display = '';
-    };
-  });
-}
-
-const SEV_META = {
-  S0: {color:'#dc2626', bg:'#fee2e2', label:'S0 严重'},
-  S1: {color:'#ea580c', bg:'#ffedd5', label:'S1 中等'},
-  S2: {color:'#0891b2', bg:'#cffafe', label:'S2 轻微'},
-};
-const PRI_META = {
-  P0: {color:'#dc2626', bg:'linear-gradient(135deg,#fee2e2,#fecaca)', label:'当天处理'},
-  P1: {color:'#ea580c', bg:'linear-gradient(135deg,#ffedd5,#fed7aa)', label:'3 天内处理'},
-  P2: {color:'#0891b2', bg:'linear-gradient(135deg,#cffafe,#a5f3fc)', label:'7 天内处理'},
-};
-
-// —— 从判定结果里取字段（兼容模块7新结构 + 旧结构）——
-function pickPriority(j){ return j?.优先级信息?.执行优先级 || j?.priority || null; }
-function pickScore(j){ const v=j?.优先级信息?.产品执行分数 ?? j?.product_execution_score; return v==null?null:v; }
-function pickAnomalies(j){ return j?.异常明细 || j?.anomalies || []; }
-function anomScore(a){ return a?.该条执行分数 ?? a?.final_score ?? a?.base_score ?? -1; }
-
-function kvRow(label, val){
-  const empty = (val==null || val==='' );
-  return `<div class="kv"><span class="k">${esc(label)}</span><span class="v${empty?' none':''}">${esc(String(val??'待补充'))}</span></div>`;
-}
-
-// 严重度中文标签 + 圆点色（表格版）
-const TC_SEV = {
-  S0: {bg:'#dc2626', txt:'S0 严重'},
-  S1: {bg:'#f59e0b', txt:'S1 中等'},
-  S2: {bg:'#3b82f6', txt:'S2 轻微'},
-  '数据不足': {bg:'#94a3b8', txt:'数据不足'},
-  '配置待补': {bg:'#64748b', txt:'配置待补'},
-};
-// 异常大类 → 文字色
-const TC_CAT_COLOR = {
-  '链接状态':'#dc2626','内容完整性':'#7c3aed','价格与促销':'#0891b2',
-  '库存与可售':'#b45309','交易表现':'#2563eb','合规与属性':'#be123c','售后':'#0d9488',
-};
-// 处理建议按 ；/;/、拆成 bullet
-function tcSplitActions(s){
-  if(!s || s==='待补充') return [];
-  return String(s).split(/[；;]/).map(x=>x.trim()).filter(Boolean);
-}
-
-// —— 异常状态：待处理 / 处理中 / 处理完成（localStorage 持久化，运营手动切）——
-const STATUS_OPTS = ['待处理','处理中','处理完成'];
-const STATUS_CLASS = {'待处理':'st-todo','处理中':'st-doing','处理完成':'st-done'};
-function _statusKey(asinKey, 问题点位, 命中变体){
-  return `hcAgent.anomStatus::${asinKey||''}::${问题点位||''}::${命中变体||''}`;
-}
-function getAnomStatus(k){ return localStorage.getItem(k) || '待处理'; }
-
-// —— 广告类冷却期（产品级；纯前端 localStorage） ——
-const COOLDOWN_DAYS = 2;
-function _cooldownKey(asinKey){ return `hcAgent.cooldown::${asinKey||''}`; }
-function getCooldownUntil(asinKey){
-  const v = parseInt(localStorage.getItem(_cooldownKey(asinKey)) || '0', 10);
-  return isNaN(v) ? 0 : v;
-}
-function setCooldown(asinKey, days){
-  const until = Date.now() + days*24*3600*1000;
-  localStorage.setItem(_cooldownKey(asinKey), String(until));
-  return until;
-}
-function clearCooldown(asinKey){ localStorage.removeItem(_cooldownKey(asinKey)); }
-function isCoolingDown(asinKey){ return getCooldownUntil(asinKey) > Date.now(); }
-function _isTradingAnom(异常类型){ return 异常类型 === '交易表现'; }
-function formatRemaining(untilTs){
-  const ms = untilTs - Date.now();
-  if (ms <= 0) return '已结束';
-  const days = Math.floor(ms / 86400000);
-  const hours = Math.floor((ms % 86400000) / 3600000);
-  if (days > 0) return `剩 ${days} 天 ${hours} 小时`;
-  const mins = Math.floor((ms % 3600000) / 60000);
-  return hours > 0 ? `剩 ${hours} 小时 ${mins} 分` : `剩 ${mins} 分`;
-}
-function formatMonthDay(ts){
-  if (!ts) return '—';
-  const d = new Date(ts);
-  return `${d.getMonth()+1}月${d.getDate()}日`;
-}
-// 相对时间：3小时前 / 今天 10:20 / 昨天 09:15 / 3天前
-function formatRelativeTime(ts){
-  if (!ts) return '';
-  const now = Date.now();
-  const diff = now - ts;
-  if (diff < 0) return '刚刚';
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(diff / 3600000);
-  const d = new Date(ts);
-  const hhmm = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-  const today = new Date(); today.setHours(0,0,0,0);
-  const tsDay = new Date(ts); tsDay.setHours(0,0,0,0);
-  const dayDiff = Math.round((today - tsDay) / 86400000);
-  if (dayDiff === 0) return `今天 ${hhmm}`;
-  if (dayDiff === 1) return `昨天 ${hhmm}`;
-  if (dayDiff < 7) return `${dayDiff} 天前`;
-  return `${d.getMonth()+1}-${d.getDate()}`;
-}
-// 后端 "2026-07-13 10:20:30" → 时间戳（iOS 兼容用 / 替换 -）
-function parseServerTime(s){
-  if (!s) return 0;
-  return new Date(String(s).replace(/-/g,'/')).getTime();
-}
-// 判断巡检是否陈旧（超过 26 小时无更新 → 显示红）
-function isInspectStale(ts){
-  return ts > 0 && (Date.now() - ts) > 26*3600*1000;
-}
-// 冷却过期检测：过期则清除冷却 + 清除该产品交易表现异常的"处理完成"记录
-function _maybeExpireCooldown(a){
-  if (!a) return;
-  const until = getCooldownUntil(a.key);
-  if (until > 0 && Date.now() >= until){
-    clearCooldown(a.key);
-    for (const p of (a.anomaly_points||[])){
-      if (_isTradingAnom(p['异常类型'])){
-        localStorage.removeItem(_statusKey(a.key, p['问题点位'], p['命中变体']));
-      }
-    }
-  }
-}
-
-// —— 状态修改：交易表现类改成"处理完成"时弹确认 + 触发冷却 ——
-function setAnomStatus(sel){
-  const newVal = sel.value;
-  const stK = sel.dataset.k;
-  const isTrading = sel.dataset.cat === '交易表现';
-  const asinKey = sel.dataset.asin;
-
-  // 交易表现类改成"处理完成"且当前不在冷却中 → 弹确认
-  if (newVal === '处理完成' && isTrading && !isCoolingDown(asinKey)){
-    const prev = getAnomStatus(stK);
-    showCooldownConfirm(
-      () => {
-        // 用户确认：落状态 + 触发冷却 + 刷新
-        localStorage.setItem(stK, newVal);
-        setCooldown(asinKey, COOLDOWN_DAYS);
-        const a = state.asinActive;
-        if (a && a.key === asinKey) _layoutJudgeTab(a);
-        renderAsins();
-      },
-      () => {
-        // 用户取消：select 回退到原值
-        sel.value = prev;
-        sel.className = STATUS_CLASS[prev] || 'st-todo';
-      }
-    );
-    return;
-  }
-
-  localStorage.setItem(stK, newVal);
-  sel.className = STATUS_CLASS[newVal] || 'st-todo';
-  renderAsins();  // 状态变更 → 左侧聚合徽章同步刷新
-}
-
-// —— 冷却确认弹窗控制 ——
-let _cooldownPending = null;
-function showCooldownConfirm(onOk, onCancel){
-  _cooldownPending = { onOk, onCancel };
-  document.getElementById('cd-mask').classList.add('open');
-}
-function cooldownConfirmOk(){
-  document.getElementById('cd-mask').classList.remove('open');
-  const p = _cooldownPending; _cooldownPending = null;
-  if (p && p.onOk) p.onOk();
-}
-function cooldownConfirmCancel(){
-  document.getElementById('cd-mask').classList.remove('open');
-  const p = _cooldownPending; _cooldownPending = null;
-  if (p && p.onCancel) p.onCancel();
-}
-
-// 聚合处理状态：优先级 处理中 > 待处理 > 处理完成 > 配置待补 > 无异常 > 冷却中(覆盖)
-// 冷却期内，交易表现类异常在聚合里视为"处理完成"；若产品最终状态为"处理完成/无异常"则展示"冷却中"
-// 返回 {label, cls, kind} 供徽章渲染 + 筛选
-function aggregateHandleStatus(a){
-  _maybeExpireCooldown(a);   // 每次聚合前检测冷却过期
-  const cooling = isCoolingDown(a.key);
-  const pts = a.anomaly_points || [];
-  const cpCnt = a.config_pending_count || 0;
-
-  // 无真异常时（冷却也不显示，因为没广告异常了）
-  if (pts.length === 0){
-    if (cpCnt > 0) return {label:'配置待补', cls:'b-hs-config', kind:'配置待补'};
-    return {label:'无异常', cls:'b-hs-empty', kind:'无异常'};
-  }
-
-  let anyDoing = false, allDone = true;
-  for (const p of pts){
-    const raw = getAnomStatus(_statusKey(a.key, p['问题点位'], p['命中变体']));
-    // 冷却期内，交易表现类异常一律视为"处理完成"
-    const st = (cooling && _isTradingAnom(p['异常类型'])) ? '处理完成' : raw;
-    if (st === '处理中') anyDoing = true;
-    if (st !== '处理完成') allDone = false;
-  }
-  if (anyDoing) return {label:'处理中', cls:'b-hs-doing', kind:'处理中'};
-  if (allDone){
-    // 冷却期内全部处理完成 → 展示"冷却中 · 剩 N 天"
-    if (cooling){
-      const until = getCooldownUntil(a.key);
-      return {label:`冷却中 · ${formatRemaining(until)}`, cls:'b-hs-cooling', kind:'冷却中'};
-    }
-    return {label:'处理完成', cls:'b-hs-done', kind:'处理完成'};
-  }
-  // 待处理：按优先级 P0/P1/P2 分色
-  const pri = a.priority || 'P2';
-  return {label:'待处理', cls:`b-hs-todo-${pri}`, kind:'待处理'};
-}
-
-// 广告决策按钮：跳转前把该异常自动标记为"处理中"
-// 规则：仅"待处理"→"处理中"；"处理中"/"处理完成"保持不变，避免已完成的被回退
-function markDoingAndOpen(url, statusKey){
-  const cur = getAnomStatus(statusKey);
-  if (cur === '待处理'){
-    localStorage.setItem(statusKey, '处理中');
-    // 更新右侧当前那个 select（如果还在页面上）
-    const sel = document.querySelector(`select[data-k="${CSS.escape(statusKey)}"]`);
-    if (sel){
-      sel.value = '处理中';
-      sel.className = STATUS_CLASS['处理中'];
-    }
-    renderAsins();  // 左侧聚合徽章刷新
-  }
-  window.open(url, '_blank', 'noopener');
-  return false;  // 阻止 <a href> 默认行为，避免重复打开
-}
-
-// —— 广告决策 agent 跳转 URL（交易表现类异常专用）——
-const AD_AGENT_BASE = 'https://mcp-gateway.example.com/demo/ad-asisitant-agent.html';
-function buildAdAgentUrl(loc){
-  const st = state.asinActive || {};
-  const q = new URLSearchParams({
-    shopAccount: st.shop_account || loc.店铺账号 || '',
-    productName: st.product_name || '',
-    shopId: st.shop_id || '',
-    parentAsin: loc.父ASIN || st.parent_asin || '',
-    parentSellerSku: st.parent_seller_sku || '',
-    productPosition: st.product_position || '',
-    productStage: st.product_stage || '',
-    seasonType: loc.淡旺季 || '',
-    siteCode: st.site_code || loc.站点 || '',
-    userId: getUrlUserId() || loc.负责人ID || '',
-  });
-  return AD_AGENT_BASE + '?' + q.toString();
-}
-
-function renderJudgment(j, usage, model){
-  const P = pickPriority(j) || 'P2';
-  const pm = PRI_META[P] || PRI_META.P2;
-  const score = pickScore(j);
-  const summary = j.human_summary || '';
-  const loc = j.定位信息 || {};
-  const pri = j.优先级信息 || {};
-
-  const anomalies = pickAnomalies(j).slice().sort((a,b)=>anomScore(b)-anomScore(a));
-
-  // ── 头部（店铺信息 + 定位 + 优先级/严重度）──
-  const 店铺站点 = loc.店铺站点 || '—';
-  const 父ASIN = loc.父ASIN || '—';
-  const 站点 = loc.站点 || (店铺站点.split('/')[1]||'').trim() || '—';
-    const 严重度 = pri.父卡严重度 || '-';
-  const header = `
-    <div class="tc-header">
-      <div class="tc-col">
-        <span class="tc-k">店铺/站点</span><span class="tc-v">${esc(店铺站点)}</span>
-        <span class="tc-k">父ASIN</span><span class="tc-v">${esc(父ASIN)}</span>
-        <span class="tc-k">站点</span><span class="tc-v">${esc(站点)}</span>
-      </div>
-      <div class="tc-col">
-        <span class="tc-k">产品定位</span><span class="tc-v hl">${esc(posCN(loc.产品定位)||loc.产品定位||'—')}</span>
-        <span class="tc-k">产品阶段</span><span class="tc-v">${esc(stageCN(loc.产品阶段)||loc.产品阶段||'—')}</span>
-        <span class="tc-k">淡旺季</span><span class="tc-v">${esc(seasonCN(loc.淡旺季)||loc.淡旺季||'—')}</span>
-      </div>
-      <div class="tc-pri">
-        <div style="text-align:center">
-          <div class="tc-pri-badge" style="background:${pm.color}">${esc(P)}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;align-items:center">
-          <span class="tc-pri-time">${esc(pri.处理时限||pm.label)}</span>
-          ${严重度 && 严重度!=='-' ? `<span class="tc-sev-badge">${esc(严重度)}</span>`:''}
-        </div>
-      </div>
-    </div>`;
-
-  // ── 异常明细表格 ──
-  let tableBlock = '<div style="color:#94a3b8;font-size:13px;padding:16px 0">✅ 未识别到异常</div>';
-  if (anomalies.length){
-    const rows = anomalies.map(a=>{
-      const sev = a.该条严重度 || 'S2';
-      const sm = TC_SEV[sev] || TC_SEV.S2;
-      const 类型 = a.异常类型 || (a.异常大类||'').replace(/^[\d.]+\s*/,'') || '';
-      const catLabel = !类型 ? '' : (类型==='配置缺失' || 类型.endsWith('异常')) ? 类型 : 类型+'异常';
-      const catColor = TC_CAT_COLOR[类型] || '#64748b';
-      const 具体表现 = a.具体表现 || a.问题点位 || '';
-      const asin = a.命中变体 || '—';
-      const isChildAsin = asin.includes('_') || asin.includes('/');
-      const 变体 = a.变体重要性 || '';
-      const isMain = 变体.includes('主要');
-      const 层级 = a.作用层级 || '链接级';
-      const isVariant = 层级.includes('变体');
-      const 判据 = translateBasis(a.判断依据 || '');
-      // 优先用结构化"数据快照"，无则回落到技术依据
-      const 数据Html = renderSnapshot(a.数据快照, tcCleanBasis(a.技术依据 || ''));
-      const actions = tcSplitActions(a.处理建议);
-
-      // 状态：优先 localStorage 里运营手动改过的，否则默认 待处理
-      const asinKey = state.asinActive?.key || '';
-      const stK = _statusKey(asinKey, a.问题点位, a.命中变体);
-      const curSt = getAnomStatus(stK);
-      const stCls = STATUS_CLASS[curSt] || 'st-todo';
-      const 是交易表现 = 类型 === '交易表现';
-      const 是配置待补 = 类型 === '配置缺失';
-      // 冷却期内 且 是交易表现异常 → 状态列改用冷却徽章（不显示 select 也不显示广告决策）
-      const cooling = 是交易表现 && isCoolingDown(asinKey);
-      let stateCell = '';
-      if (cooling){
-        const until = getCooldownUntil(asinKey);
-        const rem = formatRemaining(until);
-        // 上次巡查时间：从 code_judgment.判定时间 拿（j 是本函数外层的 renderJudgment 参数）
-        const lastInspectTs = j?.判定时间 ? new Date(j.判定时间.replace(/-/g,'/')).getTime() : null;
-        const lastLabel = lastInspectTs ? formatMonthDay(lastInspectTs) : '—';
-        stateCell = `<div class="tc-cool">
-          <span class="tc-cool-badge">❄ 冷却中</span>
-          <span class="tc-cool-meta">${esc(rem)}</span>
-          <span class="tc-cool-meta">上次巡查 ${esc(lastLabel)}</span>
-        </div>`;
-      } else {
-        const stSelect = `<select class="${stCls}" data-k="${esc(stK)}" data-cat="${esc(类型||'')}" data-asin="${esc(asinKey)}" onchange="setAnomStatus(this)">${
-          STATUS_OPTS.map(o=>`<option value="${o}" ${o===curSt?'selected':''}>${o}</option>`).join('')
-        }</select>`;
-        // 交易表现类 + 配置待补类异常 → 提供跳转按钮到广告决策 agent
-        const adUrl = (是交易表现 || 是配置待补) ? buildAdAgentUrl(loc) : '';
-        const adBtn = (是交易表现 || 是配置待补)
-          ? `<a class="tc-adlink" href="${adUrl}" onclick="return markDoingAndOpen('${adUrl.replace(/'/g,"\\'")}', '${esc(stK)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>`
-          : '';
-        stateCell = `${stSelect}${adBtn}`;
-      }
-
-      return `<tr>
-        <td><span class="tc-sev" style="background:${sm.bg}22;color:${sm.bg}">${esc(sm.txt)}</span></td>
-        <td><div class="tc-cat" style="color:${catColor}">${esc(catLabel)}</div><div class="tc-point">${esc(a.问题点位||'')}${a.AI补录 ? '<span class="tc-ai-tag" title="AI 深度分析新发现的异常，代码规则未识别">🔮 AI 补录</span>' : ''}</div></td>
-        <td>${esc(具体表现)}</td>
-        <td><span class="tc-asin ${isChildAsin?'link':''}">${esc(asin)}</span></td>
-        <td>${变体 ? `<span class="tc-var ${isMain?'main':''}">${esc(变体)}</span>`:'—'}</td>
-        <td><span class="tc-level ${isVariant?'variant':''}">${esc(层级)}</span></td>
-        <td><div class="tc-basis">${esc(判据)}</div>${数据Html}</td>
-        <td>${actions.length ? `<ul class="tc-actions">${actions.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : '<span style="color:#cbd5e1">—</span>'}</td>
-        <td><div class="tc-status">${stateCell}</div></td>
-      </tr>`;
-    }).join('');
-    tableBlock = `
-      <div class="tc-anom-title">异常明细列表</div>
-      <div class="tc-table-wrap">
-        <table class="tc-table">
-          <thead><tr>
-            <th>严重度</th><th>异常类型</th><th>具体表现</th><th>命中ASIN</th>
-            <th>变体重要性</th><th>作用层级</th><th>判断依据/数据</th><th>处理建议</th><th>状态</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
+      <div class="data-table-scroll">
+        <table class="data-table">
+          <thead><tr><th>优先级</th><th>产品</th><th>异常大类</th><th>问题点位</th><th>持续</th><th>执行分</th><th>状态</th></tr></thead>
+          <tbody id="allBody"><tr><td colspan="7" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
-      <div class="tc-note">异常明细列表 · 默认按严重度降序 · S0(红)/S1(橙)/S2(蓝)　执行分 ${score ?? '-'} · 共 ${anomalies.length} 项</div>`;
-  }
+    </div>
+  </section>
+</div>
 
-  const isLLMModel = model && model !== 'code-pipeline';
-  const metaLine = [
-    isLLMModel ? `模型 ${esc(model)}` : '',
-    usage?.input_tokens ? `入 ${usage.input_tokens}` : '',
-    usage?.output_tokens ? `出 ${usage.output_tokens}` : '',
-  ].filter(Boolean).join(' · ');
+<!-- 视图3: 调整复盘 -->
+<div class="view" id="viewReview">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">执行闭环</div><h1>调整复盘</h1><p>已执行动作 + 到达复查时间的产品，判断调整是否有效。</p></div>
+      <div class="page-actions"><button class="btn" id="reviewReloadBtn">刷新</button></div>
+    </div>
+    <div class="kpi-grid" id="reviewKpi"></div>
+    <div class="page-panel">
+      <div class="filter-row">
+        <select id="reviewPeriod"><option value="today">今日到期</option><option value="3d">3天内</option><option value="7d">7天内</option><option value="all">全部记录</option></select>
+        <span class="filter-result">共 <b id="reviewResultCount">0</b> 条</span>
+      </div>
+      <div class="data-table-scroll">
+        <table class="data-table">
+          <thead><tr><th>产品</th><th>原异常</th><th>执行动作</th><th>复查时间</th><th>效果</th><th>备注</th></tr></thead>
+          <tbody id="reviewBody"><tr><td colspan="6" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
 
-  return `
-    <div class="tc-caption">区域 2+3：商品信息 + 优先级（合并）</div>
-    ${header}
-    ${summary ? `<div class="tc-note" style="color:#64748b;margin-top:10px">${esc(summary)}</div>`:''}
-    ${tableBlock}
-    ${metaLine ? `<div class="judge-meta">${metaLine}</div>` : ''}
-    <!-- <details style="margin-top:6px"><summary style="cursor:pointer;font-size:10px;color:#cbd5e1">JSON</summary>
-    <pre style="max-height:200px;margin-top:4px;font-size:11px">${esc(JSON.stringify(j, null, 2))}</pre></details> -->
-  `;
+<!-- 视图4: 数据健康 -->
+<div class="view" id="viewHealth">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">判定可信度保障</div><h1>数据健康</h1><p>确认巡检依赖的数据源是否同步、字段是否覆盖完整。</p></div>
+      <div class="page-actions"><span class="filter-result" id="lastHealthCheck">-</span><button class="btn primary" id="healthReloadBtn">重新检查</button></div>
+    </div>
+    <div class="kpi-grid" id="healthKpi"></div>
+    <div class="health-grid">
+      <div class="page-panel">
+        <div class="panel-title"><div><b>每日数据表覆盖率</b><span>按日期 × 产品，覆盖率 ≥90% 正常</span></div></div>
+        <div class="source-list" id="healthDaily"></div>
+      </div>
+      <div class="page-panel">
+        <div class="panel-title"><div><b>快照表覆盖率</b><span>每个产品至少一条即视为覆盖</span></div></div>
+        <div class="source-list" id="healthSnapshot"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+</div>
+
+<!-- 首次访问选人弹窗 -->
+<div class="user-gate" id="userGate">
+  <div class="user-gate-card">
+    <div style="font-size:38px;margin-bottom:10px">👤</div>
+    <h2>选择工作台身份</h2>
+    <p>选择你的账号进入运营工作台，仅显示你名下的商品与异常</p>
+    <select id="userGateSelect"><option value="">加载中…</option></select>
+    <button id="userGateConfirm">进入工作台</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+const state = {
+  viewerId: null, viewerName: '', targetId: null,
+  role: 'operator', reports: [], users: [],
+  todayData: null, allData: null, reviewData: null, healthData: null,
+  selectedEventUid: null,
+  filters: { q:'', priority:'', status:'', quickMode:'all' },
+  view: 'today',
+};
+const LS_KEY = 'hcAgent.viewerId';
+
+async function api(path, opts={}){
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1700);
+}
+function esc(s){ return String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtDate(iso){ if(!iso) return '-'; return String(iso).slice(0,10); }
+function statusClass(s){
+  if (s === '处理中') return 'doing';
+  if (s === '已完成' || s === '已关闭') return 'done';
+  if (s === '待复查') return 'wait';
+  return 'pending';
+}
+function withTarget(url){
+  const sep = url.includes('?') ? '&' : '?';
+  let q = `userId=${state.viewerId}`;
+  if (state.targetId && state.targetId !== state.viewerId) q += `&targetId=${state.targetId}`;
+  return url + sep + q;
 }
 
-// 数字格式化：float 兜底修显示
-// - 长小数（3+ 位）自动截断到 2 位
-// - 明显是比例（0<v<=1 且不带 %/$）视上下文格式化
-function _fmtNum(v){
-  const n = Number(v);
-  if (!isFinite(n)) return v;
-  if (Number.isInteger(n)) return String(n);
-  // 保留 2 位小数
-  return n.toFixed(2).replace(/\.?0+$/, '');
+// ============================================================
+// 视图切换
+// ============================================================
+document.querySelectorAll('.nav-item').forEach(item => { item.onclick = () => switchView(item.dataset.view); });
+function switchView(v){
+  state.view = v;
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.view === v));
+  document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).classList.add('active');
+  location.hash = v === 'today' ? '' : v;
+  if (!state.viewerId) return;
+  if (v === 'today' && !state.todayData) loadToday();
+  if (v === 'all') loadAll();
+  if (v === 'review') loadReview();
+  if (v === 'health') loadHealth();
 }
 
-// 判据清洗 + 术语翻译：把后端代码术语翻译成运营语言
-function tcCleanBasis(s){
-  if(!s) return '';
-  let out = String(s)
-    // 砍后端调试串
-    .replace(/→\s*S[012].*$/,'')
-    .replace(/（[^）]*不预警[^）]*）/g,'')
-    .replace(/（[^）]*暂不告警[^）]*）/g,'')
-    // 术语替换（后端可能没改到的兜底）
-    .replace(/\bvs\b/gi, '对比')
-    .replace(/低于基线/g, '低于均值')
-    .replace(/高于基线/g, '高于均值')
-    .replace(/有效销量基线/g, '有效销量基准')
-    .replace(/有效卡位基线/g, '有效卡位基准')
-    .replace(/偏离比/g, '偏离幅度')
-    .replace(/不预警/g, '暂不告警')
-    .replace(/取高/g, '取严重')
-    .replace(/双基准/g, '两项指标')
-    .replace(/门槛/g, '触发条件')
-    .replace(/分档名/g, '等级')
-    .replace(/落档/g, '判定等级')
-    // 数字长小数截断：0.3333333 → 0.33
-    .replace(/(\d+)\.(\d{3,})/g, (m, i, d) => `${i}.${d.slice(0,2)}`)
-    .replace(/\s+/g,' ')
-    .trim();
-  return out;
-}
-
-// 数据快照渲染：kv 字段做 chip 标签、series 逐日序列做单独一行
-// 无快照时回落到"技术依据"字符串
-function renderSnapshot(snapshot, fallbackText){
-  if (Array.isArray(snapshot) && snapshot.length){
-    const kvs = snapshot.filter(x => x && x.kind !== 'series' && x.value && x.value !== '—');
-    const series = snapshot.filter(x => x && x.kind === 'series' && x.value);
-    let html = '<div class="tc-snap">';
-    if (kvs.length){
-      html += '<div class="tc-snap-kv">'
-        + kvs.map(x => `<span class="kv"><span class="k">${esc(x.label)}</span><span class="v">${esc(x.value)}</span></span>`).join('')
-        + '</div>';
-    }
-    for (const s of series){
-      html += `<div class="tc-snap-series"><span class="k">${esc(s.label)}</span>${esc(s.value)}</div>`;
-    }
-    html += '</div>';
-    return html;
-  }
-  // 无结构化快照 → 用原来的"技术依据"字符串
-  if (fallbackText){
-    return `<div class="tc-basis" style="margin-top:4px;color:#94a3b8">${esc(fallbackText)}</div>`;
-  }
-  return '';
-}
-
-// 判据翻译：更彻底的运营化改写（用在"判断依据"列，比 tcCleanBasis 更进一步）
-function translateBasis(s){
-  if(!s) return '';
-  let out = tcCleanBasis(s);
-  // "缺失字段 [xxx]" → "尚未获取 xxx 数据"（允许中文/数字/中文标点，非贪婪到 ] 或空白）
-  out = out.replace(/缺失字段\s*\[?['"]?([^\]'"\s，。；]+)['"]?\]?/g, '尚未获取 $1 数据');
-  // "分档名称=xxx" 或 "等级=xxx"（前面 tcCleanBasis 已把"分档名"→"等级"）→ "等级 xxx"
-  out = out.replace(/(?:分档名称|等级)\s*=\s*([^\s,，]+)/g, '等级 $1');
-  // "连续天数 = N" → "已连续 N 天"
-  out = out.replace(/连续天数\s*[=为]\s*(\d+)/g, '已连续 $1 天');
-  // "样本量 < N" → "样本不足（<N）"
-  out = out.replace(/样本量\s*<\s*(\d+)/g, '样本不足 (<$1)');
-  return out;
-}
-
-async function runJudge(key){
-  const llmSlot = document.getElementById('llm-result-slot');
-  // loading 顶置显示
-  if (llmSlot){
-    llmSlot.style.display = 'block';
-    llmSlot.innerHTML = `<div class="llm-block-header">🔍 AI 深度分析中…</div>
-      <div class="llm-block-body" style="text-align:center;color:#64748b;animation:pulse 1.4s ease-in-out infinite;padding:20px">
-        📊 拼装 prompt · 调用 DeepSeek…
-      </div>`;
-  }
-
-  try {
-    const r = await fetch('/api/judge/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
-    if (r.dry_run){
-      if (llmSlot) llmSlot.innerHTML = `<div style="background:#fef3c7;padding:10px 12px;border-radius:6px;color:#92400e;font-size:12px">
-        ⚠️ ${esc(r.note)}<br>提示词长度：system ${r.system_length} 字符 · user ${r.user_length} 字符
-        </div>`;
-    } else {
-      judgeCacheSet(key, {result: r, ts: Date.now()});
-      const a = allAsins.find(x => x.key === key) || state.asinActive;
-      if (a) _layoutJudgeTab(a);
-      renderAsins();  // 刷新左列
-    }
-  } catch(e) {
-    if (llmSlot) llmSlot.innerHTML = `<div style="color:#dc2626;padding:10px">错误：${esc(String(e))}</div>`;
-  }
-}
-
-// ------- 代码巡检 -------
-function showInspectResult(key, r){
-  // 排序分数更新
-  const pri = (r.judgment || {}).优先级信息 || {};
-  const aInfo = allAsins.find(x => x.key === key);
-  if (aInfo && !judgeCacheHas(key)) {
-    aInfo.score = pri.产品执行分数 || 0;
-    aInfo.priority = pri.执行优先级 || 'P2';
-  }
-  // 通过统一布局函数刷新（LLM 优先，否则展开代码结果）
-  const a = aInfo || state.asinActive;
-  if (a) _layoutJudgeTab(a);
-}
-
-async function runInspect(key, silent){
-  const box = document.getElementById('judge-result');
-  if (!silent && box) {
-    box.innerHTML = '<div style="color:#059669;animation:pulse 1.4s ease-in-out infinite">⚡ 代码巡检中…（本地判定，通常 1-2 秒）</div>';
-  }
-
-  try {
-    const r = await fetch('/api/inspect/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
-    inspectCacheSet(key, {result: r, ts: Date.now()});
-    showInspectResult(key, r);
-    renderAsins();
-  } catch(e) {
-    const errBox = document.getElementById('judge-result');
-    if (errBox) errBox.innerHTML = `<div style="color:#dc2626;font-size:12px">⚡ 代码巡检错误：${esc(String(e))}</div>`;
-  }
-}
-
-// ------- 批量判定 -------
-function refreshBatchTable(){
-  const scope = document.getElementById('batch-scope').value;
-  const limit = parseInt(document.getElementById('batch-limit').value);
-  const list = pickBatch(scope, limit);
-  renderBatchTable(list);
-  const prog = document.getElementById('batch-progress');
-  if (prog && !prog.querySelector('.bar')){
-    const cached = list.filter(a => judgeCacheHas(a.key)).length;
-    prog.innerHTML = `待判定 <b>${list.length}</b> 个 · 其中已缓存 <b>${cached}</b> 个（会直接复用）`;
-  }
-}
-function openBatch(){
-  document.getElementById('batch-mask').classList.add('open');
-  refreshBatchTable();
-}
-function closeBatch(){ document.getElementById('batch-mask').classList.remove('open'); }
-
-function pickBatch(scope, limit){
-  const q = document.getElementById('q').value.trim().toLowerCase();
-  let list = allAsins.slice();
-  if (scope === 'filter' && q){
-    list = list.filter(a =>
-      [a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code, a.product_stage]
-      .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
-    );
-  } else if (scope === 'uncached'){
-    list = list.filter(a => !judgeCacheHas(a.key));
-  }
-  return list.slice(0, limit);
-}
-
-function renderBatchTable(list){
-  const tbody = document.getElementById('batch-tbody');
-  tbody.innerHTML = list.map(a => {
-    const cached = judgeCacheGet(a.key);
-    if (cached) return rowHtml(a, cached.result.judgment, 'done');
-    return `<tr data-key="${a.key}" class="batch-row-pending">
-      <td><b>${esc(a.parent_asin||'-')}</b></td>
-      <td>${esc(a.shop_account||'')}</td>
-      <td colspan="4">待判定</td>
-      <td><button class="mini-btn" onclick="goToAsin('${a.key}')">跳转</button></td>
-    </tr>`;
-  }).join('');
-}
-
-function rowHtml(a, j, status){
-  const P = pickPriority(j) || 'P2';
-  const pm = PRI_META[P] || PRI_META.P2;
-  const 时限 = j?.优先级信息?.处理时限 || pm.label;
-  return `<tr data-key="${a.key}" class="batch-row-${status}">
-    <td><b>${esc(a.parent_asin||'-')}</b><br><span style="font-size:11px;color:#94a3b8">${esc(a.parent_seller_sku||'')}</span></td>
-    <td>${esc(a.shop_account||'')}<br><span style="font-size:11px;color:#94a3b8">${esc(a.site_code||'')}</span></td>
-    <td><span class="pri-mini" style="background:${pm.color}">${esc(P)}</span></td>
-    <td style="font-size:12px">${esc(时限)}</td>
-    <td><b>${pickScore(j) ?? '-'}</b></td>
-    <td style="max-width:340px">${esc(j.headline||'-')}</td>
-    <td><button class="mini-btn" onclick="goToAsin('${a.key}')">查看详情</button></td>
-  </tr>`;
-}
-
-function goToAsin(key){
-  closeBatch();
-  const a = allAsins.find(x => x.key === key);
-  const btn = document.querySelector(`#asin-list button[data-key='${CSS.escape(key)}']`);
-  if (a) viewAsin(a, btn);
-  btn && btn.scrollIntoView({behavior:'smooth', block:'center'});
-}
-
-async function runBatch(){
-  const scope = document.getElementById('batch-scope').value;
-  const limit = parseInt(document.getElementById('batch-limit').value);
-  const conc = parseInt(document.getElementById('batch-conc').value);
-  const list = pickBatch(scope, limit);
-  renderBatchTable(list);
-  const runBtn = document.getElementById('batch-run-btn');
-  runBtn.disabled = true; runBtn.innerHTML = '<span class="spinner"></span> 判定中…';
-  const prog = document.getElementById('batch-progress');
-  const t0 = Date.now();
-  let done = 0, failed = 0;
-  const total = list.length;
-  function updateProg(){
-    const pct = total ? (done/total*100).toFixed(0) : 0;
-    const elapsed = ((Date.now()-t0)/1000).toFixed(0);
-    prog.innerHTML = `进度 ${done}/${total} · 失败 ${failed} · 已用 ${elapsed}s
-      <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`;
-  }
-  updateProg();
-
-  const queue = list.slice();
-  async function worker(){
-    while (queue.length){
-      const a = queue.shift();
-      const tr = document.querySelector(`#batch-tbody tr[data-key='${CSS.escape(a.key)}']`);
-      if (tr) tr.className = 'batch-row-running';
-      try {
-        // 用缓存
-        let r = judgeCacheGet(a.key)?.result;
-        if (!r){
-          const resp = await fetch('/api/judge/' + encodeURIComponent(a.key), {method:'POST'});
-          if (!resp.ok) throw new Error('HTTP '+resp.status);
-          r = await resp.json();
-          if (!r.dry_run) judgeCacheSet(a.key, {result: r, ts: Date.now()});
-        }
-        const j = r.judgment || {};
-        if (tr) tr.outerHTML = rowHtml(a, j, 'done');
-        renderAsins();  // 每完成一个就刷新左列排序
-      } catch(e) {
-        failed++;
-        if (tr) { tr.className = 'batch-row-error'; tr.querySelector('td:nth-child(3)').setAttribute('colspan','4'); tr.innerHTML = `
-          <td><b>${esc(a.parent_asin||'-')}</b></td>
-          <td>${esc(a.shop_account||'')}</td>
-          <td colspan="4">❌ ${esc(String(e))}</td>
-          <td>-</td>`; }
-      }
-      done++;
-      updateProg();
-    }
-  }
-  await Promise.all(Array.from({length:conc}, worker));
-  runBtn.disabled = false; runBtn.innerHTML = '▶ 重新运行';
-  prog.innerHTML += ' · <b style="color:#059669">完成</b>';
-}
-
-// ------- 数据抓取健康度（暂时关闭） -------
-/*
-let _healthReport = null;
-async function loadHealth(){
-  try {
-    _healthReport = await api('/api/sync-health');
-    renderHealthChip();
-  } catch(e){}
-}
-function renderHealthChip(){
-  const chip = document.getElementById('health-chip');
-  const txt = document.getElementById('health-chip-text');
-  if (!chip || !txt) return;
-  const r = _healthReport || {};
-  if (!r.summary){
-    chip.className = 'health-chip none';
-    txt.textContent = '数据 未检查';
-    return;
-  }
-  const status = r.summary.status;
-  const minCov = (r.summary.min_coverage * 100).toFixed(0);
-  chip.className = 'health-chip ' + (status === 'ok' ? 'ok' : status === 'warn' ? 'warn' : 'fail');
-  txt.textContent = `数据 ${minCov}%`;
-}
-function openHealthPanel(){
-  const mask = document.getElementById('health-mask');
-  const body = document.getElementById('health-body');
-  const summary = document.getElementById('health-summary');
-  const r = _healthReport;
-  if (!r || !r.summary){
-    body.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">尚未执行过覆盖率检查<br><small>需在服务器上运行：<code>python -m data.check_coverage</code></small></div>';
-    summary.textContent = '';
-    mask.classList.add('open'); return;
-  }
-  summary.textContent = `生成时间 ${r.generated_at} · 最低覆盖率 ${(r.summary.min_coverage*100).toFixed(1)}% · 平均 ${(r.summary.avg_coverage*100).toFixed(1)}% · 状态 ${r.summary.status.toUpperCase()}`;
-
-  const covClass = c => c >= 0.9 ? 'cov-ok' : c >= 0.7 ? 'cov-warn' : 'cov-fail';
-  let html = '';
-  for (const [d, tbls] of Object.entries(r.daily || {})){
-    html += `<h4>▶ 日期 ${esc(d)}</h4>
-      <table><thead><tr><th>数据域</th><th>覆盖</th><th>比例</th><th>缺失</th></tr></thead><tbody>`;
-    for (const [tbl, x] of Object.entries(tbls)){
-      if (x.error){ html += `<tr><td>${esc(x.name)}</td><td colspan="3" style="color:#dc2626">${esc(x.error)}</td></tr>`; continue; }
-      html += `<tr>
-        <td>${esc(x.name)} <small style="color:#94a3b8">${esc(tbl)}</small></td>
-        <td>${x.found}/${x.expected}</td>
-        <td class="${covClass(x.coverage)}">${(x.coverage*100).toFixed(1)}%</td>
-        <td>${x.missing_count}</td>
-      </tr>`;
-    }
-    html += '</tbody></table>';
-  }
-  if (r.snapshot){
-    html += `<h4>▶ 快照表</h4>
-      <table><thead><tr><th>数据域</th><th>覆盖</th><th>比例</th><th>缺失</th></tr></thead><tbody>`;
-    for (const [tbl, x] of Object.entries(r.snapshot)){
-      if (x.error){ html += `<tr><td>${esc(x.name)}</td><td colspan="3" style="color:#dc2626">${esc(x.error)}</td></tr>`; continue; }
-      html += `<tr>
-        <td>${esc(x.name)} <small style="color:#94a3b8">${esc(tbl)}</small></td>
-        <td>${x.found}/${x.expected}</td>
-        <td class="${covClass(x.coverage)}">${(x.coverage*100).toFixed(1)}%</td>
-        <td>${x.missing_count}</td>
-      </tr>`;
-    }
-    html += '</tbody></table>';
-  }
-  body.innerHTML = html;
-  mask.classList.add('open');
-}
-function closeHealthPanel(){ document.getElementById('health-mask').classList.remove('open'); }
-*/
-
-function exportBatch(){
-  const rows = [['ASIN','SKU','店铺','站点','优先级','时限','分数','结论','异常数','处理建议']];
-  for (const a of allAsins){
-    const cached = judgeCacheGet(a.key);
-    if (!cached) continue;
-    const j = cached.result.judgment || {};
-    const anoms = pickAnomalies(j);
-    rows.push([
-      a.parent_asin, a.parent_seller_sku, a.shop_account, a.site_code,
-      pickPriority(j), j?.优先级信息?.处理时限, pickScore(j),
-      (j.headline||'').replace(/,/g,'，'),
-      anoms.length,
-      anoms.map(x=>x.处理建议||'').join(' | ').replace(/,/g,'，'),
-    ]);
-  }
-  const csv = '﻿' + rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download = `巡检批量结果_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
-}
-
-if (REPORT_MODE) {
-  document.querySelector(".layout").classList.add("report-mode");
-  if (REPORT_KEY && (REPORT_KEY.type === "user" || REPORT_KEY.type === "both")) {
-    // userId 模式：自动选中负责人（同步，必须在 loadAsins 前），展示其 ASIN 列表 + 负责人名
-    setUrlUserId(REPORT_KEY.userId);
-  }
-  // 预加载用户列表存入 allUsers（供 loadAsins 中 userName 显示 + header 展示）
-  // SWR：iframe 重建时命中 localStorage 缓存立即渲染
-  const _applyReportHeader = (users) => {
-    allUsers = users || [];
-    if (REPORT_KEY && (REPORT_KEY.type === "user" || REPORT_KEY.type === "both")) {
-      const u = allUsers.find(x => String(x.user_id) === String(REPORT_KEY.userId));
-      const nm = u ? u.user_name : '未知负责人';
-      const h3 = document.querySelector('.col:nth-child(2) h3');
-      if (h3) { h3.textContent = nm + ' · 巡检列表'; h3.style.cssText = 'font-size:16px;font-weight:700;color:#1e293b'; }
-      document.getElementById('viewer-title').textContent = nm;
-    }
-  };
-  swrFetch('users', () => api('/api/users').catch(() => []), _applyReportHeader).then(_applyReportHeader);
-  if (REPORT_KEY && (REPORT_KEY.type === "single" || REPORT_KEY.type === "both")) {
-    // 单产品模式：自动打开该产品判定
-    document.getElementById("viewer-title").textContent = "ASIN 巡检分析";
-    loadAsins().then(() => {
-      const a = allAsins.find(x => x.key === REPORT_KEY.key || x.parent_asin === REPORT_KEY.key);
-      if (a) viewAsin(a, null);
-      else document.getElementById("viewer").innerHTML = "<div class=placeholder style=color:#dc2626>未找到产品: " + esc(REPORT_KEY.key) + "</div>";
-    });
-    loadKb();
-    // loadHealth(); // 暂时关闭
+// ============================================================
+// 登录
+// ============================================================
+async function initGate(){
+  const saved = Number(new URLSearchParams(location.search).get('userId') || localStorage.getItem(LS_KEY));
+  const users = await api('/api/users').catch(() => []);
+  state.users = users;
+  const sel = document.getElementById('userGateSelect');
+  sel.innerHTML = users.map(u => `<option value="${u.user_id}">${esc(u.user_name)} (${u.asin_count} 个 ASIN)</option>`).join('');
+  if (saved && users.some(u => u.user_id === saved)){
+    await enterAs(saved);
   } else {
-    loadKb();
-    loadAsins();
-    // loadHealth(); // 暂时关闭
+    document.getElementById('userGate').classList.add('show');
   }
-} else {
-  loadKb();
-  // loadHealth(); // 暂时关闭
-  initUserGate().then(() => {
-    if (allUsers.length === 0 && !getUrlUserId()) {
-      // 无用户数据且无 userId → 不加载，避免暴露全部 ASIN
-      document.getElementById('viewer').innerHTML =
-        '<div class=placeholder>暂无负责人数据，请联系管理员初始化用户表</div>';
-      return;
-    }
-    loadAsins();
-  });
 }
+document.getElementById('userGateConfirm').onclick = async () => {
+  const uid = Number(document.getElementById('userGateSelect').value);
+  if (!uid) return;
+  await enterAs(uid);
+  document.getElementById('userGate').classList.remove('show');
+};
+
+async function enterAs(uid){
+  state.viewerId = uid;
+  localStorage.setItem(LS_KEY, uid);
+  const info = await api(`/api/reports?userId=${uid}`);
+  state.viewerName = info.self?.user_name || `用户${uid}`;
+  state.role = info.role;
+  state.reports = info.reports || [];
+  state.targetId = uid;
+
+  document.getElementById('topUser').style.display = 'flex';
+  document.getElementById('viewerName').textContent = `${state.viewerName} (${state.role === 'manager' ? '主管' : '运营'})`;
+  document.getElementById('topAvatar').textContent = state.viewerName.slice(-1);
+
+  if (state.reports.length){
+    const ts = document.getElementById('targetSelect');
+    ts.style.display = '';
+    ts.innerHTML = `<option value="${uid}">查看自己</option>` +
+      state.reports.map(r => `<option value="${r.id}">下属：${esc(r.user_name)}</option>`).join('');
+    ts.onchange = () => {
+      state.targetId = Number(ts.value);
+      state.todayData = state.allData = state.reviewData = null;
+      state.selectedEventUid = null;
+      loadCurrentView();
+    };
+  }
+
+  document.getElementById('sideDate').textContent = new Date().toLocaleDateString('zh-CN', {year:'numeric', month:'long', day:'numeric', weekday:'long'});
+  document.getElementById('freshInfo').textContent = `数据更新：${new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'})}`;
+
+  loadCurrentView();
+}
+function loadCurrentView(){
+  if (state.view === 'today') loadToday();
+  else if (state.view === 'all') loadAll();
+  else if (state.view === 'review') loadReview();
+  else if (state.view === 'health') loadHealth();
+}
+
+// ============================================================
+// 视图1：今日任务
+// ============================================================
+async function loadToday(){
+  document.getElementById('taskBody').innerHTML = '<tr><td colspan="8" class="loading">加载中…</td></tr>';
+  try {
+    state.todayData = await api(withTarget('/api/tasks/today'));
+    renderToday();
+  } catch(e){
+    document.getElementById('taskBody').innerHTML = `<tr><td colspan="8" class="loading">加载失败：${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderToday(){
+  const d = state.todayData; if (!d) return;
+  const total = d.total, done = d.done_today;
+  document.getElementById('doneNum').textContent = done;
+  document.getElementById('totalNum').textContent = total;
+  document.getElementById('remainNum').textContent = Math.max(0, total - done);
+  document.getElementById('doneTodayNum').textContent = done;
+  const pct = total ? Math.round(done/total*100) : 0;
+  document.getElementById('goalPct').textContent = `完成 ${pct}%`;
+  document.getElementById('goalBar').style.width = pct + '%';
+
+  const p0Und = d.events.filter(e => e.priority==='P0' && e.status !== '已完成').length;
+  const waitCnt = d.events.filter(e=>e.status==='待复查').length;
+  document.getElementById('queueList').innerHTML = `
+    <div class="queue-item ${state.filters.quickMode==='P0'?'active':''}" data-queue="P0"><i class="qdot red"></i><div class="qname">必须立即处理<small>P0 · ${d.p0} 条</small></div><div class="qcount">${d.p0}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='P1'?'active':''}" data-queue="P1"><i class="qdot amber"></i><div class="qname">今日重点处理<small>P1 · ${d.p1} 条</small></div><div class="qcount">${d.p1}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='P2'?'active':''}" data-queue="P2"><i class="qdot blue"></i><div class="qname">今日常规处理<small>P2 · ${d.p2} 条</small></div><div class="qcount">${d.p2}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='wait'?'active':''}" data-queue="wait"><i class="qdot gray"></i><div class="qname">待复查<small>已处理待观察</small></div><div class="qcount">${waitCnt}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='all'?'active':''}" data-queue="all"><i class="qdot green"></i><div class="qname">全部任务<small>不筛选</small></div><div class="qcount">${d.total}</div></div>
+  `;
+  document.querySelectorAll('.queue-item[data-queue]').forEach(el => {
+    el.onclick = () => { state.filters.quickMode = el.dataset.queue; renderToday(); };
+  });
+
+  const catMap = {};
+  d.events.forEach(e => { const c = e.category || '其他'; catMap[c] = (catMap[c]||0)+1; });
+  const maxCat = Math.max(1, ...Object.values(catMap));
+  document.getElementById('distList').innerHTML = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).map(([k,v]) =>
+    `<div class="dist-row"><div class="dist-top"><span>${esc(k)}</span><b>${v}</b></div><div class="mini-bar"><i style="width:${v/maxCat*100}%"></i></div></div>`
+  ).join('');
+
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="sum-card primary" data-action="all"><div class="sum-label"><span>今日任务进度</span><b class="good-text">${pct}%</b></div><div class="sum-value">${done} / ${total}</div><div class="sum-sub">全部开放任务</div></div>
+    <div class="sum-card" data-action="P0"><div class="sum-label"><span>P0 未完成</span><span>立即处理</span></div><div class="sum-value danger-text">${p0Und}</div><div class="sum-sub">${d.events.filter(e=>e.priority==='P0'&&e.days>=3).length} 条 ≥3 天</div></div>
+    <div class="sum-card" data-action="P1"><div class="sum-label"><span>P1 数量</span><span>重点处理</span></div><div class="sum-value">${d.p1}</div><div class="sum-sub">影响经营目标</div></div>
+    <div class="sum-card" data-action="wait"><div class="sum-label"><span>待复查</span><span>已处理</span></div><div class="sum-value">${waitCnt}</div><div class="sum-sub">到期后重新判定</div></div>
+    <div class="sum-card" data-action="P2"><div class="sum-label"><span>P2</span><span>常规</span></div><div class="sum-value">${d.p2}</div><div class="sum-sub">可优化事项</div></div>
+  `;
+  document.querySelectorAll('.sum-card[data-action]').forEach(el => {
+    el.onclick = () => { state.filters.quickMode = el.dataset.action; renderToday(); };
+  });
+
+  const q = state.filters.q.toLowerCase(), pf = state.filters.priority, sf = state.filters.status, qm = state.filters.quickMode;
+  let rows = d.events.filter(e => {
+    if (q && !`${e.parent_asin||''}${e.product_name||''}${e.parent_sku||''}`.toLowerCase().includes(q)) return false;
+    if (pf && e.priority !== pf) return false;
+    if (sf && e.status !== sf) return false;
+    if (qm === 'P0' && e.priority !== 'P0') return false;
+    if (qm === 'P1' && e.priority !== 'P1') return false;
+    if (qm === 'P2' && e.priority !== 'P2') return false;
+    if (qm === 'wait' && e.status !== '待复查') return false;
+    return true;
+  });
+  document.getElementById('taskResultCount').textContent = rows.length;
+
+  const body = document.getElementById('taskBody');
+  if (!rows.length){
+    body.innerHTML = '<tr class="empty-row"><td colspan="8">当前筛选条件下无任务</td></tr>';
+  } else {
+    body.innerHTML = rows.map((e, i) => `
+      <tr data-uid="${esc(e.event_uid)}" ${e.event_uid===state.selectedEventUid?'class="selected"':''}>
+        <td class="rank">${String(i+1).padStart(2,'0')}</td>
+        <td><span class="priority ${e.priority.toLowerCase()}">${e.priority}</span></td>
+        <td><div class="prod"><div class="thumb">${e.image_url?`<img src="${esc(e.image_url)}" onerror="this.style.display='none'">`:'📦'}</div><div class="prod-txt"><div class="prod-name">${esc(e.product_name || e.parent_asin)}</div><div class="prod-meta">${esc(e.parent_asin)} · ${esc(e.parent_sku||'-')} · ${esc(e.shop_account||'-')}</div></div></div></td>
+        <td><div class="score">${Math.round(e.score)}<small>/100</small></div></td>
+        <td><span class="tag ${e.severity.toLowerCase()}">${esc(e.issue||e.category)}</span>${e.tier?`<span class="tag t">${e.tier}</span>`:''}${e.days>=3?`<span class="tag">${e.days}天</span>`:''}</td>
+        <td class="metric">${esc(e.category||'-')}${e.variant?`<br><span style="color:#7d8797">变体：${esc(e.variant)}</span>`:''}</td>
+        <td class="action">${esc(e.category||'-')}</td>
+        <td><span class="status ${statusClass(e.status)}">${esc(e.status)}</span></td>
+      </tr>
+    `).join('');
+    body.querySelectorAll('tr[data-uid]').forEach(tr => { tr.onclick = () => selectEvent(tr.dataset.uid); });
+  }
+}
+
+function selectEvent(uid){
+  const e = state.todayData?.events.find(x => x.event_uid === uid);
+  if (!e) return;
+  state.selectedEventUid = uid;
+  document.querySelectorAll('#taskBody tr').forEach(tr => tr.classList.toggle('selected', tr.dataset.uid === uid));
+
+  document.getElementById('detailPriority').textContent = e.priority;
+  document.getElementById('detailScore').textContent = `执行分 ${Math.round(e.score)}`;
+  document.getElementById('detailTitle').textContent = e.product_name || e.parent_asin;
+  document.getElementById('detailMeta').textContent = `${e.parent_asin} · ${e.parent_sku||'-'} · ${e.shop_account||'-'} · ${e.site||''}`;
+
+  const basis = e.judge_basis || {};
+  const basisTxt = basis['命中依据'] || basis['判定过程'] || JSON.stringify(basis);
+
+  document.getElementById('detailScroll').innerHTML = `
+    <div class="decision">
+      <div class="decision-top"><span class="decision-label">异常判定</span><span class="risk-badge">${e.priority} · ${e.priority==='P0'?'立即处理':e.priority==='P1'?'今日处理':'常规处理'}</span></div>
+      <h3>${esc(e.issue)} · ${esc(e.category)}</h3>
+      <p>${esc(basisTxt)}</p>
+    </div>
+    <div class="section">
+      <div class="section-head"><span>为什么排在前面</span><span>判定链路</span></div>
+      <div class="section-body why">
+        <div class="why-item"><b class="danger-text">${e.severity}</b><span>异常严重度</span></div>
+        <div class="why-item"><b>${e.tier||'-'}</b><span>产品定位</span></div>
+        <div class="why-item"><b>${e.days} 天</b><span>持续时间</span></div>
+        <div class="why-item"><b>${Math.round(e.score)}</b><span>执行分</span></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><span>事件信息</span><span>event_uid</span></div>
+      <div class="section-body evidence">
+        <div class="e-row"><span>首次命中</span><b>${fmtDate(e.first_seen)}</b></div>
+        <div class="e-row"><span>最近命中</span><b>${fmtDate(e.last_seen)}</b></div>
+        <div class="e-row"><span>作用层级</span><b>${esc(e.scope||'-')}</b></div>
+        <div class="e-row"><span>命中变体</span><b>${esc(e.variant||'-')} ${e.variant_importance?'· '+esc(e.variant_importance):''}</b></div>
+        <div class="e-row"><span>event_uid</span><b style="font-family:monospace;font-size:10px">${esc(e.event_uid)}</b></div>
+      </div>
+    </div>
+    ${e.latest_action ? `
+    <div class="section">
+      <div class="section-head"><span>最近处理记录</span><span>${fmtDate(e.latest_action.created_at)}</span></div>
+      <div class="section-body evidence">
+        <div class="e-row"><span>动作</span><b>${esc(e.latest_action.action_type)}</b></div>
+        ${e.latest_action.result?`<div class="e-row"><span>结果</span><b>${esc(e.latest_action.result)}</b></div>`:''}
+        ${e.latest_action.actual_action?`<div class="e-row"><span>实际动作</span><b>${esc(e.latest_action.actual_action)}</b></div>`:''}
+        ${e.latest_action.notes?`<div class="e-row"><span>备注</span><b>${esc(e.latest_action.notes)}</b></div>`:''}
+      </div>
+    </div>` : ''}
+    <div class="section">
+      <div class="section-head"><span>执行记录（完成时写入）</span><span>闭环必填</span></div>
+      <div class="section-body op-form">
+        <div class="op-row"><label>处理结果</label><select id="opResult"><option value="">请选择</option><option>已按建议执行</option><option>部分执行</option><option>建议不适用</option><option>转人工复核</option></select></div>
+        <div class="op-row"><label>实际动作</label><input id="opAction" placeholder="简要描述实际执行了什么"/></div>
+        <div class="op-row"><label>复查时间</label><select id="opReview"><option value="">不复查</option><option value="3">3天后</option><option value="7">7天后</option><option value="14">14天后</option></select></div>
+        <div class="op-row"><label>备注</label><input id="opNotes" placeholder="补充人工判断或例外原因"/></div>
+      </div>
+    </div>
+  `;
+  ['rejectBtn','aiBtn','completeBtn'].forEach(id => document.getElementById(id).disabled = false);
+}
+
+document.getElementById('completeBtn').onclick = async () => {
+  if (!state.selectedEventUid) return;
+  const days = parseInt(document.getElementById('opReview').value);
+  const reviewAt = days ? (() => {
+    const d = new Date(); d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0,10);
+  })() : null;
+  await api(`/api/tasks/${state.selectedEventUid}/action`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      userId: state.viewerId, action_type: '完成',
+      result: document.getElementById('opResult').value,
+      actual_action: document.getElementById('opAction').value,
+      review_at: reviewAt,
+      notes: document.getElementById('opNotes').value,
+    })
+  });
+  toast('已标记完成');
+  await loadToday();
+  const first = state.todayData?.events[0];
+  if (first) selectEvent(first.event_uid);
+};
+
+document.getElementById('rejectBtn').onclick = async () => {
+  if (!state.selectedEventUid) return;
+  const notes = prompt('请填写不处理原因');
+  if (notes === null) return;
+  await api(`/api/tasks/${state.selectedEventUid}/action`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ userId: state.viewerId, action_type: '不处理', notes })
+  });
+  toast('已标记不处理');
+  await loadToday();
+};
+
+document.getElementById('aiBtn').onclick = () => toast('AI 深度分析接口待接入');
+
+document.getElementById('searchInput').oninput = e => { state.filters.q = e.target.value; renderToday(); };
+document.getElementById('priorityFilter').onchange = e => { state.filters.priority = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
+document.getElementById('statusFilter').onchange = e => { state.filters.status = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
+document.getElementById('reloadBtn').onclick = () => loadToday();
+
+// ============================================================
+// 视图2：全部异常
+// ============================================================
+async function loadAll(){
+  document.getElementById('allBody').innerHTML = '<tr><td colspan="7" class="loading">加载中…</td></tr>';
+  try {
+    state.allData = await api(withTarget('/api/anomalies'));
+    renderAll();
+  } catch(e){
+    document.getElementById('allBody').innerHTML = `<tr><td colspan="7" class="loading">加载失败：${esc(e.message)}</td></tr>`;
+  }
+}
+function renderAll(){
+  const d = state.allData; if (!d) return;
+  const p0 = d.events.filter(e=>e.priority==='P0').length;
+  const opened = d.events.filter(e=>e.status!=='已关闭'&&e.status!=='已完成').length;
+  const closed = d.events.filter(e=>e.status==='已关闭'||e.status==='已完成').length;
+  document.getElementById('allKpi').innerHTML = `
+    <div class="kpi-card"><span>全部异常</span><b>${d.total}</b><small>该负责人名下</small></div>
+    <div class="kpi-card danger-card"><span>P0 高风险</span><b>${p0}</b><small>${d.events.filter(e=>e.priority==='P0'&&e.status!=='已完成').length} 条待处理</small></div>
+    <div class="kpi-card warning-card"><span>开放中</span><b>${opened}</b><small>待处理/处理中/待复查</small></div>
+    <div class="kpi-card good-card"><span>已关闭</span><b>${closed}</b><small>已完成 + 已关闭</small></div>
+  `;
+  const catSel = document.getElementById('allCategory');
+  const cats = [...new Set(d.events.map(e => e.category).filter(Boolean))];
+  const curCat = catSel.value;
+  catSel.innerHTML = '<option value="">全部异常大类</option>' + cats.map(c => `<option ${c===curCat?'selected':''}>${esc(c)}</option>`).join('');
+
+  const q = (document.getElementById('allSearch').value||'').toLowerCase();
+  const pf = document.getElementById('allPriority').value;
+  const cf = document.getElementById('allCategory').value;
+  const sf = document.getElementById('allStatus').value;
+  const rows = d.events.filter(e => {
+    if (q && !`${e.parent_asin||''}${e.product_name||''}${e.issue||''}`.toLowerCase().includes(q)) return false;
+    if (pf && e.priority !== pf) return false;
+    if (cf && e.category !== cf) return false;
+    if (sf && e.status !== sf) return false;
+    return true;
+  });
+  document.getElementById('allResultCount').textContent = rows.length;
+  document.getElementById('allBody').innerHTML = rows.length ? rows.map(e => `
+    <tr>
+      <td><span class="priority ${e.priority.toLowerCase()}">${e.priority}</span></td>
+      <td><div class="mini-product"><b>${esc(e.product_name||e.parent_asin)}</b><span>${esc(e.parent_asin)} · ${esc(e.shop_account||'-')}</span></div></td>
+      <td><span class="issue-type">${esc(e.category||'-')}</span></td>
+      <td>${esc(e.issue||'-')}</td>
+      <td>${e.days} 天</td>
+      <td><div class="score">${Math.round(e.score)}<small>/100</small></div></td>
+      <td><span class="status ${statusClass(e.status)}">${esc(e.status)}</span></td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="7">无匹配数据</td></tr>';
+}
+document.getElementById('allReloadBtn').onclick = () => loadAll();
+['allSearch','allPriority','allCategory','allStatus'].forEach(id => {
+  document.getElementById(id).addEventListener(id === 'allSearch' ? 'input' : 'change', renderAll);
+});
+
+// ============================================================
+// 视图3：调整复盘
+// ============================================================
+async function loadReview(){
+  const p = document.getElementById('reviewPeriod').value;
+  document.getElementById('reviewBody').innerHTML = '<tr><td colspan="6" class="loading">加载中…</td></tr>';
+  try {
+    state.reviewData = await api(withTarget('/api/review/due') + `&period=${p}`);
+    renderReview();
+  } catch(e){
+    document.getElementById('reviewBody').innerHTML = `<tr><td colspan="6" class="loading">加载失败：${esc(e.message)}</td></tr>`;
+  }
+}
+function renderReview(){
+  const d = state.reviewData; if (!d) return;
+  const good = d.records.filter(r=>r.effect==='变好').length;
+  const bad = d.records.filter(r=>r.effect==='变差').length;
+  const watch = d.records.filter(r=>r.effect==='待观察').length;
+  document.getElementById('reviewKpi').innerHTML = `
+    <div class="kpi-card warning-card"><span>${d.period==='today'?'今日到期':'期间内到期'}</span><b>${d.total}</b><small>${d.period}</small></div>
+    <div class="kpi-card good-card"><span>调整后变好</span><b>${good}</b><small>保留当前动作</small></div>
+    <div class="kpi-card"><span>效果待观察</span><b>${watch}</b><small>样本不足</small></div>
+    <div class="kpi-card danger-card"><span>调整后变差</span><b>${bad}</b><small>需二次处理</small></div>
+  `;
+  document.getElementById('reviewResultCount').textContent = d.records.length;
+  document.getElementById('reviewBody').innerHTML = d.records.length ? d.records.map(r => `
+    <tr>
+      <td><div class="mini-product"><b>${esc(r['父ASIN']||'-')}</b><span>${esc(r['店铺账号']||'-')}</span></div></td>
+      <td>${esc(r['问题点位']||'-')}</td>
+      <td>${esc(r.actual_action||r.action_type||'-')}</td>
+      <td>${fmtDate(r.review_at)}</td>
+      <td>${r.effect ? `<span class="tag ${r.effect==='变差'?'s0':''}">${esc(r.effect)}</span>` : '<span style="color:#8a93a2">-</span>'}</td>
+      <td>${esc(r.notes||'-')}</td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="6">当前区间无到期复查记录</td></tr>';
+}
+document.getElementById('reviewPeriod').onchange = () => loadReview();
+document.getElementById('reviewReloadBtn').onclick = () => loadReview();
+
+// ============================================================
+// 视图4：数据健康
+// ============================================================
+async function loadHealth(){
+  document.getElementById('healthDaily').innerHTML = '<div class="loading">加载中…</div>';
+  document.getElementById('healthSnapshot').innerHTML = '';
+  try {
+    state.healthData = await api('/api/sync-health');
+    renderHealth();
+  } catch(e){
+    document.getElementById('healthDaily').innerHTML = `<div class="loading">加载失败：${esc(e.message)}</div>`;
+  }
+}
+function renderHealth(){
+  const d = state.healthData; if (!d) return;
+  document.getElementById('lastHealthCheck').textContent = `最近生成：${d.generated_at||'-'}`;
+  const s = d.summary || {};
+  const status = s.status || 'unknown';
+  const cardCls = status==='ok'?'good-card':status==='warn'?'warning-card':'danger-card';
+  document.getElementById('healthKpi').innerHTML = `
+    <div class="kpi-card ${cardCls}"><span>整体状态</span><b>${status.toUpperCase()}</b><small>最低覆盖率 ${((s.min_coverage||0)*100).toFixed(1)}%</small></div>
+    <div class="kpi-card"><span>平均覆盖率</span><b>${((s.avg_coverage||0)*100).toFixed(1)}%</b><small>所有表汇总</small></div>
+    <div class="kpi-card warning-card"><span>检查日期</span><b>${(d.check_dates||[])[0]||'-'}</b><small>${(d.check_dates||[]).length} 天</small></div>
+    <div class="kpi-card"><span>数据表数</span><b>${Object.keys(d.snapshot||{}).length + Object.keys((d.daily||{})[Object.keys(d.daily||{})[0]]||{}).length}</b><small>daily + snapshot</small></div>
+  `;
+  let dailyHtml = '';
+  Object.entries(d.daily || {}).forEach(([date, tbls]) => {
+    Object.entries(tbls).forEach(([tbl, r]) => {
+      const cov = r.coverage || 0;
+      const cls = cov >= 0.9 ? 'ok' : cov >= 0.7 ? 'warn' : 'fail';
+      const em = cov >= 0.9 ? '正常' : cov >= 0.7 ? '偏低' : '失败';
+      dailyHtml += `<div class="source-card ${cls}"><div class="source-icon">${esc(tbl.slice(0,3).toUpperCase())}</div><div><b>${esc(r.name)} · ${date}</b><span>${r.found}/${r.expected} · 缺 ${r.missing_count||0}</span></div><em>${em} ${(cov*100).toFixed(1)}%</em></div>`;
+    });
+  });
+  document.getElementById('healthDaily').innerHTML = dailyHtml || '<div class="loading">无 daily 数据</div>';
+  let snapHtml = '';
+  Object.entries(d.snapshot || {}).forEach(([tbl, r]) => {
+    const cov = r.coverage || 0;
+    const cls = cov >= 0.9 ? 'ok' : cov >= 0.7 ? 'warn' : 'fail';
+    const em = cov >= 0.9 ? '正常' : cov >= 0.7 ? '偏低' : '失败';
+    snapHtml += `<div class="source-card ${cls}"><div class="source-icon">${esc(tbl.slice(0,3).toUpperCase())}</div><div><b>${esc(r.name)}</b><span>${r.found}/${r.expected} · 缺 ${r.missing_count||0}</span></div><em>${em} ${(cov*100).toFixed(1)}%</em></div>`;
+  });
+  document.getElementById('healthSnapshot').innerHTML = snapHtml || '<div class="loading">无 snapshot 数据</div>';
+}
+document.getElementById('healthReloadBtn').onclick = () => loadHealth();
+
+// ============================================================
+// 启动
+// ============================================================
+const initialHash = location.hash.replace('#','');
+if (['all','review','health','today'].includes(initialHash) && initialHash !== 'today') {
+  state.view = initialHash;
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.view === state.view));
+  document.getElementById('view' + state.view.charAt(0).toUpperCase() + state.view.slice(1)).classList.add('active');
+}
+initGate();
 </script>
 </body>
 </html>

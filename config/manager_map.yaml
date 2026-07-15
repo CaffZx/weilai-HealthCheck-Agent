@@ -1,0 +1,11 @@
+# 主管 → 下属映射
+# key   = 主管 user_id（sys_user.id）
+# value = 下属 user_id 列表
+#
+# 主管登录后，工作台里可以切换到"以下属身份"查看该下属的任务池。
+# 修改后重启服务生效。
+#
+# 查 user_id: python3 -c "import sqlite3;c=sqlite3.connect('data/local/healthcheck.db');[print(r) for r in c.execute(\"SELECT id,user_name FROM sys_user WHERE user_name LIKE '%姓名%'\")]"
+
+268:  # 某某 lichenxi
+  - 404  # 某某 lvrunliu
