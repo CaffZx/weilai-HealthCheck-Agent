@@ -336,19 +336,27 @@ def 巡检单产品(
         产品打分 = R4.算产品分数(全部异常输入, 标签, r4_cfg)
 
     # Phase 5: 落库事件池（严重度为空 → 跳过落库；作用层级从 R2 查权威值）
+    # 从 Phase 4 的 产品打分 反查每条 (点位, 严重度) → 单异常执行分数
+    score_map: dict[tuple[str, str], float] = {}
+    if isinstance(产品打分, R4.产品打分结果):
+        for r in [产品打分.最高单异常] + 产品打分.其余异常:
+            score_map[(r.问题点位, r.严重度)] = r.单异常执行分数
+
     for h in 现象命中:
         if not h.默认严重度:
             continue
         _upsert_event(h.问题点位, h.默认严重度, h.作用层级,
                       "现象即原因型", h.命中变体, h.变体重要性, h.命中依据,
-                      父ASIN, 店铺账号, 站点, 批次号)
+                      父ASIN, 店铺账号, 站点, 批次号,
+                      单异常执行分数=score_map.get((h.问题点位, h.默认严重度)))
     for g in 表现判定:
         if not g["严重度"] or g["严重度"] == "配置待补":
             continue    # 配置提示不是异常，不进事件池
         层级 = R2.查作用层级(g["问题点位"], r2_cfg) or "链接级"
         _upsert_event(g["问题点位"], g["严重度"], 层级,
                       "表现型", None, None, g.get("判定过程", ""),
-                      父ASIN, 店铺账号, 站点, 批次号)
+                      父ASIN, 店铺账号, 站点, 批次号,
+                      单异常执行分数=score_map.get((g["问题点位"], g["严重度"])))
 
     # Phase 6: 构建 异常明细
     异常明细 = _build_anomaly_details(
@@ -511,6 +519,7 @@ def _upsert_event(
     问题点位: str, 严重度: str, 作用层级: str, 异常类型: str,
     命中变体: str | None, 变体重要性: str | None, 判定依据: str,
     父ASIN: str, 店铺账号: str, 站点: str | None, 批次号: str | None,
+    *, 单异常执行分数: float | None = None,
 ) -> bool:
     """落库到 event_pool；失败即 warning 上报，返回 False 供调用方统计。"""
     try:
@@ -520,7 +529,7 @@ def _upsert_event(
             作用层级=作用层级, 异常类型=异常类型, 严重度=严重度,
             判定依据={"判定过程": 判定依据, "触发字段": {}, "判定日志": {"批次号": 批次号}},
             站点=站点, 异常大类=大类, 命中变体=命中变体, 变体重要性=变体重要性,
-            单异常执行分数=None, 参数版本="code-v1",
+            单异常执行分数=单异常执行分数, 参数版本="code-v1",
         ))
         return True
     except Exception as e:

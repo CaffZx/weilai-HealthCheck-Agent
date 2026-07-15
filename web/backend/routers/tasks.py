@@ -153,3 +153,35 @@ def api_review_due(
             continue
         out.append(d)
     return {"target_user_id": target, "period": period, "total": len(out), "records": out}
+
+
+@router.post("/review/{event_uid}")
+def api_review_post(event_uid: str, payload: dict = Body(...)):
+    """复盘结果写入：{userId, effect: 变好|变差|待观察, conclusion: 保留动作|继续观察|二次调整, notes?}
+    - effect: 更新最新那条 task_action 的 effect 字段（这条 event 的复查结论）
+    - conclusion=='二次调整' 时额外插入一条 action_type='待复查'，把 event 重新拉回今日任务池
+    """
+    effect = payload.get("effect")
+    conclusion = payload.get("conclusion")
+    if effect not in ("变好", "变差", "待观察"):
+        raise HTTPException(400, "effect 必填且必须是 变好/变差/待观察")
+
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        # 更新最新那条 action 的 effect
+        row = c.execute(
+            "SELECT id FROM task_action WHERE event_uid=? ORDER BY id DESC LIMIT 1",
+            (event_uid,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "该 event 尚无处理记录")
+        c.execute("UPDATE task_action SET effect=? WHERE id=?", (effect, row[0]))
+
+        # 二次调整 → 新增一条待复查（把 event 重新拉回开放态）
+        if conclusion == "二次调整":
+            c.execute("""
+                INSERT INTO task_action (event_uid, user_id, action_type, notes)
+                VALUES (?, ?, '待复查', ?)
+            """, (event_uid, payload.get("userId"),
+                  f"复盘结论：二次调整（{payload.get('notes') or '效果不佳，重新处理'}）"))
+        c.commit()
+    return {"ok": True, "event_uid": event_uid, "effect": effect, "conclusion": conclusion}

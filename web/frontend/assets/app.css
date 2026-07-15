@@ -281,4 +281,17 @@
   .action-line.best .effect-track i{background:#17805c}
   .action-line.low .effect-track i{background:#d38a24}
   .repeat-num{font-size:14px;font-weight:800;color:var(--red)}
+  /* 复盘按钮 */
+  .review-effect-btns{display:flex;gap:4px;flex-wrap:wrap}
+  .effect-btn{border:1px solid #dbe2ec;background:#fff;border-radius:6px;padding:4px 8px;font-size:10px;color:#4a5768;cursor:pointer}
+  .effect-btn:hover{background:#f4f7fb}
+  .effect-btn.active{border-color:currentColor;font-weight:700}
+  .effect-btn.good.active{color:var(--green);background:var(--green-soft)}
+  .effect-btn.bad.active{color:var(--red);background:var(--red-soft)}
+  .effect-btn.watch.active{color:var(--amber);background:var(--amber-soft)}
+  .review-concl-btns{display:flex;gap:4px;flex-wrap:wrap}
+  .concl-btn{border:1px solid #dbe2ec;background:#fff;border-radius:6px;padding:4px 8px;font-size:10px;color:#345f86;cursor:pointer}
+  .concl-btn:hover{background:#eef4ff}
+  .concl-btn.danger{color:var(--red);border-color:#f7c8c4}
+  .concl-btn.danger:hover{background:var(--red-soft)}
   @media(max-width:1450px){.dash-kpis{grid-template-columns:repeat(3,1fr)}.dash-grid,.dash-second{grid-template-columns:1fr}}

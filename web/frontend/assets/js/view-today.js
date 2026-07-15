@@ -100,9 +100,13 @@ function selectEvent(uid){
   const basis = e.judge_basis || {};
   const basisTxt = basis['命中依据'] || basis['判定过程'] || JSON.stringify(basis);
 
+  // 交易表现类异常 → 显示"广告决策"跳转按钮
+  const 是交易表现 = (e.category || '').includes('交易表现');
+  const adBtn = 是交易表现 ? `<a class="btn ghost-blue" style="margin-left:8px;text-decoration:none;font-weight:700;padding:4px 10px;font-size:11px" href="${buildAdAgentUrl(e)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(e.event_uid)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>` : '';
+
   document.getElementById('detailScroll').innerHTML = `
     <div class="decision">
-      <div class="decision-top"><span class="decision-label">异常判定</span><span class="risk-badge">${e.priority} · ${e.priority==='P0'?'立即处理':e.priority==='P1'?'今日处理':'常规处理'}</span></div>
+      <div class="decision-top"><span class="decision-label">异常判定</span><span>${adBtn}<span class="risk-badge" style="margin-left:6px">${e.priority} · ${e.priority==='P0'?'立即处理':e.priority==='P1'?'今日处理':'常规处理'}</span></span></div>
       <h3>${esc(e.issue)} · ${esc(e.category)}</h3>
       <p>${esc(basisTxt)}</p>
     </div>
@@ -184,6 +188,34 @@ document.getElementById('rejectBtn').onclick = async () => {
 };
 
 document.getElementById('aiBtn').onclick = () => toast('AI 深度分析接口待接入');
+
+// ---- 广告决策 agent 跳转 ----
+const AD_AGENT_BASE = 'https://mcp-gateway.example.com/demo/ad-asisitant-agent.html';
+function buildAdAgentUrl(e){
+  const q = new URLSearchParams({
+    shopAccount: e.shop_account || '',
+    productName: e.product_name || '',
+    parentAsin: e.parent_asin || '',
+    parentSellerSku: e.parent_sku || '',
+    siteCode: e.site || '',
+    userId: String(state.viewerId || ''),
+  });
+  return AD_AGENT_BASE + '?' + q.toString();
+}
+// 跳转前把该异常自动标记为"处理中"（仅当前状态是新发现/待处理时）
+async function markDoingAndOpen(eventUid){
+  const e = state.todayData?.events.find(x => x.event_uid === eventUid);
+  if (e && (e.status === '新发现' || e.status === '待处理')){
+    try {
+      await api(`/api/tasks/${eventUid}/action`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ userId: state.viewerId, action_type: '标记处理中', notes: '跳转广告决策 agent' })
+      });
+      loadToday();  // 刷新状态
+    } catch(err) { console.warn('mark doing failed', err); }
+  }
+  return true;  // 不阻止跳转
+}
 
 document.getElementById('searchInput').oninput = e => { state.filters.q = e.target.value; renderToday(); };
 document.getElementById('priorityFilter').onchange = e => { state.filters.priority = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
