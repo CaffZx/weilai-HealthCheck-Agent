@@ -837,6 +837,382 @@ def api_review_due(
     return {"target_user_id": target, "period": period, "total": len(out), "records": out}
 
 
+# ============================================================
+# 处理记录 + 数据看板（Phase 2）
+# ============================================================
+
+_SLA_DAYS = {"P0": 1, "P1": 3, "P2": 7}  # 各优先级处理时限
+
+_ACTION_CATEGORIES = [
+    ("补货/库存处理", ["补货", "库存", "断货", "补齐", "转仓"]),
+    ("广告收缩", ["广告", "预算", "暂停", "acos", "关键词竞价", "词"]),
+    ("价格与优惠调整", ["价格", "coupon", "优惠", "促销", "折扣", "定价"]),
+    ("文案/关键词优化", ["文案", "标题", "search terms", "属性", "关键词", "listing"]),
+    ("图片调整", ["主图", "图片", "视频", "a+", "副图"]),
+]
+
+def _classify_action(text: str) -> str:
+    """从实际动作文本推断动作类型。"""
+    if not text:
+        return "其他"
+    t = text.lower()
+    for name, keys in _ACTION_CATEGORIES:
+        if any(k.lower() in t for k in keys):
+            return name
+    return "其他"
+
+
+def _format_record_id(row_id: int, created_at: str) -> str:
+    """ACT-YYYYMMDD-NNNN，同日内按 id 后 4 位。"""
+    try:
+        dt_part = created_at[:10].replace("-", "")
+    except Exception:
+        dt_part = "00000000"
+    return f"ACT-{dt_part}-{row_id:04d}"
+
+
+def _format_event_id(uid: str, first_seen: str | None) -> str:
+    """EVT-YYYYMMDD-<uid前4位>，让运营看到日期。"""
+    dt_part = (first_seen or "")[:10].replace("-", "") or "00000000"
+    return f"EVT-{dt_part}-{(uid or '')[:4]}"
+
+
+def _fetch_history_records(target_user_id: int) -> list[dict]:
+    """拉出该 target 名下所有处理记录（不含普通"备注"）。"""
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute("""
+            SELECT a.*, e.父ASIN as parent_asin, e.父SKU as parent_sku, e.店铺账号 as shop_account,
+                   e.异常大类 as category, e.问题点位 as issue, e.严重度 as severity,
+                   e.单异常执行分数 as score, e.首次命中时间 as first_seen
+            FROM task_action a
+            JOIN event_pool e ON e.唯一识别 = a.event_uid
+            WHERE a.action_type IN ('完成', '不处理')
+              AND e.父ASIN IN (
+                SELECT DISTINCT asin FROM asin_owner
+                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+              )
+            ORDER BY a.created_at DESC
+        """, (target_user_id,)).fetchall()
+
+        # 用户名 map
+        uids = {r["user_id"] for r in rows if r["user_id"]}
+        users = {}
+        if uids:
+            qs = ",".join("?" * len(uids))
+            for u in c.execute(f"SELECT id, user_name FROM sys_user WHERE id IN ({qs})", list(uids)).fetchall():
+                users[u["id"]] = u["user_name"]
+
+        # 「处理后新异常」：同 parent_asin + 异常大类，first_seen > 本次 action created_at
+        # 一次拿全部候选事件
+        events_after = c.execute("""
+            SELECT 唯一识别 as uid, 父ASIN as parent_asin, 异常大类 as category, 问题点位 as issue,
+                   首次命中时间 as first_seen, 严重度 as severity
+            FROM event_pool
+            WHERE 父ASIN IN (
+                SELECT DISTINCT asin FROM asin_owner
+                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+            )
+        """, (target_user_id,)).fetchall()
+
+    # 按 parent_asin+category 聚合，供后续 O(1) 查
+    idx = {}
+    for e in events_after:
+        idx.setdefault((e["parent_asin"], e["category"] or ""), []).append(dict(e))
+
+    name_map = local_store.query_product_names()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        priority = _SEV_TO_PRIORITY.get(d.get("severity") or "S2", "P2")
+        # 判断 SLA：first_seen → created_at 的天数 vs SLA
+        try:
+            fs = _dt.datetime.fromisoformat(d["first_seen"]).date() if d["first_seen"] else None
+            ca = _dt.datetime.fromisoformat(d["created_at"]).date() if d["created_at"] else None
+            handle_days = (ca - fs).days if fs and ca else None
+        except Exception:
+            handle_days = None
+        on_time = (handle_days is not None and handle_days <= _SLA_DAYS.get(priority, 7))
+
+        # 记录完整性：result + actual_action 都填 = 完整
+        complete = "完整" if (d.get("result") and d.get("actual_action")) else "待补"
+
+        # 后续新异常：同 parent+category 在 created_at 之后的最新事件
+        new_event = None
+        siblings = idx.get((d["parent_asin"], d["category"] or ""), [])
+        for e in siblings:
+            if e["uid"] == d["event_uid"]:
+                continue
+            if e["first_seen"] and d["created_at"] and e["first_seen"] > d["created_at"]:
+                new_event = e
+                break
+
+        # 复查结论
+        if d.get("effect") == "变好":
+            review = "已恢复"
+        elif d.get("effect") == "变差":
+            review = "未恢复"
+        else:
+            review = "待复查" if d.get("review_at") else "无复查"
+
+        out.append({
+            "record_id": _format_record_id(d["id"], d["created_at"]),
+            "row_id": d["id"],
+            "event_id": _format_event_id(d["event_uid"], d["first_seen"]),
+            "event_uid": d["event_uid"],
+            "time": d["created_at"],
+            "date_key": d["created_at"][:10] if d["created_at"] else "",
+            "owner": users.get(d["user_id"], f"用户{d['user_id']}") if d["user_id"] else "-",
+            "owner_id": d["user_id"],
+            "parent_asin": d["parent_asin"],
+            "parent_sku": d["parent_sku"],
+            "product_name": name_map.get(d["parent_asin"]),
+            "shop_account": d["shop_account"],
+            "category": d["category"] or "其他",
+            "issue": d["issue"],
+            "severity": d["severity"],
+            "priority": priority,
+            "score": d["score"] or 0,
+            "action_type": d["action_type"],
+            "result": d["result"],
+            "actual_action": d["actual_action"],
+            "action_class": _classify_action(d["actual_action"]),
+            "review_at": d["review_at"],
+            "effect": d["effect"],
+            "review": review,
+            "notes": d["notes"],
+            "complete": complete,
+            "handle_days": handle_days,
+            "on_time": on_time,
+            "new_event": {
+                "event_id": _format_event_id(new_event["uid"], new_event["first_seen"]),
+                "event_uid": new_event["uid"],
+                "issue": new_event["issue"],
+                "first_seen": new_event["first_seen"],
+                "severity": new_event["severity"],
+            } if new_event else None,
+        })
+    return out
+
+
+@app.get("/api/history")
+def api_history(
+    userId: int = Query(...),
+    targetId: int | None = Query(None),
+    q: str | None = Query(None),
+    time_range: str = Query("all", alias="range"),   # all|today|7d|30d
+    owner: str | None = Query(None),
+    status: str | None = Query(None),   # 完整|待补
+    event: str | None = Query(None),    # new|single
+):
+    target = _resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    records = _fetch_history_records(target)
+
+    today = _dt.date.today()
+    def in_range(r):
+        if time_range == "all": return True
+        try:
+            d = _dt.date.fromisoformat(r["date_key"])
+        except Exception:
+            return False
+        delta = (today - d).days
+        return {"today": delta == 0, "7d": delta <= 7, "30d": delta <= 30}.get(time_range, True)
+
+    def match(r):
+        if not in_range(r): return False
+        if q and q.lower() not in f"{r['record_id']}{r['event_id']}{r['parent_asin']}{r['parent_sku'] or ''}{r['product_name'] or ''}{r['issue'] or ''}{r['actual_action'] or ''}".lower():
+            return False
+        if owner and r["owner"] != owner: return False
+        if status and r["complete"] != status: return False
+        if event == "new" and not r["new_event"]: return False
+        if event == "single" and r["new_event"]: return False
+        return True
+
+    filtered = [r for r in records if match(r)]
+    proof_count = sum(1 for r in records if r["complete"] == "完整")
+    pending = sum(1 for r in records if r["complete"] == "待补")
+    with_new = sum(1 for r in records if r["new_event"])
+    products = len({r["parent_asin"] for r in records})
+
+    return {
+        "target_user_id": target,
+        "total": len(filtered),
+        "records": filtered,
+        "kpi": {
+            "proof": proof_count,
+            "pending": pending,
+            "with_new_event": with_new,
+            "products": products,
+        },
+    }
+
+
+@app.get("/api/history/{record_id}")
+def api_history_detail(record_id: str, userId: int = Query(...), targetId: int | None = Query(None)):
+    target = _resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    records = _fetch_history_records(target)
+    rec = next((r for r in records if r["record_id"] == record_id), None)
+    if not rec:
+        raise HTTPException(404, "record not found")
+
+    # 补齐轨迹：该 event_uid 所有 action + 若有 new_event 再拉那条 event
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        acts = c.execute("""
+            SELECT id, action_type, result, actual_action, review_at, notes, effect, created_at, user_id
+            FROM task_action WHERE event_uid = ? ORDER BY created_at ASC
+        """, (rec["event_uid"],)).fetchall()
+    rec["timeline"] = [dict(a) for a in acts]
+    return rec
+
+
+@app.get("/api/dashboard")
+def api_dashboard(
+    userId: int = Query(...),
+    targetId: int | None = Query(None),
+    days: str = Query("7", alias="range"),     # 7|14|30
+):
+    target = _resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    try:
+        days = int(days)
+    except Exception:
+        days = 7
+    today = _dt.date.today()
+    since = today - _dt.timedelta(days=days - 1)
+
+    # 全部 action + event（用于计算），用同一个 helper
+    records = _fetch_history_records(target)
+    all_events = _fetch_events_for_user(target, only_open=False)
+
+    # 期间过滤
+    in_period_records = [r for r in records if r["date_key"] >= since.isoformat()]
+
+    # 1) KPI
+    completed = sum(1 for r in in_period_records if r["action_type"] == "完成")
+    target_num = days * 80  # 参考 demo 每日 80 条目标；实际按人数计更合理，Phase 3 优化
+    goal_rate = round(completed / target_num * 100, 1) if target_num else 0
+    on_time_cnt = sum(1 for r in in_period_records if r["on_time"] and r["action_type"] == "完成")
+    on_time_rate = round(on_time_cnt / completed * 100, 1) if completed else 0
+    with_review = [r for r in in_period_records if r["effect"] in ("变好", "变差", "待观察")]
+    recovered_cnt = sum(1 for r in with_review if r["effect"] == "变好")
+    recovery_rate = round(recovered_cnt / len(with_review) * 100, 1) if with_review else 0
+    p0_records = [r for r in in_period_records if r["priority"] == "P0" and r["action_type"] == "完成"]
+    p0_ontime = sum(1 for r in p0_records if r["on_time"])
+    p0_rate = round(p0_ontime / len(p0_records) * 100, 1) if p0_records else 0
+    # 重复异常：同 parent_asin 出现 >= 2 次事件
+    from collections import Counter
+    asin_counts = Counter(e["parent_asin"] for e in all_events)
+    repeat_products = sum(1 for c in asin_counts.values() if c >= 2)
+    total_products = len(asin_counts) or 1
+    repeat_rate = round(repeat_products / total_products * 100, 1)
+
+    # 2) 每日完成量
+    day_map = {(since + _dt.timedelta(days=i)).isoformat(): 0 for i in range(days)}
+    for r in in_period_records:
+        if r["action_type"] == "完成" and r["date_key"] in day_map:
+            day_map[r["date_key"]] += 1
+    daily = [{"date": d, "count": c, "target": 80} for d, c in sorted(day_map.items())]
+
+    # 3) 异常大类分布（open + closed 全部）
+    cat_counter = Counter()
+    cat_products = {}
+    for e in all_events:
+        cat = e.get("category") or "其他"
+        cat_counter[cat] += 1
+        cat_products.setdefault(cat, set()).add(e["parent_asin"])
+    anomaly = sorted(
+        [{"name": k, "events": v, "products": len(cat_products[k])} for k, v in cat_counter.items()],
+        key=lambda x: -x["events"],
+    )
+
+    # 4) 恢复率趋势（按 date_key 累计到当天的 recovery_rate）
+    trend = []
+    for i in range(days):
+        d = since + _dt.timedelta(days=i)
+        cutoff = d.isoformat()
+        subset = [r for r in records if r["date_key"] <= cutoff and r["effect"] in ("变好", "变差", "待观察")]
+        rec_num = sum(1 for r in subset if r["effect"] == "变好")
+        trend.append({
+            "date": cutoff,
+            "rate": round(rec_num / len(subset) * 100, 1) if subset else 0,
+        })
+
+    # 5) 动作有效率
+    action_stats = {}
+    for r in in_period_records:
+        if r["action_type"] != "完成":
+            continue
+        klass = r["action_class"]
+        st = action_stats.setdefault(klass, {"name": klass, "total": 0, "checked": 0, "good": 0})
+        st["total"] += 1
+        if r["effect"] in ("变好", "变差", "待观察"):
+            st["checked"] += 1
+            if r["effect"] == "变好":
+                st["good"] += 1
+    action_effects = sorted(
+        [{"name": s["name"], "total": s["total"], "checked": s["checked"],
+          "rate": round(s["good"] / s["checked"] * 100, 1) if s["checked"] else 0}
+         for s in action_stats.values()],
+        key=lambda x: -x["total"],
+    )
+
+    # 6) 高频异常产品（>= 2 次异常）
+    top_asins = [a for a, c in asin_counts.most_common(20) if c >= 2]
+    name_map = local_store.query_product_names()
+    repeat_products_list = []
+    for asin in top_asins:
+        asin_events = [e for e in all_events if e["parent_asin"] == asin]
+        latest = max(asin_events, key=lambda e: e.get("last_seen") or "")
+        # 该 asin 的处理次数
+        actions_cnt = sum(1 for r in records if r["parent_asin"] == asin and r["action_type"] == "完成")
+        # 最近效果
+        recent_action = next((r for r in records if r["parent_asin"] == asin), None)
+        effect = (recent_action or {}).get("effect") or "-"
+        repeat_products_list.append({
+            "parent_asin": asin,
+            "product_name": name_map.get(asin),
+            "count": asin_counts[asin],
+            "issue": latest.get("issue"),
+            "actions": actions_cnt,
+            "effect": effect,
+            "priority": latest.get("priority"),
+            "score": latest.get("score"),
+            "days": latest.get("days"),
+        })
+
+    return {
+        "target_user_id": target,
+        "range_days": days,
+        "kpi": {
+            "completed": completed,
+            "target": target_num,
+            "goal_rate": goal_rate,
+            "on_time_rate": on_time_rate,
+            "on_time_count": on_time_cnt,
+            "recovery_rate": recovery_rate,
+            "recovered": recovered_cnt,
+            "not_recovered": sum(1 for r in with_review if r["effect"] == "变差"),
+            "watching": sum(1 for r in with_review if r["effect"] == "待观察"),
+            "p0_ontime_rate": p0_rate,
+            "p0_overdue": max(0, len(p0_records) - p0_ontime),
+            "repeat_rate": repeat_rate,
+            "repeat_products": repeat_products,
+        },
+        "daily": daily,
+        "anomaly": anomaly,
+        "trend": trend,
+        "action_effects": action_effects,
+        "repeat_products": repeat_products_list[:10],
+    }
+
+
 @app.get("/legacy")
 def legacy_page():
     """旧版技术台前端：改判定参数、看知识库、单产品跑判定用。"""

@@ -1,0 +1,735 @@
+{
+  "generated_at": "2026-07-15 14:02:09",
+  "check_dates": [
+    "2026-07-13",
+    "2026-07-14"
+  ],
+  "daily": {
+    "2026-07-13": {
+      "daily_product_sales": {
+        "table": "daily_product_sales",
+        "date": "2026-07-13",
+        "expected": 638,
+        "found": 0,
+        "coverage": 0.0,
+        "missing_count": 638,
+        "missing_sample": [
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          }
+        ],
+        "name": "每日销售"
+      },
+      "daily_ad_product": {
+        "table": "daily_ad_product",
+        "date": "2026-07-13",
+        "expected": 638,
+        "found": 0,
+        "coverage": 0.0,
+        "missing_count": 638,
+        "missing_sample": [
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          }
+        ],
+        "name": "每日广告"
+      },
+      "daily_natural_ad_flow": {
+        "table": "daily_natural_ad_flow",
+        "date": "2026-07-13",
+        "expected": 638,
+        "found": 89,
+        "coverage": 0.1395,
+        "missing_count": 549,
+        "missing_sample": [
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          }
+        ],
+        "name": "自然/广告流量拆分"
+      }
+    },
+    "2026-07-14": {
+      "daily_product_sales": {
+        "table": "daily_product_sales",
+        "date": "2026-07-14",
+        "expected": 638,
+        "found": 0,
+        "coverage": 0.0,
+        "missing_count": 638,
+        "missing_sample": [
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          }
+        ],
+        "name": "每日销售"
+      },
+      "daily_ad_product": {
+        "table": "daily_ad_product",
+        "date": "2026-07-14",
+        "expected": 638,
+        "found": 0,
+        "coverage": 0.0,
+        "missing_count": 638,
+        "missing_sample": [
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          }
+        ],
+        "name": "每日广告"
+      },
+      "daily_natural_ad_flow": {
+        "table": "daily_natural_ad_flow",
+        "date": "2026-07-14",
+        "expected": 638,
+        "found": 89,
+        "coverage": 0.1395,
+        "missing_count": 549,
+        "missing_sample": [
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          },
+          {
+            "parent_asin": "B0EXAMPLE0"
+          }
+        ],
+        "name": "自然/广告流量拆分"
+      }
+    }
+  },
+  "snapshot": {
+    "listing_baseline": {
+      "table": "listing_baseline",
+      "expected": 638,
+      "found": 558,
+      "coverage": 0.8746,
+      "missing_count": 80,
+      "missing_sample": [
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        }
+      ],
+      "name": "商品快照"
+    },
+    "stock_summary": {
+      "table": "stock_summary",
+      "expected": 638,
+      "found": 638,
+      "coverage": 1.0,
+      "missing_count": 0,
+      "missing_sample": [],
+      "name": "库存汇总"
+    },
+    "product_tags": {
+      "table": "product_tags",
+      "expected": 638,
+      "found": 561,
+      "coverage": 0.8793,
+      "missing_count": 78,
+      "missing_sample": [
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        }
+      ],
+      "name": "产品标签"
+    },
+    "stock_alert": {
+      "table": "stock_alert",
+      "expected": 638,
+      "found": 486,
+      "coverage": 0.7618,
+      "missing_count": 152,
+      "missing_sample": [
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        }
+      ],
+      "name": "库存预警"
+    },
+    "child_price_promo": {
+      "table": "child_price_promo",
+      "expected": 638,
+      "found": 488,
+      "coverage": 0.7649,
+      "missing_count": 150,
+      "missing_sample": [
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        },
+        {
+          "parent_asin": "B0EXAMPLE0"
+        }
+      ],
+      "name": "子体价格/促销"
+    }
+  },
+  "summary": {
+    "min_coverage": 0.0,
+    "avg_coverage": 0.4145,
+    "status": "fail"
+  }
+}

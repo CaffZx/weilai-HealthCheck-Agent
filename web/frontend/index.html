@@ -191,6 +191,104 @@
   .user-gate-card select{width:100%;height:40px;border:1px solid #dce1e9;border-radius:8px;padding:0 10px;font-size:14px;margin-bottom:14px}
   .user-gate-card button{width:100%;height:42px;border:0;background:var(--blue);color:#fff;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
   @media(max-width:1200px){.layout{grid-template-columns:220px minmax(650px,1fr)}.detail{display:none}.summary{grid-template-columns:repeat(3,1fr)}.sum-card:nth-child(n+4){display:none}}
+
+  /* Phase 2: 处理记录 */
+  .history-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#376a99;font-weight:700;font-size:10px}
+  .proof-pill{display:inline-flex;padding:3px 7px;border-radius:10px;background:var(--green-soft);color:var(--green);font-weight:700;font-size:10px}
+  .proof-pill.warn{background:var(--amber-soft);color:var(--amber)}
+  .new-event-pill{display:inline-flex;padding:3px 7px;border-radius:10px;background:var(--red-soft);color:var(--red);font-weight:700;font-size:10px}
+  .effect-pill{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:11px}
+  .effect-pill:before{content:'';width:7px;height:7px;border-radius:50%;background:#9aa2af}
+  .effect-pill.good{color:var(--green)}.effect-pill.good:before{background:var(--green)}
+  .effect-pill.bad{color:var(--red)}.effect-pill.bad:before{background:var(--red)}
+  .effect-pill.watch{color:var(--amber)}.effect-pill.watch:before{background:#df9b31}
+  .history-notice{background:#edf6ff;border:1px solid #cfe4fb;border-radius:10px;padding:12px 15px;margin-bottom:14px;display:flex;gap:12px;color:#315a7b;font-size:11px;line-height:1.6}
+  .notice-icon{width:25px;height:25px;border-radius:50%;background:#d8ebff;display:grid;place-items:center;font-weight:800;flex:0 0 auto}
+  /* 抽屉 */
+  .drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.36);z-index:250;display:none;justify-content:flex-end}
+  .drawer-mask.show{display:flex}
+  .drawer{width:min(620px,96vw);height:100%;background:#f6f8fa;box-shadow:-16px 0 40px rgba(15,23,42,.18);display:flex;flex-direction:column}
+  .drawer-head{background:#fff;border-bottom:1px solid #e3e8ed;padding:16px 20px;display:flex;justify-content:space-between;gap:16px}
+  .drawer-head h2{font-size:18px;margin:3px 0 5px}.drawer-head p{margin:0;color:#788392;font-size:10px;font-family:ui-monospace,Menlo,monospace}
+  .drawer-close{border:0;background:#eef2f5;border-radius:7px;width:30px;height:30px;font-size:19px;cursor:pointer}
+  .drawer-body{padding:16px 20px 30px;overflow:auto;flex:1}
+  .proof-banner{background:#e9f7f0;border:1px solid #ccebdd;border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;margin-bottom:12px}
+  .proof-banner i{width:28px;height:28px;border-radius:50%;background:#16845b;color:#fff;display:grid;place-items:center;font-style:normal;font-weight:800}
+  .proof-banner b{display:block;color:#116b49;font-size:12px}
+  .proof-banner span{display:block;color:#55806e;font-size:10px;margin-top:2px}
+  .proof-section{background:#fff;border:1px solid #e2e7ec;border-radius:10px;margin-bottom:11px;overflow:hidden}
+  .proof-section-head{padding:10px 13px;border-bottom:1px solid #edf0f3;display:flex;justify-content:space-between;align-items:center}
+  .proof-section-head b{font-size:11px}.proof-section-head span{font-size:9px;color:#84909e}
+  .proof-grid{display:grid;grid-template-columns:1fr 1fr}
+  .proof-field{padding:10px 13px;border-right:1px solid #eef1f3;border-bottom:1px solid #eef1f3;min-height:55px}
+  .proof-field:nth-child(2n){border-right:0}
+  .proof-field span{display:block;color:#8993a1;font-size:9px;margin-bottom:4px}
+  .proof-field b{font-size:11px;color:#273140;line-height:1.5;word-break:break-word}
+  .timeline{padding:13px 15px}
+  .timeline-item{display:grid;grid-template-columns:74px 16px 1fr;gap:7px;min-height:62px}
+  .timeline-time{font-size:10px;color:#788392;text-align:right}
+  .timeline-rail{position:relative}
+  .timeline-rail:before{content:'';position:absolute;left:7px;top:11px;bottom:-4px;width:1px;background:#d9e1e8}
+  .timeline-item:last-child .timeline-rail:before{display:none}
+  .timeline-dot{position:absolute;top:3px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid #467cac}
+  .timeline-item.done .timeline-dot{border-color:#16845b}
+  .timeline-item.new .timeline-dot{border-color:#d94747}
+  .timeline-content{font-size:11px;color:#394150;line-height:1.55;padding-bottom:11px}
+  .timeline-content b{display:block;color:#1d2734;margin-bottom:2px}
+  .timeline-content em{font-style:normal;color:#7c8795;font-size:10px}
+  .drawer-actions{background:#fff;border-top:1px solid #e1e6eb;padding:12px 18px;display:flex;justify-content:flex-end;gap:8px}
+
+  /* Phase 2: 数据看板 */
+  .dash-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  .dash-kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 15px;min-height:98px;position:relative;overflow:hidden}
+  .dash-kpi:before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#d5dbe5}
+  .dash-kpi.good:before{background:var(--green)}
+  .dash-kpi.warn:before{background:#d98b1d}
+  .dash-kpi.bad:before{background:var(--red)}
+  .dash-kpi.blue:before{background:var(--blue)}
+  .dash-kpi-label{display:flex;justify-content:space-between;color:#657082;font-size:11px}
+  .dash-kpi-label em{font-style:normal;font-size:10px;border-radius:10px;padding:3px 6px;background:#f1f4f8;color:#788293}
+  .dash-kpi-value{font-size:26px;font-weight:820;margin:8px 0 4px;line-height:1}
+  .dash-kpi-sub{font-size:10px;color:#7a8494;line-height:1.4}
+  .dash-kpi-sub.good{color:var(--green)}.dash-kpi-sub.warn{color:#c07712}.dash-kpi-sub.bad{color:var(--red)}
+  .dash-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,.9fr);gap:14px;margin-bottom:14px}
+  .dash-panel{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 3px 12px rgba(31,42,68,.04)}
+  .dash-panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .dash-panel-head h2{font-size:14px;margin:0}
+  .dash-panel-head p{font-size:10px;color:var(--muted);margin:3px 0 0}
+  .daily-chart{height:260px;padding:20px 22px 16px;display:flex;flex-direction:column}
+  .daily-chart-area{position:relative;flex:1;border-bottom:1px solid #dce3e1;display:flex;align-items:flex-end;justify-content:space-around;gap:8px;padding:0 10px}
+  .daily-target{position:absolute;left:0;right:0;border-top:1px dashed #aeb9b5;bottom:80%;z-index:1}
+  .daily-target span{position:absolute;right:0;top:-16px;font-size:9px;color:#7f8986;background:#fff;padding-left:5px}
+  .day-col{height:100%;flex:1;max-width:60px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative;z-index:2;cursor:pointer}
+  .day-value{font-size:10px;color:#586573;margin-bottom:4px}
+  .day-bar{width:36px;min-height:3px;border-radius:5px 5px 0 0;background:#176b3b;transition:filter .15s}
+  .day-col:hover .day-bar{filter:brightness(1.1)}
+  .day-bar.today{background:#d58a1e}
+  .day-bar.low{background:#b85a45}
+  .day-name{font-size:10px;color:#6f7a88;margin-top:8px;white-space:nowrap}
+  .anomaly-bars{padding:14px 16px;display:grid;gap:12px}
+  .anomaly-row{display:grid;grid-template-columns:130px 1fr 42px;align-items:center;gap:10px;font-size:11px}
+  .anomaly-track{height:8px;border-radius:6px;background:#edf1ef;overflow:hidden}
+  .anomaly-track i{display:block;height:100%;background:#246fac;border-radius:6px}
+  .anomaly-count{font-weight:800;font-size:12px;text-align:right}
+  .dash-second{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .line-chart{height:180px;position:relative;border-left:1px solid #e2e6ec;border-bottom:1px solid #e2e6ec;margin:16px 16px 22px 32px}
+  .line-chart svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .line-chart .area{fill:rgba(39,100,231,.10)}
+  .line-chart .line{fill:none;stroke:#2764e7;stroke-width:2.5}
+  .line-chart .point{fill:#fff;stroke:#2764e7;stroke-width:2}
+  .line-axis-y{position:absolute;left:-30px;top:-3px;bottom:-3px;display:flex;flex-direction:column;justify-content:space-between;color:#8a93a2;font-size:9px}
+  .line-axis-x{position:absolute;left:0;right:0;bottom:-18px;display:flex;justify-content:space-between;color:#8a93a2;font-size:9px}
+  .action-list{padding:14px 16px;display:grid;gap:12px}
+  .action-line{display:grid;grid-template-columns:130px 1fr 52px;gap:10px;align-items:center;font-size:11px}
+  .action-line small{display:block;color:#8a93a2;margin-top:2px;font-size:9px}
+  .effect-track{height:8px;background:#edf1f5;border-radius:6px;overflow:hidden}
+  .effect-track i{height:100%;display:block;background:#7288b5;border-radius:6px}
+  .action-line.best .effect-track i{background:#17805c}
+  .action-line.low .effect-track i{background:#d38a24}
+  .repeat-num{font-size:14px;font-weight:800;color:var(--red)}
+  @media(max-width:1450px){.dash-kpis{grid-template-columns:repeat(3,1fr)}.dash-grid,.dash-second{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -201,6 +299,8 @@
     <div class="nav-item active" data-view="today">今日任务</div>
     <div class="nav-item" data-view="all">全部异常</div>
     <div class="nav-item" data-view="review">调整复盘</div>
+    <div class="nav-item" data-view="history">处理记录</div>
+    <div class="nav-item" data-view="dashboard">数据看板</div>
     <div class="nav-item" data-view="health">数据健康</div>
   </nav>
   <div class="top-spacer"></div>
@@ -319,6 +419,73 @@
   </section>
 </div>
 
+<!-- 视图: 处理记录 -->
+<div class="view" id="viewHistory">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">可审计执行凭证</div><h1>处理记录</h1><p>每次「完成并下一条」会生成独立的动作记录。同一产品再次异常时会新建事件，不覆盖历史凭证。</p></div>
+      <div class="page-actions"><button class="btn" id="historyReloadBtn">刷新</button></div>
+    </div>
+    <div class="kpi-grid" id="historyKpi"></div>
+    <div class="history-notice"><div class="notice-icon">i</div><div><b>记录口径：</b>「已处理」只证明运营完成了动作，不代表异常已恢复。系统保留 <b>动作记录ID</b>、<b>异常事件ID</b>、点击完成时间、实际动作、操作人、执行前快照和复查结论。产品第 N 天再出现异常会生成新事件ID，与原记录并存。</div></div>
+    <div class="page-panel">
+      <div class="filter-row">
+        <div class="search wide"><input id="historySearch" placeholder="搜索 ASIN / 记录ID / 事件ID / 实际动作"/></div>
+        <select id="historyRange"><option value="all">全部时间</option><option value="today">今天</option><option value="7d">近7天</option><option value="30d">近30天</option></select>
+        <select id="historyStatus"><option value="">全部完整性</option><option>完整</option><option>待补</option></select>
+        <select id="historyEvent"><option value="">全部事件关系</option><option value="new">处理后有新异常</option><option value="single">单次异常</option></select>
+        <span class="filter-result">共 <b id="historyResultCount">0</b> 条</span>
+      </div>
+      <div class="data-table-scroll">
+        <table class="data-table" style="min-width:1200px">
+          <thead><tr><th>动作记录ID</th><th>处理时间</th><th>产品</th><th>对应异常事件</th><th>实际动作</th><th>操作人</th><th>复查</th><th>完整性</th><th>后续新异常</th><th>操作</th></tr></thead>
+          <tbody id="historyBody"><tr><td colspan="10" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 视图: 数据看板 -->
+<div class="view" id="viewDashboard">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">运营效率与异常恢复</div><h1>数据看板</h1><p>衡量任务是否按时完成、调整是否真正恢复，以及哪些异常正在反复发生。SLA：P0 当天、P1 3天、P2 7天。</p></div>
+      <div class="page-actions"><select id="dashRange" class="btn"><option value="7">近7天</option><option value="14">近14天</option><option value="30">近30天</option></select><button class="btn" id="dashReloadBtn">刷新</button></div>
+    </div>
+    <div class="dash-kpis" id="dashKpis"></div>
+    <div class="dash-grid">
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>每日任务完成量</h2><p>虚线为参考目标 80 条/日</p></div></div>
+        <div class="daily-chart"><div class="daily-chart-area" id="dailyChart"><div class="daily-target"><span>目标 80</span></div></div></div>
+      </section>
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>异常大类分布</h2><p>点击可下钻到全部异常</p></div></div>
+        <div class="anomaly-bars" id="anomalyBars"></div>
+      </section>
+    </div>
+    <div class="dash-second">
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>异常恢复趋势</h2><p>仅统计已复查任务（effect ∈ 变好/变差/待观察）</p></div><span style="font-size:10px;color:var(--muted)">目标 ≥80%</span></div>
+        <div class="line-chart" id="recoveryChart"><div class="line-axis-y"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div><svg viewBox="0 0 700 180" preserveAspectRatio="none"><path class="area" id="recoveryArea"></path><polyline class="line" id="recoveryLine"></polyline><g id="recoveryPoints"></g></svg><div class="line-axis-x" id="recoveryXAxis"></div></div>
+      </section>
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>调整动作有效率</h2><p>按实际动作关键词自动分类</p></div></div>
+        <div class="action-list" id="actionEffectList"></div>
+      </section>
+    </div>
+    <section class="dash-panel">
+      <div class="dash-panel-head"><div><h2>高频异常产品</h2><p>同产品出现 ≥2 次异常，考虑升级 AI 深度分析</p></div></div>
+      <div class="data-table-scroll">
+        <table class="data-table" style="min-width:1000px">
+          <thead><tr><th>产品</th><th>异常次数</th><th>主要异常</th><th>已处理次数</th><th>最近效果</th><th>当前优先级</th><th>执行分</th><th>持续</th></tr></thead>
+          <tbody id="repeatProductBody"><tr><td colspan="8" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+</div>
+
 <!-- 视图4: 数据健康 -->
 <div class="view" id="viewHealth">
   <section class="workspace-page">
@@ -353,6 +520,15 @@
   </div>
 </div>
 
+<!-- 处理记录抽屉 -->
+<div class="drawer-mask" id="historyDrawer">
+  <aside class="drawer">
+    <div class="drawer-head"><div><div class="page-eyebrow">动作凭证与产品轨迹</div><h2 id="drawerTitle">处理记录详情</h2><p id="drawerSubtitle">-</p></div><button class="drawer-close" id="drawerCloseX">×</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+    <div class="drawer-actions"><button class="btn" id="drawerCloseBtn">关闭</button><button class="btn ghost-blue" id="drawerCopyBtn">复制记录编号</button></div>
+  </aside>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -363,6 +539,7 @@ const state = {
   viewerId: null, viewerName: '', targetId: null,
   role: 'operator', reports: [], users: [],
   todayData: null, allData: null, reviewData: null, healthData: null,
+  historyData: null, dashboardData: null, historyRange: 'all', dashRange: '7',
   selectedEventUid: null,
   filters: { q:'', priority:'', status:'', quickMode:'all' },
   view: 'today',
@@ -408,6 +585,8 @@ function switchView(v){
   if (v === 'today' && !state.todayData) loadToday();
   if (v === 'all') loadAll();
   if (v === 'review') loadReview();
+  if (v === 'history') loadHistory();
+  if (v === 'dashboard') loadDashboard();
   if (v === 'health') loadHealth();
 }
 
@@ -468,6 +647,8 @@ function loadCurrentView(){
   if (state.view === 'today') loadToday();
   else if (state.view === 'all') loadAll();
   else if (state.view === 'review') loadReview();
+  else if (state.view === 'history') loadHistory();
+  else if (state.view === 'dashboard') loadDashboard();
   else if (state.view === 'health') loadHealth();
 }
 
@@ -806,10 +987,213 @@ function renderHealth(){
 document.getElementById('healthReloadBtn').onclick = () => loadHealth();
 
 // ============================================================
+// 视图5：处理记录
+// ============================================================
+async function loadHistory(){
+  document.getElementById('historyBody').innerHTML = '<tr><td colspan="10" class="loading">加载中…</td></tr>';
+  try {
+    const q = document.getElementById('historySearch').value || '';
+    const r = document.getElementById('historyRange').value || 'all';
+    const s = document.getElementById('historyStatus').value || '';
+    const ev = document.getElementById('historyEvent').value || '';
+    const url = withTarget('/api/history') + `&range=${r}` + (q?`&q=${encodeURIComponent(q)}`:'') + (s?`&status=${encodeURIComponent(s)}`:'') + (ev?`&event=${ev}`:'');
+    state.historyData = await api(url);
+    renderHistory();
+  } catch(e){
+    document.getElementById('historyBody').innerHTML = `<tr><td colspan="10" class="loading">加载失败：${esc(e.message)}</td></tr>`;
+  }
+}
+function renderHistory(){
+  const d = state.historyData; if (!d) return;
+  document.getElementById('historyResultCount').textContent = d.total;
+  const k = d.kpi;
+  document.getElementById('historyKpi').innerHTML = `
+    <div class="kpi-card good-card"><span>已形成处理凭证</span><b>${k.proof}</b><small>完整记录数</small></div>
+    <div class="kpi-card"><span>涉及产品</span><b>${k.products}</b><small>同产品可多条记录</small></div>
+    <div class="kpi-card danger-card"><span>处理后再次异常</span><b>${k.with_new_event}</b><small>新事件与原记录并存</small></div>
+    <div class="kpi-card warning-card"><span>待补完整记录</span><b>${k.pending}</b><small>结果或动作未填</small></div>
+  `;
+  const rows = d.records;
+  if (!rows.length){
+    document.getElementById('historyBody').innerHTML = '<tr class="empty-row"><td colspan="10">无匹配的处理记录</td></tr>';
+    return;
+  }
+  document.getElementById('historyBody').innerHTML = rows.map(r => `
+    <tr data-rid="${esc(r.record_id)}">
+      <td><span class="history-id">${esc(r.record_id)}</span></td>
+      <td>${esc((r.time||'').slice(0,16))}</td>
+      <td><div class="mini-product"><b>${esc(r.product_name || r.parent_asin)}</b><span>${esc(r.parent_asin)} · ${esc(r.shop_account||'-')}</span></div></td>
+      <td><div class="mini-product"><b>${esc(r.issue||'-')}</b><span>${esc(r.event_id)} · ${esc(r.priority)} · 分${Math.round(r.score)}</span></div></td>
+      <td>${esc(r.actual_action||'-')}${r.action_class?`<br><span style="color:#8a93a2;font-size:10px">类型：${esc(r.action_class)}</span>`:''}</td>
+      <td>${esc(r.owner)}</td>
+      <td><span class="effect-pill ${r.review==='已恢复'?'good':r.review==='未恢复'?'bad':'watch'}">${esc(r.review)}</span></td>
+      <td><span class="proof-pill ${r.complete==='待补'?'warn':''}">${r.complete==='完整'?'✓ ':''}${esc(r.complete)}</span></td>
+      <td>${r.new_event ? `<span class="new-event-pill">${esc(r.new_event.issue||'新异常')}</span>` : '—'}</td>
+      <td><button class="btn" style="padding:0 8px;height:26px;font-size:11px" data-open="${esc(r.record_id)}">查看凭证</button></td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('#historyBody button[data-open]').forEach(b => {
+    b.onclick = () => openHistoryDrawer(b.dataset.open);
+  });
+}
+async function openHistoryDrawer(recordId){
+  const drawer = document.getElementById('historyDrawer');
+  document.getElementById('drawerBody').innerHTML = '<div class="loading">加载中…</div>';
+  drawer.classList.add('show');
+  try {
+    const r = await api(withTarget(`/api/history/${recordId}`));
+    state._currentRecord = r;
+    document.getElementById('drawerTitle').textContent = `处理记录 · ${r.record_id}`;
+    document.getElementById('drawerSubtitle').textContent = `${r.event_id} · ${r.parent_asin} · ${r.shop_account||''}`;
+    const before = (state.todayData?.events || []).find(e => e.event_uid === r.event_uid);
+    const beforeMetrics = r.timeline.find(t => t.before_metrics)?.before_metrics;
+    let snapshotHtml = '';
+    if (beforeMetrics){
+      try {
+        const bm = JSON.parse(beforeMetrics);
+        snapshotHtml = Object.entries(bm).map(([k,v]) => `<div class="proof-field"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join('');
+      } catch(e){}
+    }
+    document.getElementById('drawerBody').innerHTML = `
+      <div class="proof-banner"><i>✓</i><div><b>${r.complete === '完整' ? '已形成可追溯处理凭证' : '记录不完整，请补齐'}</b><span>点击完成时间、操作人、实际动作、复查节点均已保存</span></div></div>
+      <section class="proof-section">
+        <div class="proof-section-head"><b>基础信息</b><span>${r.complete === '完整' ? '记录完整' : '存在待补字段'}</span></div>
+        <div class="proof-grid">
+          <div class="proof-field"><span>动作记录ID</span><b>${esc(r.record_id)}</b></div>
+          <div class="proof-field"><span>异常事件ID</span><b>${esc(r.event_id)}</b></div>
+          <div class="proof-field"><span>产品</span><b>${esc(r.product_name || r.parent_asin)}<br>${esc(r.parent_asin)} · ${esc(r.parent_sku||'-')}</b></div>
+          <div class="proof-field"><span>优先级 · 执行分</span><b>${esc(r.priority)} · ${Math.round(r.score)}/100</b></div>
+          <div class="proof-field"><span>点击完成时间</span><b>${esc(r.time)}</b></div>
+          <div class="proof-field"><span>操作人</span><b>${esc(r.owner)}</b></div>
+          <div class="proof-field"><span>处理结果</span><b>${esc(r.result||'待补')}</b></div>
+          <div class="proof-field"><span>复查节点</span><b>${esc(r.review_at||'不复查')}</b></div>
+          <div class="proof-field"><span>SLA</span><b>${r.on_time ? '✓ 按时' : '⚠ 超时'} · 处理耗时 ${r.handle_days ?? '-'} 天</b></div>
+          <div class="proof-field"><span>动作类型</span><b>${esc(r.action_class||'-')}</b></div>
+        </div>
+      </section>
+      ${snapshotHtml ? `<section class="proof-section"><div class="proof-section-head"><b>执行前数据快照</b><span>用于证明处理时的判定依据</span></div><div class="proof-grid">${snapshotHtml}</div></section>` : ''}
+      <section class="proof-section">
+        <div class="proof-section-head"><b>实际动作与备注</b><span>运营填写</span></div>
+        <div style="padding:12px 14px;font-size:12px;line-height:1.7"><b>${esc(r.actual_action||'待补')}</b><br><span style="color:#7b8794">${esc(r.notes||'无补充备注')}</span></div>
+      </section>
+      <section class="proof-section">
+        <div class="proof-section-head"><b>本次事件处理轨迹</b><span>已处理 ≠ 已恢复</span></div>
+        <div class="timeline">
+          <div class="timeline-item"><div class="timeline-time">首次命中</div><div class="timeline-rail"><i class="timeline-dot"></i></div><div class="timeline-content"><b>巡检命中：${esc(r.issue||'-')}</b><span>${esc(r.event_id)} · 进入 ${esc(r.priority)} 任务池 · 执行分 ${Math.round(r.score)}</span></div></div>
+          ${r.timeline.map(t => `<div class="timeline-item ${t.action_type==='完成'?'done':t.action_type==='不处理'?'':''}"><div class="timeline-time">${esc((t.created_at||'').slice(5,16))}</div><div class="timeline-rail"><i class="timeline-dot"></i></div><div class="timeline-content"><b>${esc(t.action_type)}${t.result?` · ${esc(t.result)}`:''}</b><span>${esc(t.actual_action||'')}</span>${t.notes?`<br><em>备注：${esc(t.notes)}</em>`:''}</div></div>`).join('')}
+          ${r.new_event ? `<div class="timeline-item new"><div class="timeline-time">${esc((r.new_event.first_seen||'').slice(0,10))}</div><div class="timeline-rail"><i class="timeline-dot"></i></div><div class="timeline-content"><b>新异常事件：${esc(r.new_event.issue||'-')}</b><span>${esc(r.new_event.event_id)}。此事件与原 ${esc(r.event_id)} 分开记录，不覆盖原凭证。</span></div></div>` : ''}
+        </div>
+      </section>
+    `;
+  } catch(e){
+    document.getElementById('drawerBody').innerHTML = `<div class="loading">加载失败：${esc(e.message)}</div>`;
+  }
+}
+function closeHistoryDrawer(){ document.getElementById('historyDrawer').classList.remove('show'); }
+document.getElementById('drawerCloseX').onclick = closeHistoryDrawer;
+document.getElementById('drawerCloseBtn').onclick = closeHistoryDrawer;
+document.getElementById('historyDrawer').onclick = e => { if (e.target.id === 'historyDrawer') closeHistoryDrawer(); };
+document.getElementById('drawerCopyBtn').onclick = () => {
+  if (state._currentRecord) {
+    navigator.clipboard?.writeText(state._currentRecord.record_id);
+    toast(`已复制 ${state._currentRecord.record_id}`);
+  }
+};
+document.getElementById('historyReloadBtn').onclick = () => loadHistory();
+['historySearch','historyRange','historyStatus','historyEvent'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener(id === 'historySearch' ? 'input' : 'change', () => loadHistory());
+});
+
+// ============================================================
+// 视图6：数据看板
+// ============================================================
+async function loadDashboard(){
+  document.getElementById('dashKpis').innerHTML = '<div class="loading" style="grid-column:1/-1">加载中…</div>';
+  try {
+    const rng = document.getElementById('dashRange').value || '7';
+    state.dashboardData = await api(withTarget('/api/dashboard') + `&range=${rng}`);
+    renderDashboard();
+  } catch(e){
+    document.getElementById('dashKpis').innerHTML = `<div class="loading" style="grid-column:1/-1">加载失败：${esc(e.message)}</div>`;
+  }
+}
+function renderDashboard(){
+  const d = state.dashboardData; if (!d) return;
+  const k = d.kpi;
+  document.getElementById('dashKpis').innerHTML = `
+    <div class="dash-kpi blue"><div class="dash-kpi-label"><span>已完成任务</span><em>${d.range_days}天</em></div><div class="dash-kpi-value">${k.completed}</div><div class="dash-kpi-sub">目标 ${k.target}，达成 ${k.goal_rate}%</div></div>
+    <div class="dash-kpi ${k.goal_rate>=100?'good':'warn'}"><div class="dash-kpi-label"><span>目标完成率</span><em>参考80/日</em></div><div class="dash-kpi-value">${k.goal_rate}%</div><div class="dash-kpi-sub ${k.goal_rate>=100?'good':'warn'}">${k.goal_rate>=100?'已达标':'未达标'}</div></div>
+    <div class="dash-kpi ${k.on_time_rate>=90?'good':'warn'}"><div class="dash-kpi-label"><span>按时处理率</span><em>SLA</em></div><div class="dash-kpi-value">${k.on_time_rate}%</div><div class="dash-kpi-sub">${k.on_time_count} 条按时完成</div></div>
+    <div class="dash-kpi ${k.recovery_rate>=80?'good':'warn'}"><div class="dash-kpi-label"><span>异常恢复率</span><em>复查确认</em></div><div class="dash-kpi-value">${k.recovery_rate}%</div><div class="dash-kpi-sub ${k.recovery_rate>=80?'good':'warn'}">${k.recovered} 变好 / ${k.not_recovered} 变差</div></div>
+    <div class="dash-kpi ${k.p0_ontime_rate>=95?'good':'warn'}"><div class="dash-kpi-label"><span>P0 按时率</span><em>1天时限</em></div><div class="dash-kpi-value">${k.p0_ontime_rate}%</div><div class="dash-kpi-sub ${k.p0_overdue?'warn':'good'}">${k.p0_overdue} 条 P0 超时</div></div>
+    <div class="dash-kpi ${k.repeat_rate<10?'good':'bad'}"><div class="dash-kpi-label"><span>重复异常率</span><em>≥2次</em></div><div class="dash-kpi-value">${k.repeat_rate}%</div><div class="dash-kpi-sub ${k.repeat_rate<10?'good':'bad'}">${k.repeat_products} 款重复出现</div></div>
+  `;
+
+  // 每日完成量柱图
+  const chart = document.getElementById('dailyChart');
+  chart.querySelectorAll('.day-col').forEach(x => x.remove());
+  const daily = d.daily || [];
+  const maxVal = Math.max(100, ...daily.map(x => x.count));
+  daily.forEach((day, i) => {
+    const col = document.createElement('div');
+    col.className = 'day-col';
+    const label = day.date.slice(5).replace('-','/');
+    col.innerHTML = `<div class="day-value">${day.count}</div><div class="day-bar ${i===daily.length-1?'today':''} ${day.count<day.target?'low':''}" style="height:${Math.max(3, day.count/maxVal*100)}%"></div><div class="day-name">${label}</div>`;
+    col.onclick = () => toast(`${label}：完成 ${day.count} 条`);
+    chart.appendChild(col);
+  });
+
+  // 异常大类分布
+  const anomaly = d.anomaly || [];
+  const maxA = Math.max(1, ...anomaly.map(x => x.events));
+  document.getElementById('anomalyBars').innerHTML = anomaly.map(a => `
+    <div class="anomaly-row"><span>${esc(a.name)}</span><div class="anomaly-track"><i style="width:${a.events/maxA*100}%"></i></div><span class="anomaly-count">${a.events}</span></div>
+  `).join('') || '<div class="loading">无异常数据</div>';
+
+  // 恢复率折线
+  const trend = d.trend || [];
+  const w = 700, h = 180;
+  const pts = trend.length > 1 ? trend.map((t, i) => [i/(trend.length-1)*w, h - t.rate/100*h]) : trend.length ? [[w/2, h - trend[0].rate/100*h]] : [];
+  const pointsStr = pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+  document.getElementById('recoveryLine').setAttribute('points', pointsStr);
+  document.getElementById('recoveryArea').setAttribute('d', pts.length ? `M ${pts[0][0]} ${h} L ${pts.map(p => p.join(' ')).join(' L ')} L ${pts[pts.length-1][0]} ${h} Z` : '');
+  document.getElementById('recoveryPoints').innerHTML = pts.map((p, i) => `<circle class="point" cx="${p[0]}" cy="${p[1]}" r="3" data-rate="${trend[i].rate}"><title>${trend[i].date} · ${trend[i].rate}%</title></circle>`).join('');
+  document.getElementById('recoveryXAxis').innerHTML = trend.filter((_, i) => i === 0 || i === trend.length-1 || i === Math.floor(trend.length/2)).map(t => `<span>${t.date.slice(5).replace('-','/')}</span>`).join('');
+
+  // 动作有效率
+  const acts = d.action_effects || [];
+  document.getElementById('actionEffectList').innerHTML = acts.length ? acts.map((a, i) => `
+    <div class="action-line ${i===0?'best':a.rate<50?'low':''}">
+      <span>${esc(a.name)}<small>已复查 ${a.checked}/${a.total}</small></span>
+      <div class="effect-track"><i style="width:${a.rate}%"></i></div>
+      <b>${a.rate}%</b>
+    </div>
+  `).join('') : '<div class="loading">尚无已复查动作</div>';
+
+  // 高频异常产品
+  const rp = d.repeat_products || [];
+  document.getElementById('repeatProductBody').innerHTML = rp.length ? rp.map(p => `
+    <tr>
+      <td><div class="mini-product"><b>${esc(p.product_name || p.parent_asin)}</b><span>${esc(p.parent_asin)}</span></div></td>
+      <td><span class="repeat-num">${p.count}</span></td>
+      <td>${esc(p.issue||'-')}</td>
+      <td>${p.actions}</td>
+      <td><span class="effect-pill ${p.effect==='变好'?'good':p.effect==='变差'?'bad':'watch'}">${esc(p.effect||'-')}</span></td>
+      <td><span class="priority ${(p.priority||'').toLowerCase()}">${esc(p.priority||'-')}</span></td>
+      <td>${Math.round(p.score||0)}</td>
+      <td>${p.days||0}天</td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="8">无高频异常产品</td></tr>';
+}
+document.getElementById('dashReloadBtn').onclick = () => loadDashboard();
+document.getElementById('dashRange').onchange = () => loadDashboard();
+
+// ============================================================
 // 启动
 // ============================================================
 const initialHash = location.hash.replace('#','');
-if (['all','review','health','today'].includes(initialHash) && initialHash !== 'today') {
+if (['all','review','history','dashboard','health','today'].includes(initialHash) && initialHash !== 'today') {
   state.view = initialHash;
   document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.view === state.view));
