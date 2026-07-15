@@ -313,12 +313,16 @@ A+异常:
   定义: "同一父ASIN下，各变体前台到手价差距明显偏离正常价格带"
   边界: "运营动作（活动价、Coupon、清货、少库存控速）导致的价差标记为'需运营复核'，不进正式打分"
   所需数据字段:
-    - 各变体前台到手价
-    - 变体重要性
-    - 尺码分类
-    - 颜色分类
-    - Coupon
-    - 活动价
+    # 本地表: child_price_promo (来源 erp_listing_price_promotion_analysis)
+    - child_price_promo.price_usd       # 到手价数值（USD，从原始 "$12.99" 解析）
+    - child_price_promo.price           # 原始价格字符串（含币种符号）
+    - child_price_promo.coupon          # Coupon 折扣
+    - child_price_promo.savingsPercentage  # 折扣比例（如 '8%'）
+    - child_price_promo.strikethroughPrice # 原价（划掉价）
+    - product_tags.主要色/次要色/长尾色    # 变体重要性（待接入 erp_listing_product_info 补齐）
+    # 变体归属（尺码/颜色）
+    - sales_child.seller_sku            # 用来推 尺码/颜色 后缀
+    - erp_listing_product_info.productColor # 待接入
   比价基准: "主流量入口颜色（主要色）中价格最低尺码的前台到手价"
   # 命中规则（尺码分支）
   尺码分支:
@@ -345,14 +349,22 @@ A+异常:
   可共因上调: true
   定义: "ERP系统活动配置存在但前台未展示；促销未生效、折扣错误、类型不一致"
   所需数据字段:
-    - ERP活动配置
-    - 前台促销展示
-    - 活动审核状态
+    # 前台促销展示：本地表 child_price_promo（子体级快照，父级由代码聚合）
+    - child_price_promo.coupon              # 前台 Coupon
+    - child_price_promo.savingsPercentage   # 前台折扣比例
+    - child_price_promo.strikethroughPrice  # 划掉价（说明有促销）
+    - child_price_promo.discountTypes       # 折扣类型（LD/BD/Prime/Deal 等）
+    - child_price_promo.promotions          # 促销结构化列表
+    - child_price_promo.promotionSummary    # 促销摘要文本
+    # ERP 侧活动配置（待接入 - 目前没有直接工具）
+    # ⚠️ 数据源待补：ERP活动配置 / 活动审核状态 目前无对应 MCP 工具
+    # 暂时判定策略：只判"前台促销缺失/失效"，不判"vs ERP 配置一致性"
   命中条件_任一满足:
-    - "ERP活动配置存在 AND 前台促销展示 == '未展示'"
-    - "活动审核状态 IN ['未通过','异常']"
-    - "前台展示活动类型 != ERP配置活动类型"
-    - "折扣计算与配置不一致"
+    - "child_price_promo.savingsPercentage 上周有 但 本周消失"      # 促销消失
+    - "child_price_promo.strikethroughPrice 存在 但 price == strikethroughPrice"  # 划掉价与实际价相同
+  数据源待补:
+    - ERP活动配置
+    - 前台活动类型 vs ERP 类型 一致性检查
 
 # =============================================================================
 # §2.4 库存与可售异常
@@ -447,9 +459,11 @@ ACOS异常:
   默认严重度: 见§3.6
   所需数据字段:
     - 实际ACOS
-    - 近7天平均ACOS
-    - 近3天累计广告花费
-    - 近3天累计点击
+    - 近3天平均ACOS
+    - 目标ACOS                 # app_db.acos_override.value（辅助决策 agent 设置）
+    - 近3天累计广告花费          # 样本量门槛
+    - 近7天日均花费              # 样本量门槛（不作基线）
+    - 近3天累计点击              # 样本量门槛
   判定: "由 §3.6 → severity_grader.判ACOS异常"
 
 广告花费异常:
@@ -459,7 +473,8 @@ ACOS异常:
   方向: [超出, 不足]
   所需数据字段:
     - 实际花费
-    - 近7天平均花费
+    - 近3天平均花费
+    - 目标每日预算             # app_db.budget_override.value（辅助决策 agent 设置）
     # 查证用
     - 曝光量
     - 点击量
@@ -493,10 +508,20 @@ ACOS异常:
   层级: 链接级
   类型: 表现型
   默认严重度: 见§3.9
+  # ⚠️ 数据源待补 —— 严重度判定暂时避开
+  数据源待补:
+    - MCP 无"直接竞品集合排位"字段（知识库口径）
+    - keyword_competitors 实测空、keyword_child_asins 实测空、direct_competitors 无本产品排名字段
+  可用替代数据:
+    - child_price_promo.bestSellersRank   # BSR 排名（非知识库定义的"竞品集合排位"，但同样是竞争入口信号）
+    - own_keyword_flow.自然排位排名        # 关键词自然排位（口径较粗）
+  当前策略:
+    代码判定: 暂不做   # severity_grader.判卡位异常 输入永远缺失 → 返回观察类"数据源待补"
+    LLM观察: 保留      # 判定引擎可读 BSR 提示"BSR 近期变化，需人工看一眼"
   所需数据字段:
-    - 当前卡位
-    - 近7天平均卡位
-  判定: "由 §3.9 → severity_grader.判卡位异常"
+    - 当前卡位              # 数据源待补
+    - 近7天平均卡位          # 数据源待补
+  判定: "数据源待补，暂不进入正式打分（severity_grader 会返回观察类结果）"
 
 放量未执行:
   层级: 链接级
@@ -523,11 +548,21 @@ ACOS异常:
   可共因上调: true
   定义: "商品类目被错误修改，或类目与产品实际不匹配"
   所需数据字段:
-    - 类目路径
-    - 平台提示
-    - ERP类目基准
+    # 前台类目：child_price_promo（子体级，父级由代码汇总检查一致性）
+    - child_price_promo.categoryName    # 末级类目名（如 'Button-Down Shirts'）
+    - child_price_promo.categoryId
+    - child_price_promo.breadCrumbs     # 完整类目路径
+    - child_price_promo.bestSellersRank # BSR 排名（含类目层级）
+    # ERP 类目基准（待接入 erp_listing_product_info）
+    - erp_listing_product_info.firstCategory   # 一级类目
+    - erp_listing_product_info.lastCategory    # 末级类目
   命中条件_任一满足:
-    - "类目路径 != ERP类目基准"
+    # 现在能做的：同父ASIN 下多个子体的 categoryName 不一致（说明后台被改乱）
+    - "同父ASIN 下不同子体 categoryName 出现分歧"
+    # 待接入：前台 categoryName != erp_listing_product_info.lastCategory
+    - "child_price_promo.categoryName != erp_listing_product_info.lastCategory"
+  数据源部分待补:
+    - ERP类目基准（erp_listing_product_info.firstCategory/lastCategory 需接入）
     - "平台提示 == '类目不匹配'"
 
 属性信息异常:
@@ -594,10 +629,17 @@ ACOS异常:
   类型: 表现型
   默认严重度: 见§3.11
   所需数据字段:
-    - 当前评分
-    - 近7天平均评分
-    - 目标评分
-  判定: "由 §3.11 双基准 → severity_grader.判评分异常"
+    # 基准B（当前 vs 目标评分）—— 现在能做
+    - child_price_promo.star           # 当前评分（实时爬 135/136 有值，覆盖率极高）
+    - listing_baseline.星级             # 备用当前评分
+    - product_tags.TARGET_STAR_RATE    # 目标评分（数据源覆盖率 78%）
+    # 基准A（当前 vs 近7天均）—— 数据源待补
+    # ⚠️ 无历史评分序列的 MCP 工具，az_extend_detail.CRAW_ASIN_STAR 实测全空
+    # 长期方案：daily_monitor 每日快照 child_price_promo.star 到独立表 daily_star_snapshot
+  判定策略:
+    基准B_可用: "current vs TARGET_STAR_RATE，走 §3.11 双基准取高"
+    基准A_数据源待补: "近7天平均评分 无 MCP 直接工具；接入 daily_star_snapshot 前跳过此基准"
+  判定: "由 §3.11 双基准 → severity_grader.判评分异常（基准A 缺数据时自动只走基准B）"
 
 退款异常:
   层级: 链接级

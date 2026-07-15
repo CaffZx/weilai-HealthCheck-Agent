@@ -103,7 +103,42 @@ def _load_rules_yaml() -> str:
     return RULES_PATH.read_text(encoding="utf-8")
 
 
-def build_prompt(config_row: dict, mcp_bundle: dict) -> dict:
+def _build_code_context(code_judgment: dict | None) -> str:
+    """把代码巡检结果格式化成 LLM 可读的上下文块。
+    LLM 二次分析时：严重度/异常清单是权威（不允许修改），LLM 的任务是深化 + 补充。"""
+    if not code_judgment:
+        return ""
+    pri = code_judgment.get("优先级信息") or {}
+    anoms = code_judgment.get("异常明细") or []
+    lines = [
+        "## 代码巡检结果（权威，你不能修改严重度/优先级，只能在此基础上深化和补充）",
+        f"父卡严重度：{pri.get('父卡严重度', '-')}",
+        f"执行优先级：{pri.get('执行优先级', '-')}（{pri.get('处理时限', '-')}）",
+        f"产品执行分数：{pri.get('产品执行分数', '-')}",
+        f"标题：{code_judgment.get('headline', '-')}",
+        "",
+        "### 已识别异常清单（每一条严重度/异常类型是权威的）：",
+    ]
+    for i, a in enumerate(anoms, 1):
+        lines.append(
+            f"{i}. [{a.get('该条严重度','-')}] {a.get('问题点位','-')}"
+            f"（类型={a.get('异常类型','-')}，作用层级={a.get('作用层级','-')}）"
+            f"\n   命中变体：{a.get('命中变体','-')}"
+            f"\n   具体表现：{a.get('具体表现','-')}"
+            f"\n   判断依据：{a.get('判断依据','-')}"
+            f"\n   技术依据（原始数据）：{a.get('技术依据','-')}"
+        )
+    lines.append("")
+    lines.append("## 你的任务")
+    lines.append("1. **严重度/优先级/异常清单** 完全沿用代码结果，不要改动。")
+    lines.append("2. **具体表现 / 判断依据 / 处理建议** 可以基于知识库和数据做深化改写，用运营语言（不用技术术语，如'基线'→'平均值'，'偏离比'→'偏离幅度'）。")
+    lines.append("3. **数字**必须格式化：百分比 XX.X%（不要 0.333），金额 $XX.XX，销量取整。")
+    lines.append("4. 如果你从数据里发现代码**未识别**的异常，可以新增一条，并标记 `\"AI补录\": true`。")
+    lines.append("5. 输出 JSON 结构和代码结果一致：`优先级信息 + 定位信息 + 异常明细`。异常明细每条至少含：该条严重度/问题点位/异常类型/异常大类/作用层级/命中变体/变体重要性/异常状态/具体表现/判断依据/处理建议/技术依据/该条执行分数。")
+    return "\n".join(lines)
+
+
+def build_prompt(config_row: dict, mcp_bundle: dict, code_judgment: dict | None = None) -> dict:
     return {
         "system": _fill(_load_prompt("system"), {
             "KNOWLEDGE_BUNDLE": _load_bundle(),
@@ -113,7 +148,7 @@ def build_prompt(config_row: dict, mcp_bundle: dict) -> dict:
             "CONFIG_JSON": json.dumps(config_row, ensure_ascii=False, indent=2),
             "MCP_JSON": json.dumps(mcp_bundle, ensure_ascii=False, indent=2),
             "LOCAL_BLOCK": _local_enrichment(config_row.get("parent_asin", "")),
-        }),
+        }) + "\n\n" + _build_code_context(code_judgment),
     }
 
 
@@ -137,8 +172,11 @@ def _extract_json(text: str) -> dict:
         return {"raw": text, "parse_error": str(e)}
 
 
-def judge(config_row: dict, mcp_bundle: dict, model: str | None = None) -> dict:
-    prompt = build_prompt(config_row, mcp_bundle)
+def judge(config_row: dict, mcp_bundle: dict, model: str | None = None,
+          code_judgment: dict | None = None) -> dict:
+    """LLM 判定。code_judgment 传入代码巡检结果时走"二次分析"模式：
+    严重度/优先级沿用代码，LLM 只做深化 + 补录。"""
+    prompt = build_prompt(config_row, mcp_bundle, code_judgment=code_judgment)
     key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         return {

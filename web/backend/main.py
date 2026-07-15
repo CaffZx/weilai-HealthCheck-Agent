@@ -1,5 +1,5 @@
-"""本地离线测试台。全部数据来自 tests/fixtures/demo/，无需网络。
-运行: python -m uvicorn web.backend.main:app --reload --port 8000
+"""FastAPI 后端 —— 数据源为本地 SQLite（sync_all 抓 MCP 落库）。
+运行: python -m uvicorn web.backend.main:app --host 0.0.0.0 --port 8000
 
 两条判定管线：
   LLM 管线：/api/judge/{key} → llm_judge.judge() → DeepSeek
@@ -15,9 +15,11 @@ import logging
 import threading
 import yaml
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+
+import sqlite3
 
 from core import knowledge_loader
 from core import llm_judge
@@ -42,6 +44,8 @@ def _load_settings() -> dict:
 
 # ---------------------------------------------------------------------------
 # 批量缓存：{key: {priority, score, llm_status, judgment, ...}}
+# 缓存是产品级的（key = parent_asin__shop_id），不同用户可能共享同一产品缓存。
+# 用户隔离由 /api/asins 的 userId 过滤保证，不在缓存层实现。
 # 内存字典 + JSON 磁盘持久化：进程重启后自动恢复缓存，避免重跑
 # ---------------------------------------------------------------------------
 _batch_cache: dict = {}
@@ -221,6 +225,51 @@ def batch_inspect_trigger():
     return {"status": "triggered"}
 
 
+# --- 数据抓取健康度 ---
+@app.get("/api/sync-health")
+def sync_health():
+    """返回最近一次 check_coverage 生成的健康度报告（logs/health-report-latest.json）。
+    没有报告时返回 {status: 'no_report'}。"""
+    import json as _json
+    from pathlib import Path as _Path
+    p = _Path(__file__).resolve().parent.parent.parent / "logs" / "health-report-latest.json"
+    if not p.exists():
+        return {"status": "no_report", "hint": "尚未执行过 python -m data.check_coverage"}
+    try:
+        with open(p, encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception as e:
+        return {"status": "read_error", "error": str(e)}
+
+
+# --- 负责人列表 ---
+@app.get("/api/users")
+def get_users(response: Response):
+    """返回有 ASIN 的负责人清单，供前端下拉框用。
+    加 5 分钟浏览器缓存 → iframe 重建时不再重复请求。"""
+    response.headers["Cache-Control"] = "private, max-age=300, stale-while-revalidate=600"
+    try:
+        with sqlite3.connect(local_store.DB_PATH) as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute("""
+                SELECT
+                    COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) AS user_id,
+                    u.user_name,
+                    u.user_account,
+                    COUNT(DISTINCT o.asin) AS asin_count
+                FROM asin_owner o
+                LEFT JOIN sys_user u
+                  ON u.id = COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1))
+                WHERE user_id IS NOT NULL AND u.user_name IS NOT NULL
+                GROUP BY user_id, u.user_name, u.user_account
+                ORDER BY asin_count DESC
+            """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        log.warning("/api/users 查询失败（表可能未初始化）: %s", e)
+        return []
+
+
 # --- 知识库 ---
 @app.get("/api/knowledge")
 def kb_index():
@@ -237,13 +286,28 @@ def kb_read(name: str):
 
 # --- ASIN 列表（含代码/LLM 结果） ---
 @app.get("/api/asins")
-def asins():
-    """列出 70 个采样，附带 batch 缓存中的优先级/得分/LLM状态。"""
+def asins(userId: int | None = Query(None, description="按负责人 ID 过滤")):
+    """列出产品采样，附带 batch 缓存中的优先级/得分/LLM状态。userId 传入时按负责人过滤。"""
+    # 负责人过滤：查出该 userId 拥有的 asin 集合
+    owned_asins: set[str] | None = None
+    if userId is not None:
+        try:
+            with sqlite3.connect(local_store.DB_PATH) as c:
+                rows = c.execute("""
+                    SELECT DISTINCT asin FROM asin_owner
+                    WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+                """, (userId,)).fetchall()
+            owned_asins = {r[0] for r in rows}
+        except Exception as e:
+            log.warning("/api/asins userId 过滤失败: %s", e)
+            owned_asins = set()  # 失败时返回空集，不暴露其他用户数据
+
     configs = {c["fixture_key"]: c for c in fixture_loader.load_configs()}
     smap = fixture_loader.load_shop_map()
 
-    # 走 local_store 抽象查主图 URL（不直连 sqlite）
+    # 走 local_store 抽象查主图 URL 和 商品标题（不直连 sqlite）
     _img_map = local_store.query_image_urls()
+    _name_map = local_store.query_product_names()
 
     out = []
     for key in fixture_loader.list_keys():
@@ -251,11 +315,29 @@ def asins():
         shop = smap.get(cfg.get("shop_id", ""), {})
         parent_asin = cfg.get("parent_asin", "")
 
+        # 负责人过滤
+        if owned_asins is not None and parent_asin not in owned_asins:
+            continue
+
         cached = _batch_cache.get(key, {})
         score = cached.get("score", 0)
         priority = cached.get("priority", "")
         llm_status = cached.get("llm_status", "pending")
         anomaly_count = cached.get("anomaly_count", 0)
+
+        # 抽出真异常的 (问题点位, 命中变体) 供前端聚合处理状态
+        # 配置待补 是运营配置提示，不算真异常；单独计数供前端标"配置待补"徽章
+        anomaly_points: list[dict] = []
+        config_pending_count = 0
+        for a in ((cached.get("code_judgment") or {}).get("异常明细") or []):
+            if a.get("该条严重度") == "配置待补":
+                config_pending_count += 1
+                continue
+            anomaly_points.append({
+                "问题点位": a.get("问题点位", ""),
+                "命中变体": a.get("命中变体", "") or "",
+                "异常类型": a.get("异常类型", ""),
+            })
 
         out.append({
             "key": key,
@@ -269,6 +351,10 @@ def asins():
             "target_acos_suggest": cfg.get("target_acos_suggest"),
             "daily_budget_suggest": cfg.get("daily_budget_suggest"),
             "image_url": _img_map.get(parent_asin),
+            "product_name": _name_map.get(parent_asin),
+            "anomaly_points": anomaly_points,
+            "config_pending_count": config_pending_count,
+            "last_inspect_at": ((cached.get("code_judgment") or {}).get("判定时间") or None),
             # 批量结果
             "priority": priority,
             "score": score,
@@ -281,9 +367,11 @@ def asins():
 
 
 @app.get("/api/fixture/{key}")
-def fixture(key: str):
+def fixture(key: str, response: Response):
     if key not in fixture_loader.list_keys():
         raise HTTPException(404, "unknown fixture key")
+    # 5 分钟浏览器缓存 → iframe 切 tab 回来时命中 disk cache，不再发请求
+    response.headers["Cache-Control"] = "private, max-age=300, stale-while-revalidate=600"
     return {"key": key, "data": fixture_loader.load_bundle(key)}
 
 
@@ -318,7 +406,32 @@ def judge(key: str):
     if not cfg:
         raise HTTPException(404, "unknown key")
     bundle = fixture_loader.load_bundle(key)
-    result = llm_judge.judge(cfg, bundle)
+
+    # 二次分析：从批量缓存拿代码巡检结果传给 LLM，作为权威事实
+    # 如果缓存里没有，先跑一次代码巡检
+    code_j = None
+    cached = _batch_cache.get(key, {})
+    if cached.get("code_judgment"):
+        code_j = cached["code_judgment"]
+    else:
+        try:
+            from inspector.inspector_main import 巡检单产品
+            from data import local_store as store
+            store.init_db()
+            code_j = 巡检单产品(key=key, config_row=cfg)
+            with _batch_lock:
+                _batch_cache[key] = _batch_cache.get(key, {})
+                _batch_cache[key].update({
+                    "priority": (code_j.get("优先级信息") or {}).get("执行优先级", "P2"),
+                    "score": (code_j.get("优先级信息") or {}).get("产品执行分数", 0),
+                    "anomaly_count": len(code_j.get("异常明细") or []),
+                    "code_judgment": code_j,
+                    "llm_status": cached.get("llm_status", "code"),
+                })
+        except Exception as e:
+            log.warning("LLM 二次分析前跑代码巡检失败 key=%s: %s", key, e)
+
+    result = llm_judge.judge(cfg, bundle, code_judgment=code_j)
     # 更新缓存
     j = result.get("judgment", {})
     llm_pri = (j.get("优先级信息") or {}).get("执行优先级", "")
@@ -422,6 +535,19 @@ def inspect_batch(
         raise HTTPException(500, f"代码批量巡检失败: {e}")
 
 
+@app.get("/report")
+def report_page():
+    """ERP iframe 嵌入入口，参数通过 querystring 传入。
+    带 HTTP 缓存头 → iframe 每次销毁重建时命中 disk cache，不再发 HTML 请求。"""
+    idx = FRONT / "index.html"
+    if not idx.exists():
+        return {"error": "index not found"}
+    return FileResponse(
+        idx,
+        headers={"Cache-Control": "private, max-age=300, stale-while-revalidate=600"},
+    )
+
+
 # --- 前端静态资源 ---
 if FRONT.exists():
     app.mount("/ui", StaticFiles(directory=str(FRONT), html=True), name="frontend")
@@ -429,5 +555,15 @@ if FRONT.exists():
 
 @app.get("/")
 def root():
+    """前端入口 —— 加 HTTP 缓存头，让 iframe 重跳时命中浏览器 disk cache。
+    max-age=300 → 浏览器 5 分钟内直接用缓存，不发请求。
+    stale-while-revalidate=600 → 缓存过期后仍先用旧的，后台重新拉取新的。"""
     idx = FRONT / "index.html"
-    return FileResponse(idx) if idx.exists() else {"ok": True}
+    if not idx.exists():
+        return {"ok": True}
+    return FileResponse(
+        idx,
+        headers={"Cache-Control": "private, max-age=300, stale-while-revalidate=600"},
+    )
+
+

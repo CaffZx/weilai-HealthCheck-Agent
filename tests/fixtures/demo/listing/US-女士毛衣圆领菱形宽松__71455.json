@@ -1,4 +1,0 @@
-id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
-event:message
-data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":19.99,\\\"星级\\\":3,\\\"16周退款率\\\":0.16,\\\"标题\\\":\\\"Women's Fall and Winter Long Sleeve Crewneck Sweater, Soft Knit with Diamond Pattern, Relaxed Fit Pullover Top, Brown\\\"}]}\"}]}"}],"isError":false}}
-

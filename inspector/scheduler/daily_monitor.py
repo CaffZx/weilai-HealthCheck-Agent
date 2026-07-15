@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from data import local_store as store
+from data import erp_config_reader
 
 log = logging.getLogger(__name__)
 
@@ -101,8 +102,9 @@ class 每日聚合结果:
     上周退款率: float | None = None               # 无上周数据 → = listing_baseline.32周退款率（作为参考）
     类目平均退换货率: float | None = None         # = listing_baseline.类目退换货率
 
-    # ---- 放量未执行 ----
-    目标ACOS: float | None = None                 # 判放量未执行.目标ACOS（从ERP标签）
+    # ---- 广告目标（来自辅助决策 agent 覆写表 app_db）----
+    目标ACOS: float | None = None                 # 判ACOS异常 + 判放量未执行 共用（acos_override.value）
+    目标每日预算: float | None = None             # 判广告花费异常（budget_override.value）
 
     # ---- 库存积压 / 滞销（判库存积压 / 判滞销异常）----
     可售库存: float | None = None                 # = stock_summary.FBA可售库存
@@ -128,7 +130,7 @@ class 每日聚合结果:
     # -------------------------------------------------------------------------
     def to_ACOS异常_kwargs(self) -> dict:
         return {
-            "近7天平均ACOS": self.近7天平均ACOS,
+            "目标ACOS": self.目标ACOS,
             "近3天平均ACOS": self.近3天平均ACOS,
             "连续天数": self.ACOS连续超标天数,
             "近3天累计广告花费": self.近3天累计广告花费,
@@ -138,7 +140,7 @@ class 每日聚合结果:
 
     def to_广告花费异常_kwargs(self) -> dict:
         return {
-            "近7天平均花费": self.近7天平均花费,
+            "目标每日预算": self.目标每日预算,
             "近3天平均花费": self.近3天平均花费,
             "连续天数": self.花费连续偏离天数,
         }
@@ -148,6 +150,7 @@ class 每日聚合结果:
             "过去7天日均销量": self.过去7天日均销量,
             "近3天日均销量": self.近3天日均销量,
             "连续天数": self.销量连续下降天数,
+            "近7天逐日单量": self.近7天逐日单量,
         }
 
     def to_目标偏离_kwargs(self) -> dict:
@@ -404,10 +407,15 @@ def 聚合单产品(
 
     # ---- 元信息 ----
     数据天数 = len(销售数据)
+    import sys as _sys
+    _sys.stderr.write(f"[DBG] 聚合入口 pa={父ASIN} shop={店铺账号} 数据天数={数据天数}\n"); _sys.stderr.flush()
     if 数据天数 == 0:
-        # 完全无数据 → 返回空结果
+        _目标ACOS_early = erp_config_reader.读目标ACOS(父ASIN)
+        _目标预算_early = erp_config_reader.读目标每日预算(父ASIN)
+        _sys.stderr.write(f"[DBG] 早return pa={父ASIN} 目标ACOS={_目标ACOS_early} 目标预算={_目标预算_early}\n"); _sys.stderr.flush()
         return 每日聚合结果(
             父ASIN=父ASIN, 店铺账号=店铺账号, 站点=站点,
+            目标ACOS=_目标ACOS_early, 目标每日预算=_目标预算_early,
             缺失字段=["无任何销售数据"],
         )
 
@@ -518,16 +526,16 @@ def 聚合单产品(
     日均目标单量 = None
     月累计完成率 = None
     if 子体列表:
-        总目标 = 0.0
+        总目标 = None   # 父体级目标，取第一个非空值（ERP 对每个子 SKU 冗余存储相同值，不应累加）
         总完成 = 0.0
         for sc in 子体列表:
             t = sc.get("当月目标销量")
             c = sc.get("本月完成")
-            if t is not None:
-                总目标 += t
+            if 总目标 is None and t is not None:
+                总目标 = float(t)   # 取一次，不累加
             if c is not None:
-                总完成 += c
-        if 总目标 > 0:
+                总完成 += c         # 完成量是子体各自的实际销量，继续累加
+        if 总目标 is not None and 总目标 > 0:
             # 日均目标 = 当月目标 / 当月天数
             today = dt.date.today()
             if today.month == 12:
@@ -536,24 +544,20 @@ def 聚合单产品(
                 month_end = today.replace(month=today.month + 1, day=1) - dt.timedelta(days=1)
             日均目标单量 = 总目标 / month_end.day
             # 月累计完成率 = 已完成 / 总目标
-            月累计完成率 = 总完成 / 总目标 if 总目标 > 0 else None
+            月累计完成率 = 总完成 / 总目标
     if 日均目标单量 is None:
         缺失.append("日均目标单量")
     if 月累计完成率 is None:
         缺失.append("月累计完成率")
 
-    # ---- 放量未执行 ----
-    目标ACOS = None
-    if tags:
-        # 目标ACOS 可能从 ERP 标签获取，暂无明确字段 → 尝试从 data 读取
-        tags_data = tags.get("data")
-        if isinstance(tags_data, str):
-            import json
-            tags_data = json.loads(tags_data)
-        if isinstance(tags_data, dict):
-            目标ACOS = tags_data.get("TARGET_ACOS") or tags_data.get("目标ACOS")
+    # ---- 广告目标（ERP: erp_config.target_acos_erp / daily_budget_erp）----
+    # 按 parent_asin 直接查（同 ASIN 多店铺时 reader 内部取最新 update_time）
+    目标ACOS = erp_config_reader.读目标ACOS(父ASIN)
+    目标每日预算 = erp_config_reader.读目标每日预算(父ASIN)
     if 目标ACOS is None:
-        缺失.append("目标ACOS")
+        缺失.append("目标ACOS（ERP 未设置）")
+    if 目标每日预算 is None:
+        缺失.append("目标每日预算（ERP 未设置）")
 
     # ---- 库存积压 ----
     if stock:
@@ -655,6 +659,7 @@ def 聚合单产品(
         类目平均退换货率=类目平均退换货率,
         # 放量未执行
         目标ACOS=目标ACOS,
+        目标每日预算=目标每日预算,
         # 库存
         可售库存=可售库存,
         未来N月目标累计_覆盖月数=未来N月目标累计_覆盖月数,

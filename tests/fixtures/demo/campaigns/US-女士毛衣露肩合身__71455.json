@@ -1,4 +1,0 @@
-id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
-event:message
-data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":false,\\\"count\\\":0,\\\"rows\\\":[],\\\"message\\\":\\\"查询成功但未匹配到数据。建议检查时间范围或参数后重试。\\\"}\"}]}"}],"isError":false}}
-

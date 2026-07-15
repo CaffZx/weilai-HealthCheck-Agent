@@ -1,4 +1,0 @@
-id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
-event:message
-data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":2,\\\"rows\\\":[{\\\"广告活动名称\\\":\\\"CZH-清货健身短裤-广泛手动-gym shorts\\\",\\\"广告活动id\\\":\\\"85929074660204\\\"},{\\\"广告活动名称\\\":\\\"CZH-清货健身短裤-自动组\\\",\\\"广告活动id\\\":\\\"51264612135395\\\"}]}\"}]}"}],"isError":false}}
-

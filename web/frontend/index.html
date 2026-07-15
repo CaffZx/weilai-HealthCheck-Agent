@@ -15,6 +15,8 @@
   body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#f4f5f7;color:#1c2126;animation:fadeIn .4s ease}
   header{background:linear-gradient(90deg,#1e293b,#334155);color:#fff;padding:10px 20px;font-weight:600;display:flex;gap:16px;align-items:center}
   header .tag{background:rgba(255,255,255,.15);padding:2px 8px;border-radius:4px;font-size:12px;font-weight:400}
+  /* 数据健康度心跳 — 暂时关闭 */
+  /* .health-chip{...} .health-mask{...} 等样式已注释 */
   .layout{display:grid;grid-template-columns:minmax(160px,200px) minmax(260px,340px) minmax(0,1fr);height:calc(100vh - 43px);transition:grid-template-columns .34s cubic-bezier(.4,0,.2,1)}
   .layout.kb-collapsed{grid-template-columns:46px minmax(260px,340px) minmax(0,1fr)}
   /* 收起竖条：默认隐藏，收起态显示 */
@@ -48,15 +50,51 @@
   .b-stage{background:#dbeafe;color:#1e40af}
   .b-pos{background:#fef3c7;color:#92400e}
   .b-site{background:#dcfce7;color:#166534}
+  /* ASIN 卡片：聚合处理状态徽章 —— 待处理按优先级分色 */
+  .b-hs-todo-P0{background:#fee2e2;color:#dc2626;font-weight:600}   /* 红 - P0 待处理 */
+  .b-hs-todo-P1{background:#ffedd5;color:#c2410c;font-weight:600}   /* 橙 - P1 待处理（原黄色改成橙色，避免和处理中撞色）*/
+  .b-hs-todo-P2{background:#dbeafe;color:#1d4ed8;font-weight:600}   /* 蓝 - P2 待处理 */
+  .b-hs-doing{background:#fef3c7;color:#b45309;font-weight:600}     /* 浅黄 - 处理中 */
+  .b-hs-done{background:#dcfce7;color:#166534;font-weight:600}      /* 绿 - 处理完成 */
+  .b-hs-config{background:#e0f2fe;color:#0369a1;font-weight:600}    /* 天蓝 - 配置待补 */
+  .b-hs-empty{background:#f1f5f9;color:#64748b}                     /* 灰 - 无异常 */
+  .b-hs-cooling{background:#e0e7ff;color:#4338ca;font-weight:600}   /* 靛蓝 - 冷却中 */
+  /* 详情表格：冷却状态展示 */
+  .tc-cool{display:flex;flex-direction:column;align-items:center;gap:4px;white-space:nowrap;font-size:11px}
+  .tc-cool-badge{display:inline-flex;align-items:center;gap:3px;background:#e0e7ff;color:#4338ca;padding:3px 10px;border-radius:12px;font-weight:600;font-size:11.5px}
+  .tc-cool-meta{color:#94a3b8;font-size:10.5px}
+  /* 冷却确认弹窗 */
+  .cd-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:150;align-items:center;justify-content:center;animation:fadeIn .2s}
+  .cd-mask.open{display:flex}
+  .cd-card{background:#fff;border-radius:14px;width:min(420px,90vw);padding:26px 28px;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:fadeUp .3s cubic-bezier(.4,0,.2,1);text-align:center}
+  .cd-icon{font-size:38px;margin-bottom:10px}
+  .cd-title{font-size:17px;font-weight:600;color:#0f172a;margin:0 0 10px}
+  .cd-desc{font-size:13px;color:#475569;line-height:1.65;margin:0 0 20px}
+  .cd-desc b{color:#4338ca}
+  .cd-actions{display:flex;gap:10px;justify-content:center}
+  .cd-actions .mini-btn{padding:8px 20px;font-size:13px}
+  .cd-actions .run-btn{padding:8px 20px;font-size:13px}
   .filter{padding:8px 10px;border-bottom:1px solid #eef1f5;position:sticky;top:32px;background:#fff;z-index:1}
-  .filter input{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none}
-  .filter input:focus{border-color:#818cf8}
+  .filter > input{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none}
+  .filter > input:focus{border-color:#818cf8}
   .filter-row{display:flex;gap:5px;margin-top:6px}
   .filter-row select{flex:1;min-width:0;padding:4px 4px;border:1px solid #cbd5e1;border-radius:5px;font-size:11px;background:#fff;cursor:pointer}
   .filter-row select:focus{border-color:#818cf8;outline:none}
   .filter-meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:#94a3b8}
+  /* 搜索框 + 排序按钮 + 计数徽章 一行 */
+  .q-row{display:flex;align-items:center;gap:6px}
+  .q-row input{flex:1;min-width:0;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;background:#fff}
+  .q-row input:focus{border-color:#818cf8}
+  .sortpri-btn{flex-shrink:0;width:26px;height:26px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:#94a3b8;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;padding:0}
+  .sortpri-btn:hover{border-color:#818cf8;color:#4f46e5}
+  .sortpri-btn.active{background:#eef2ff;border-color:#818cf8;color:#4f46e5}
+  .asin-count-pill{flex-shrink:0;font-size:11px;color:#64748b;background:#f1f5f9;padding:3px 8px;border-radius:12px;font-weight:500;white-space:nowrap}
   .chk{display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none}
   .chk input{width:auto}
+  /* 报告页 /report：隐藏知识库侧边栏 */
+  .layout.report-mode{grid-template-columns:minmax(260px,340px) minmax(0,1fr)}
+  .layout.report-mode>.kb-col{display:none}
+  .layout.report-mode>.col:nth-child(2)>.filter>.filter-row:first-of-type{display:none}
   /* 折叠知识库 */
   .col-head{cursor:pointer;user-select:none;transition:color .15s}
   .col-head:hover{color:#6366f1}
@@ -66,8 +104,6 @@
   /* ASIN 卡片 — 高密度运营视图 */
   .asin-item{padding:6px 8px;border-left:3px solid transparent;transition:all .15s}
   .asin-item.judged{border-left-color:#e2e8f0}
-  .asin-item.llm-analyzed{border-left-color:#7c3aed;box-shadow:inset 0 0 0 1px rgba(124,58,237,.08)}
-  .asin-item.llm-analyzed:hover{border-left-color:#a78bfa;box-shadow:0 2px 8px rgba(124,58,237,.12)}
   .asin-row{display:flex;align-items:center;gap:8px}
   .asin-img{flex-shrink:0;width:36px;height:36px;border-radius:3px;overflow:hidden;background:#f1f5f9}
   .asin-img img{width:100%;height:100%;object-fit:contain}
@@ -76,18 +112,15 @@
   .asin-body{flex:1;min-width:0}
   .asin-line1{display:flex;align-items:center;gap:5px;font-size:12px}
   .asin-line2{display:flex;align-items:center;gap:6px;font-size:10px;color:#64748b;margin-top:2px}
+  .asin-time{margin-left:auto;font-size:10px;color:#94a3b8;white-space:nowrap;cursor:help}
+  .asin-time.stale{color:#dc2626}
   .asin-score{margin-left:auto;font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap}
-  .asin-score .src{font-size:9px;font-weight:400;color:#94a3b8;margin-left:1px}
-  /* 优先级 + LLM 标签 */
+  /* 优先级 pill */
   .pri-dot{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:15px;border-radius:3px;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
   .pri-P0{background:#dc2626}.pri-P1{background:#ea580c}.pri-P2{background:#0891b2}
   .pri-none{background:#cbd5e1;color:#64748b;min-width:20px}
-  .llm-badge{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:3px;font-size:10px;font-weight:700;flex-shrink:0}
-  .llm-badge-done{background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd}
-  .llm-badge-pending{background:#fef3c7;color:#d97706;border:1px solid #fcd34d;animation:pulse2 1.5s ease-in-out infinite}
   .anom-count{display:inline-flex;align-items:center;gap:2px;font-size:10px;color:#94a3b8;flex-shrink:0}
   .anom-count b{color:#475569;font-size:11px}
-  @keyframes pulse2{0%,100%{opacity:1}50%{opacity:.35}}
   .content{padding:16px 20px}
   .tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e2e5ea}
   .tab{padding:6px 14px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;color:#64748b}
@@ -188,6 +221,67 @@
   .task-card-brief{color:#475569;font-size:12px;margin-top:4px;line-height:1.5}
   .judge-meta{margin-top:12px;font-size:11px;color:#94a3b8;text-align:right}
 
+  /* ===== 任务卡 · 设计图表格版 ===== */
+  .tc-header{background:#1e293b;border-radius:12px;padding:20px 26px;color:#e2e8f0;display:flex;align-items:center;gap:32px;flex-wrap:wrap}
+  .tc-col{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;align-items:center;font-size:13px}
+  .tc-col .tc-k{color:#94a3b8}
+  .tc-col .tc-v{color:#f1f5f9;font-weight:500}
+  .tc-col .tc-v.hl{color:#fff;font-weight:600}
+  .tc-owner{font-size:13px;color:#94a3b8;font-style:italic}
+  .tc-pri{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .tc-pri-badge{border-radius:22px;padding:8px 22px;font-size:20px;font-weight:700;color:#fff;line-height:1}
+  .tc-pri-time{font-size:15px;font-weight:600;color:#e2e8f0;white-space:nowrap}
+  .tc-sev-badge{border:1.5px solid rgba(255,255,255,.5);border-radius:16px;padding:3px 20px;font-size:14px;font-weight:600;color:#fff}
+  .tc-caption{font-size:12px;color:#94a3b8;margin:14px 2px 6px}
+  .tc-anom-title{font-size:17px;font-weight:600;color:#0f172a;margin:18px 2px 12px}
+  /* 表格 */
+  .tc-table-wrap{overflow-x:auto;border-radius:10px;border:1px solid #eef1f5}
+  table.tc-table{width:100%;border-collapse:collapse;font-size:13px;min-width:920px}
+  table.tc-table thead th{background:#0f172a;color:#cbd5e1;font-weight:600;text-align:left;padding:12px 14px;white-space:nowrap;font-size:12px}
+  table.tc-table tbody td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:top;color:#334155;line-height:1.55;word-break:break-word}
+  /* 各列宽度约束，避免撑爆横向 */
+  table.tc-table tbody td:nth-child(3){max-width:150px}     /* 具体表现 */
+  table.tc-table tbody td:nth-child(4){max-width:120px;font-family:ui-monospace,monospace;font-size:12px}  /* 命中ASIN */
+  table.tc-table tbody td:nth-child(7){max-width:280px}     /* 判断依据 */
+  table.tc-table tbody td:nth-child(8){max-width:260px}     /* 处理建议 */
+  .tc-asin{white-space:normal !important;word-break:break-all}
+  table.tc-table tbody tr:last-child td{border-bottom:none}
+  table.tc-table tbody tr:hover{background:#fafbfc}
+  .tc-sev{display:inline-block;padding:3px 12px;border-radius:14px;font-size:12px;font-weight:600;white-space:nowrap}
+  .tc-cat{font-size:12px;font-weight:500;margin-bottom:3px}
+  .tc-point{font-weight:700;color:#0f172a;font-size:13px;white-space:nowrap}
+  /* AI 补录标签 */
+  .tc-ai-tag{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:linear-gradient(135deg,#ede9fe,#e0e7ff);color:#5b21b6;border:1px solid #c4b5fd;margin-left:6px;vertical-align:middle}
+  .tc-asin{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#334155;white-space:nowrap}
+  .tc-asin.link{color:#2563eb}
+  .tc-var{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:500;background:#eef2ff;color:#4f46e5}
+  .tc-var.main{background:#fee2e2;color:#dc2626}
+  .tc-level{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:500;background:#dcfce7;color:#16a34a}
+  .tc-level.variant{background:#fef3c7;color:#b45309}
+  .tc-basis{color:#475569;font-size:12.5px}
+  .tc-basis .num{color:#0f172a;font-weight:600}
+  /* 数据快照渲染：字段-值紧凑列表 + 逐日序列多行 */
+  .tc-snap{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#334155}
+  .tc-snap-kv{display:flex;flex-wrap:wrap;gap:4px 10px}
+  .tc-snap-kv .kv{background:#f8fafc;border:1px solid #e2e8f0;padding:2px 8px;border-radius:10px;white-space:nowrap;font-size:11.5px}
+  .tc-snap-kv .kv .k{color:#94a3b8;margin-right:4px;font-weight:400}
+  .tc-snap-kv .kv .v{color:#0f172a;font-weight:600}
+  .tc-snap-series{background:#eff6ff;border-left:2px solid #60a5fa;padding:4px 8px;border-radius:0 4px 4px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#1e3a8a;white-space:nowrap;overflow-x:auto}
+  .tc-snap-series .k{color:#3730a3;font-weight:600;margin-right:6px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  .tc-actions{margin:0;padding-left:16px;color:#334155;font-size:12.5px;line-height:1.7}
+  .tc-actions li{margin:0}
+  .tc-status{display:flex;flex-direction:column;align-items:center;gap:6px;white-space:nowrap}
+  .tc-status select{border:1px solid transparent;border-radius:14px;padding:3px 10px 3px 12px;font-size:11.5px;font-weight:600;cursor:pointer;outline:none;background:transparent;transition:all .15s}
+  .tc-status select:hover{border-color:#cbd5e1;background:#fff}
+  .tc-status select.st-todo{background:#fef3c7;color:#92400e}
+  .tc-status select.st-doing{background:#dbeafe;color:#1e40af}
+  .tc-status select.st-done{background:#dcfce7;color:#166534}
+  .tc-adlink{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#4f46e5;text-decoration:none;padding:3px 9px;border:1px solid #c7d2fe;border-radius:6px;background:#eef2ff;transition:all .15s;white-space:nowrap}
+  .tc-adlink:hover{background:#e0e7ff;border-color:#818cf8}
+  .tc-expand{color:#2563eb;font-size:13px;cursor:pointer;padding:12px 2px;user-select:none}
+  .tc-expand:hover{text-decoration:underline}
+  .tc-note{font-size:12px;color:#94a3b8;margin:12px 2px}
+
   /* 批量判定 */
   .batch-btn{margin-left:12px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.2);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:13px;transition:all .18s}
   .batch-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.4)}
@@ -213,16 +307,91 @@
   .batch-row-pending td{color:#94a3b8}
   .batch-row-running td{background:linear-gradient(90deg,#fff,#eef2ff,#fff);background-size:400px 100%;animation:shimmer 1.4s linear infinite}
   .batch-row-error td{color:#dc2626;background:#fef2f2}
+
+  /* LLM 顶置 + 代码折叠 */
+  .llm-block-header{background:linear-gradient(135deg,#ede9fe,#e0e7ff);border:1px solid #c4b5fd;color:#5b21b6;padding:8px 14px;border-radius:8px 8px 0 0;font-size:12.5px;font-weight:600;margin-top:6px}
+  .llm-block-header .meta{font-size:11px;color:#7c3aed;font-weight:400;margin-left:6px}
+  .llm-block-body{border:1px solid #c4b5fd;border-top:0;border-radius:0 0 8px 8px;padding:10px 12px 12px;background:#fafaff}
+  .code-fold{margin-top:14px;border:1px solid #eef1f5;border-radius:8px;background:#fff}
+  .code-fold[open]{background:#fafbfc}
+  .code-fold > summary{cursor:pointer;padding:9px 14px;font-size:12.5px;font-weight:600;color:#475569;list-style:none;display:flex;align-items:center;gap:8px;user-select:none;border-radius:8px}
+  .code-fold > summary::-webkit-details-marker{display:none}
+  .code-fold > summary::before{content:'▸';color:#94a3b8;transition:transform .18s;flex-shrink:0}
+  .code-fold[open] > summary::before{transform:rotate(90deg)}
+  .code-fold > summary:hover{background:#f8fafc}
+  .code-fold-body{padding:0 12px 14px}
+  /* 数据问题反馈占位 */
+  .feedback-placeholder{padding:32px 20px;text-align:center;color:#94a3b8;background:#fff;border-radius:10px;border:1px dashed #cbd5e1}
+  .feedback-placeholder .icon{font-size:34px;margin-bottom:12px}
+  .feedback-placeholder .title{font-size:14px;color:#475569;margin-bottom:6px;font-weight:500}
+  .feedback-placeholder .desc{font-size:12px;line-height:1.7}
+
+  /* 用户门控遮罩 */
+  .user-gate{display:none;position:fixed;inset:0;background:rgba(15,23,42,.85);z-index:200;align-items:center;justify-content:center;animation:fadeIn .3s}
+  .user-gate.open{display:flex}
+  .user-gate-card{background:#fff;border-radius:14px;padding:36px 40px;width:min(420px,90vw);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:fadeUp .4s cubic-bezier(.4,0,.2,1)}
+  .user-gate-select{width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;cursor:pointer;background:#f8fafc;margin-bottom:14px;color:#0f172a}
+  .user-gate-select:focus{border-color:#6366f1}
+  /* 负责人筛选 — 高亮激活态 */
+  #f-user.locked{background:#eef2ff;border-color:#818cf8;color:#3730a3;font-weight:500}
 </style>
 </head>
 <body>
 <header>
   🩺 业务巡检 Agent
-  <span class="tag">本地测试台</span>
-  <span class="tag" id="stat">加载中…</span>
-  <button class="batch-btn" onclick="openBatch()">📊 批量判定</button>
-  <span style="margin-left:auto;font-size:11px;opacity:.7">weilai-HealthCheck-Agent</span>
+  <span class="tag" id="stat" style="margin-left:auto">加载中…</span>
+  <!-- 数据健康度暂时关闭
+  <span id="health-chip" class="health-chip none" onclick="openHealthPanel()" title="数据抓取健康度（点击查看详情）">
+    <span class="dot"></span><span id="health-chip-text">数据 加载中</span>
+  </span>
+  -->
 </header>
+
+<!-- 数据健康度面板 — 暂时关闭
+<div id="health-mask" class="health-mask" onclick="if(event.target===this) closeHealthPanel()">
+  <div class="health-card">
+    <div class="health-head">
+      <div>
+        <h2 style="margin:0;font-size:16px">📊 数据抓取健康度</h2>
+        <div id="health-summary" style="font-size:12px;color:#64748b;margin-top:4px"></div>
+      </div>
+      <button onclick="closeHealthPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    <div class="health-body" id="health-body"></div>
+  </div>
+</div>
+-->
+
+<!-- 冷却确认弹窗 -->
+<div id="cd-mask" class="cd-mask" onclick="if(event.target===this) cooldownConfirmCancel()">
+  <div class="cd-card">
+    <div class="cd-icon">❄</div>
+    <h3 class="cd-title">确认这个待办已经完成了吗？</h3>
+    <p class="cd-desc">
+      选择「完成」后：<br>
+      <b>该产品的广告异常将进入 2 天冷却期</b><br>
+      期间不再对该产品进行广告异常检查<br>
+      <span style="font-size:11px;color:#94a3b8">2 天后系统会自动恢复检查</span>
+    </p>
+    <div class="cd-actions">
+      <button class="mini-btn" onclick="cooldownConfirmCancel()">取消</button>
+      <button class="run-btn" onclick="cooldownConfirmOk()">✓ 完成，进入冷却</button>
+    </div>
+  </div>
+</div>
+
+<!-- 负责人门控遮罩 -->
+<div id="user-gate" class="user-gate">
+  <div class="user-gate-card">
+    <div style="font-size:40px;margin-bottom:14px">👤</div>
+    <h2 style="margin:0 0 6px;font-size:20px;color:#0f172a">请选择负责人</h2>
+    <p style="color:#64748b;font-size:13px;margin:0 0 20px;line-height:1.5">选择后进入您的专属巡检视图，<br>也可通过顶部下拉随时切换。</p>
+    <select id="user-gate-select" class="user-gate-select">
+      <option value="">-- 请选择 --</option>
+    </select>
+    <button class="run-btn" style="width:100%;justify-content:center;padding:10px 0;font-size:14px" onclick="confirmUserGate()">进入</button>
+  </div>
+</div>
 
 <!-- 批量判定弹层 -->
 <div id="batch-mask" class="batch-mask" onclick="if(event.target===this) closeBatch()">
@@ -278,7 +447,14 @@
   <div class="col">
     <h3>采样 ASIN</h3>
     <div class="filter">
-      <input id="q" placeholder="🔍 过滤 ASIN / SKU / 店铺 …"/>
+      <div class="q-row">
+        <input id="q" placeholder="🔍 过滤 ASIN / SKU / 店铺 …"/>
+        <button id="sortpri-btn" class="sortpri-btn active" onclick="toggleSortPri()" title="按优先级排序（点击切换）">↕</button>
+        <span id="asin-count" class="asin-count-pill" title="已筛选 / 总数"></span>
+      </div>
+      <div class="filter-row">
+        <select id="f-user" onchange="onUserFilterChange()" style="flex:1.4"><option value="">全部负责人</option></select>
+      </div>
       <div class="filter-row">
         <select id="f-priority" onchange="renderAsins()">
           <option value="">全部优先级</option>
@@ -287,13 +463,19 @@
           <option value="P2">🔵 P2 七天</option>
           <option value="__none">⚪ 未判定</option>
         </select>
+        <select id="f-handle" onchange="renderAsins()">
+          <option value="">全部处理状态</option>
+          <option value="待处理">🔴 待处理</option>
+          <option value="处理中">🟡 处理中</option>
+          <option value="处理完成">🟢 处理完成</option>
+          <option value="冷却中">🟣 冷却中</option>
+          <option value="配置待补">🔵 配置待补</option>
+          <option value="无异常">⚪ 无异常</option>
+        </select>
         <select id="f-site" onchange="renderAsins()"><option value="">全部站点</option></select>
         <select id="f-stage" onchange="renderAsins()"><option value="">全部阶段</option></select>
       </div>
-      <div class="filter-meta">
-        <label class="chk"><input type="checkbox" id="f-sortpri" checked onchange="renderAsins()"> 按优先级排序</label>
-        <span id="asin-count"></span>
-      </div>
+      <input type="checkbox" id="f-sortpri" checked style="display:none">
     </div>
     <div class="list" id="asin-list"></div>
   </div>
@@ -308,10 +490,124 @@
 </div>
 
 <script>
+
+// 报告模式 /report?userId=xxx 或 /report?parentAsin=xxx&shopId=xxx
+const REPORT_MODE = window.location.pathname.startsWith("/report");
+const REPORT_KEY = (() => {
+  if (!REPORT_MODE) return null;
+  const p = new URLSearchParams(window.location.search);
+  const uid = p.get("userId");
+  const asin = p.get("parentAsin"); const sid = p.get("shopId");
+  const singleKey = asin && sid ? decodeURIComponent(asin) + "__" + decodeURIComponent(sid) : null;
+  if (uid && singleKey) return { type: "both", userId: uid, key: singleKey };
+  if (uid) return { type: "user", userId: uid };
+  if (singleKey) return { type: "single", key: singleKey };
+  return null;
+})();
 const state = { kbActive: null, asinActive: null, dataTab: 'summary' };
 // 判定结果缓存：切换 ASIN 后回来还能看到上次结果
 const judgeCache = new Map();  // key -> {result, ts}
 	const inspectCache = new Map();  // key -> {result, ts}  // 代码管线缓存
+
+// —— iframe 重建友好：Map miss 时穿透 localStorage，让详情视图重新挂载时秒回上次结果 ——
+function inspectCacheGet(k){
+  if (inspectCache.has(k)) return inspectCache.get(k);
+  const v = swrGet('inspect:' + k);
+  if (v){ inspectCache.set(k, v); return v; }
+  return null;
+}
+function inspectCacheHas(k){ return !!inspectCacheGet(k); }
+function inspectCacheSet(k, v){ inspectCache.set(k, v); swrSet('inspect:' + k, v); }
+
+function judgeCacheGet(k){
+  if (judgeCache.has(k)) return judgeCache.get(k);
+  const v = swrGet('judge:' + k);
+  if (v){ judgeCache.set(k, v); return v; }
+  return null;
+}
+function judgeCacheHas(k){ return !!judgeCacheGet(k); }
+function judgeCacheSet(k, v){ judgeCache.set(k, v); swrSet('judge:' + k, v); }
+
+// ------- URL / 用户门控 -------
+let allUsers = [];
+
+function getUrlUserId(){ return new URLSearchParams(location.search).get('userId') || ''; }
+
+function setUrlUserId(id){
+  const u = new URL(location.href);
+  if (id) u.searchParams.set('userId', id);
+  else u.searchParams.delete('userId');
+  history.pushState({}, '', u.toString());
+}
+
+// 用户下拉数据应用到 DOM（去重清空后重填，可反复调用）
+function _applyUsersToSelectors(users){
+  allUsers = users || [];
+  const optHtml = allUsers.map(u =>
+    `<option value="${u.user_id}">${esc(u.user_name)}（${u.asin_count} 个 ASIN）</option>`
+  ).join('');
+  const gsel = document.getElementById('user-gate-select');
+  if (gsel) gsel.innerHTML = '<option value="">-- 请选择 --</option>' + optHtml;
+
+  const fuser = document.getElementById('f-user');
+  if (fuser){
+    const cur = fuser.value;
+    fuser.innerHTML = '<option value="">全部负责人</option>' + allUsers.map(u =>
+      `<option value="${u.user_id}">${esc(u.user_name)}</option>`
+    ).join('');
+    if (cur) fuser.value = cur;
+  }
+}
+
+async function initUserGate(){
+  // SWR：iframe 重建先用缓存（0 延迟），后台刷新
+  const users = await swrFetch('users', () => api('/api/users').catch(() => []), (fresh) => {
+    _applyUsersToSelectors(fresh);
+  });
+  _applyUsersToSelectors(users);
+
+  const uid = getUrlUserId();
+  if (!uid && allUsers.length > 0){
+    document.getElementById('user-gate').classList.add('open');
+  } else {
+    _syncUserFilter(uid);
+  }
+}
+
+function _syncUserFilter(uid){
+  const fuser = document.getElementById('f-user');
+  if (!fuser) return;
+  fuser.value = uid;
+  if (uid) fuser.classList.add('locked'); else fuser.classList.remove('locked');
+}
+
+function confirmUserGate(){
+  const sel = document.getElementById('user-gate-select');
+  const uid = sel.value;
+  if (!uid){ sel.focus(); return; }
+  setUrlUserId(uid);
+  document.getElementById('user-gate').classList.remove('open');
+  _syncUserFilter(uid);
+  allAsins = [];
+  loadAsins();
+}
+
+function toggleSortPri(){
+  const chk = document.getElementById('f-sortpri');
+  const btn = document.getElementById('sortpri-btn');
+  chk.checked = !chk.checked;
+  btn.classList.toggle('active', chk.checked);
+  renderAsins();
+}
+
+function onUserFilterChange(){
+  if (REPORT_MODE) return;
+  const uid = document.getElementById('f-user').value;
+  setUrlUserId(uid);
+  _syncUserFilter(uid);
+  allAsins = [];
+  loadAsins();
+}
 
 // 产品定位 / 阶段 中文映射（ERP 枚举 → 展示名）
 const POS_CN = {
@@ -322,10 +618,56 @@ const STAGE_CN = {
   TESTING: '测试期', PROMOTING: '推进期', HARVEST_PROFIT: '收割利润期',
   MAINTAINING: '维持期', LIQUIDATING: '清货期', 清货期: '清货期',
 };
+const SEASON_CN = {
+  OFF_SEASON:'淡季', BIG_PEAK_SEASON:'旺季', PEAK_SEASON_PREPARE:'旺季前期',
+  LATE_PEAK_SEASON:'旺季后期', EARLY_PEAK_SEASON:'旺季前期', NORMAL:'平季',
+};
 const posCN = v => POS_CN[v] || v || '-';
 const stageCN = v => STAGE_CN[v] || v || '-';
+const seasonCN = v => SEASON_CN[v] || v || '-';
 
 async function api(path){ const r = await fetch(path); return r.json(); }
+
+// —— localStorage stale-while-revalidate 缓存 ——
+// iframe 每次重建时先用上次的数据渲染（0 延迟），同时后台刷新
+// 用途：/api/users /api/asins，减少 iframe 冷启动感知
+const _SWR_PREFIX = 'hcAgent.swr::';
+function swrGet(cacheKey){
+  try {
+    const raw = localStorage.getItem(_SWR_PREFIX + cacheKey);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    // 超过 30 分钟的缓存也不再当热缓存用（避免陈旧数据误导）
+    if (Date.now() - ts > 30 * 60 * 1000) return null;
+    return data;
+  } catch { return null; }
+}
+function swrSet(cacheKey, data){
+  try {
+    localStorage.setItem(_SWR_PREFIX + cacheKey, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}   // localStorage 满时静默失败
+}
+// 用法：await swrFetch('users', () => api('/api/users'), (fresh) => renderXXX(fresh))
+// 命中缓存：立即返回缓存 + 后台刷新，刷新完成回调 onFresh(freshData)
+// 未命中：等 fetch 返回
+async function swrFetch(cacheKey, fetcher, onFresh){
+  const cached = swrGet(cacheKey);
+  if (cached){
+    // 有缓存：立即返回 + 后台刷新
+    fetcher().then(fresh => {
+      swrSet(cacheKey, fresh);
+      // 只在数据真变了才回调（避免无必要 rerender）
+      try {
+        if (JSON.stringify(fresh) !== JSON.stringify(cached)) onFresh && onFresh(fresh);
+      } catch { onFresh && onFresh(fresh); }
+    }).catch(() => {});
+    return cached;
+  }
+  // 无缓存：等 fetch
+  const fresh = await fetcher();
+  swrSet(cacheKey, fresh);
+  return fresh;
+}
 
 function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
 
@@ -401,14 +743,14 @@ let batchReady = false;
 const PRI_ORDER = { P0: 0, P1: 1, P2: 2 };
 
 function priOf(key){
-  const c = judgeCache.get(key);
+  const c = judgeCacheGet(key);
   return c && !c.result.dry_run ? (pickPriority(c.result.judgment) || null) : null;
 }
 
 // 获取产品排序分数（LLM 优先，否则代码批量结果）
 function sortScore(a){
   // LLM 结果（judgeCache 只存 LLM 结果，不存代码结果）
-  const jc = judgeCache.get(a.key);
+  const jc = judgeCacheGet(a.key);
   if (jc && !jc.result.dry_run && jc.result.model !== 'code-pipeline') {
     const s = pickScore(jc.result.judgment);
     if (s != null) return { score: s, source: 'llm' };
@@ -430,16 +772,61 @@ function prioritySort(a, b){
   return (sortScore(b).score || 0) - (sortScore(a).score || 0);
 }
 
-async function loadAsins(){
-  allAsins = await api('/api/asins');
-  batchReady = allAsins.length > 0 && allAsins[0].batch_ready;
-  document.getElementById('stat').textContent = allAsins.length + ' 个 ASIN · ' + (await api('/api/knowledge')).modules.length + ' 个知识模块';
-  // 填充站点/阶段筛选下拉
-  const sites = [...new Set(allAsins.map(a=>a.site_code).filter(Boolean))].sort();
-  const stages = [...new Set(allAsins.map(a=>stageCN(a.product_stage)).filter(v=>v&&v!=='-'))].sort();
-  document.getElementById('f-site').insertAdjacentHTML('beforeend', sites.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
-  document.getElementById('f-stage').insertAdjacentHTML('beforeend', stages.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''));
+// 应用 ASIN 数据到界面（stat + 站点/阶段下拉 + 列表）
+function _applyAsinsList(list, uid){
+  allAsins = list;
+  batchReady = list.length > 0 && list[0].batch_ready;
+
+  const userName = uid ? (allUsers.find(u=>String(u.user_id)===String(uid))?.user_name || '') : '';
+  const statEl = document.getElementById('stat');
+  if (statEl) statEl.textContent = (userName ? `${userName} · ` : '') + list.length + ' 个 ASIN';
+
+  const sites = [...new Set(list.map(a=>a.site_code).filter(Boolean))].sort();
+  const stages = [...new Set(list.map(a=>stageCN(a.product_stage)).filter(v=>v&&v!=='-'))].sort();
+  const fSiteEl = document.getElementById('f-site');
+  const fStageEl = document.getElementById('f-stage');
+  if (fSiteEl){
+    const cur = fSiteEl.value;
+    fSiteEl.innerHTML = '<option value="">全部站点</option>' + sites.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (sites.includes(cur)) fSiteEl.value = cur;
+  }
+  if (fStageEl){
+    const cur = fStageEl.value;
+    fStageEl.innerHTML = '<option value="">全部阶段</option>' + stages.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (stages.includes(cur)) fStageEl.value = cur;
+  }
   renderAsins();
+}
+
+// iframe 重挂载时自动恢复上次查看的 ASIN（选中态 + 详情视图）
+// 只在还没有选中态时恢复；REPORT_KEY 单产品模式已经指定了目标，跳过
+function _restoreLastAsin(uid){
+  if (state.asinActive) return;                       // 已选中，别覆盖
+  if (window.REPORT_KEY && REPORT_KEY.type !== 'user') return;  // 单产品模式自己会打开
+  let lastKey;
+  try { lastKey = localStorage.getItem('hcAgent.lastAsin::' + (uid || 'all')); } catch { return; }
+  if (!lastKey) return;
+  const a = allAsins.find(x => x.key === lastKey);
+  if (!a) return;
+  const btn = document.querySelector(`#asin-list button[data-key="${CSS.escape(lastKey)}"]`);
+  viewAsin(a, btn);
+  // 滚到中间 让用户看到"回到了刚才那里"
+  if (btn) setTimeout(() => btn.scrollIntoView({behavior:'auto', block:'center'}), 50);
+}
+
+async function loadAsins(){
+  const uid = getUrlUserId();
+  const url = uid ? `/api/asins?userId=${encodeURIComponent(uid)}` : '/api/asins';
+  const cacheKey = 'asins:' + (uid || 'all');
+
+  // SWR：iframe 重建时 → 命中 localStorage 缓存立即渲染（0 延迟）
+  const list = await swrFetch(cacheKey, () => api(url), (fresh) => {
+    // 后台刷新完成、数据有变化 → 更新界面
+    _applyAsinsList(fresh, uid);
+    _restoreLastAsin(uid);
+  });
+  _applyAsinsList(list, uid);
+  _restoreLastAsin(uid);
 
   // 如果批量还没跑完，轮询刷新
   if (!batchReady) {
@@ -447,13 +834,12 @@ async function loadAsins(){
       const status = await api('/api/batch/status');
       if (status.ready && !batchReady) {
         batchReady = true;
-        allAsins = await api('/api/asins');
-        renderAsins();
+        const fresh = await api(url); swrSet(cacheKey, fresh);
+        _applyAsinsList(fresh, uid);
       }
       if (status.llm_pending > 0 || !status.ready) {
-        // LLM 还在跑，继续轮询
-        allAsins = await api('/api/asins');
-        renderAsins();
+        const fresh = await api(url); swrSet(cacheKey, fresh);
+        _applyAsinsList(fresh, uid);
         if (status.llm_pending > 0) setTimeout(poll, 3000);
       }
     };
@@ -464,6 +850,7 @@ async function loadAsins(){
 function renderAsins(){
   const q = document.getElementById('q').value.trim().toLowerCase();
   const fp = document.getElementById('f-priority').value;
+  const fh = document.getElementById('f-handle')?.value || '';
   const fs = document.getElementById('f-site').value;
   const fst = document.getElementById('f-stage').value;
   const sortPri = document.getElementById('f-sortpri').checked;
@@ -480,6 +867,7 @@ function renderAsins(){
       if (fp === '__none') { if (p) return false; }
       else if (p !== fp) return false;
     }
+    if (fh && aggregateHandleStatus(a).kind !== fh) return false;
     return true;
   });
 
@@ -491,21 +879,11 @@ function renderAsins(){
 
   rows.forEach(a => {
     const p = a.priority || '';
-    const isLLM = a.llm_status === 'llm_done';
-    const displayScore = isLLM && a.llm_score != null ? a.llm_score : (a.score || 0);
-    const scoreNum = displayScore > 0 ? Math.round(displayScore) : 0;
+    const scoreNum = a.score > 0 ? Math.round(a.score) : 0;
 
     // 优先级标签
     const priTag = p ? `<span class="pri-dot pri-${p}">${p}</span>`
       : (scoreNum > 0 ? `<span class="pri-dot pri-P2">P2</span>` : '');
-
-    // LLM 紫色徽章
-    let llmBadge = '';
-    if (isLLM) {
-      llmBadge = '<span class="llm-badge llm-badge-done" title="LLM 深度分析已完成">L</span>';
-    } else if (a.llm_status === 'llm_pending') {
-      llmBadge = '<span class="llm-badge llm-badge-pending" title="LLM 分析中…">⏳</span>';
-    }
 
     // 主图
     const imgSrc = a.image_url || '';
@@ -514,32 +892,29 @@ function renderAsins(){
       : `<div class="asin-img asin-img-empty"></div>`;
 
     // 分数
-    const scoreHtml = scoreNum > 0
-      ? `<span class="asin-score">${scoreNum}<span class="src">${isLLM ? 'LLM' : ''}</span></span>`
-      : '';
+    const scoreHtml = scoreNum > 0 ? `<span class="asin-score">${scoreNum}</span>` : '';
 
     // 异常数量 & 站点
     const anomN = a.anomaly_count ?? '';
     const siteLabel = esc(a.site_code||'');
-
-    // LLM 分析的卡片加紫色左边框
-    const llmClass = isLLM ? ' llm-analyzed' : '';
+    const hs = aggregateHandleStatus(a);
+    const inspectTs = parseServerTime(a.last_inspect_at);
     const judgedClass = p ? ' judged' : '';
 
     const b = el(`
-      <button class="item asin-item${judgedClass}${llmClass}" data-key="${a.key}">
+      <button class="item asin-item${judgedClass}" data-key="${a.key}">
         <div class="asin-row">
           ${imgHtml}
           <div class="asin-divider"></div>
           <div class="asin-body">
             <div class="asin-line1">
-              ${priTag}${llmBadge}<b>${esc(a.parent_asin||'-')}</b>${scoreHtml}
+              ${priTag}<b>${esc(a.parent_asin||'-')}</b>${scoreHtml}
             </div>
             <div class="asin-line2">
               <span>${esc(a.shop_account||'?')}</span>
               <span class="badge b-site">${siteLabel}</span>
-              <span class="badge b-stage">${esc(stageCN(a.product_stage))}</span>
-              <span class="badge b-pos">${esc(posCN(a.product_position))}</span>
+              <span class="badge ${hs.cls}">${esc(hs.label)}</span>
+              ${inspectTs > 0 ? `<span class="asin-time ${isInspectStale(inspectTs)?'stale':''}" title="上次巡检 ${esc(a.last_inspect_at||'')}">${esc(formatRelativeTime(inspectTs))}</span>` : ''}
             </div>
           </div>
         </div>
@@ -547,6 +922,13 @@ function renderAsins(){
     b.onclick = () => viewAsin(a, b);
     box.appendChild(b);
   });
+
+  // 重建 DOM 后恢复"当前查看产品"的选中态
+  // 避免详情页任意按钮触发 renderAsins() 后左侧选中态丢失
+  if (state.asinActive){
+    const activeBtn = box.querySelector(`button[data-key="${CSS.escape(state.asinActive.key)}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+  }
 }
 
 document.getElementById('q').addEventListener('input', renderAsins);
@@ -558,51 +940,76 @@ async function viewAsin(a, btn){
   btn && btn.classList.add('active');
   state.asinActive = a;
   document.getElementById('viewer-title').textContent = 'ASIN · ' + a.parent_asin;
-  const r = await api('/api/fixture/' + encodeURIComponent(a.key));
-  renderAsinView(a, r.data);
 
-  // 代码结果：从后端缓存拉取（秒返）
-  if (!inspectCache.has(a.key) && batchReady) {
+  // 记住"当前查看的 ASIN"到 localStorage —— iframe 重挂载时自动恢复视图
+  try { localStorage.setItem('hcAgent.lastAsin::' + (getUrlUserId()||'all'), a.key); } catch {}
+
+  // fixture 走 SWR：命中缓存立即渲染（0 延迟），后台再拉最新
+  const fixture = await swrFetch('fixture:' + a.key,
+    () => api('/api/fixture/' + encodeURIComponent(a.key)),
+    (fresh) => { renderAsinView(a, fresh.data); _layoutJudgeTab(a); }
+  );
+  renderAsinView(a, fixture.data);
+
+  // 巡检结果 tab 立即渲染（inspectCacheGet 会穿透 localStorage）
+  _layoutJudgeTab(a);
+
+  // 后台补充：如果 inspect 缓存空，从后端拉一次
+  if (!inspectCacheHas(a.key) && batchReady) {
     try {
       const codeR = await fetch('/api/inspect/' + encodeURIComponent(a.key), {method:'POST'}).then(r=>r.json());
-      inspectCache.set(a.key, {result: codeR, ts: Date.now()});
+      inspectCacheSet(a.key, {result: codeR, ts: Date.now()});
+      _layoutJudgeTab(a);
     } catch(e) {}
+  } else if (!inspectCacheHas(a.key) && !batchReady) {
+    runInspect(a.key, /* silent */ true);
   }
+}
 
-  // 填充代码 tab
-  const cachedCode = inspectCache.get(a.key);
-  const codeBox = document.getElementById('judge-result');
-  if (codeBox && cachedCode) {
-    codeBox.innerHTML = renderJudgment(cachedCode.result.judgment || {}, cachedCode.result.usage, cachedCode.result.model);
-  } else if (codeBox && !cachedCode) {
-    codeBox.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:12px 0">未检测到异常</div>';
-    if (!batchReady) runInspect(a.key, /* silent */ true);
-  }
+// 巡检结果 tab 的统一布局：LLM 顶置 + 代码折叠（无 LLM 时代码直接展示）
+function _layoutJudgeTab(a){
+  const cachedCode = inspectCacheGet(a.key);
+  const cachedLLM = judgeCacheGet(a.key);
+  const hasLLM = cachedLLM && cachedLLM.result && !cachedLLM.result.dry_run;
 
-  // 填充 LLM tab
-  const cachedLLM = judgeCache.get(a.key);
-  const llmBox = document.getElementById('llm-result');
-  if (llmBox && cachedLLM && !cachedLLM.result.dry_run) {
-    llmBox.innerHTML = renderJudgment(cachedLLM.result.judgment || {}, cachedLLM.result.usage, cachedLLM.result.model)
-      + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">📌 LLM 判定于 ${new Date(cachedLLM.ts).toLocaleString('zh-CN')} · 模型 ${cachedLLM.result.model||'-'}</div>`;
-    // LLM tab 高亮
-    const llmTab = document.querySelector('#viewer .tab[data-tab="tab-llm"]');
-    if (llmTab) llmTab.style.cssText = 'color:#7c3aed;font-weight:600;border-bottom-color:#7c3aed';
-  } else if (llmBox && (!cachedLLM || cachedLLM.result.dry_run)) {
-    const hasHigh = (a.score||0) >= 90;
-    llmBox.innerHTML = `<div style="padding:16px;text-align:center;color:#94a3b8">
-      <div style="font-size:13px;margin-bottom:8px">${hasHigh ? '⚠️ 代码分析检测到高严重度异常，建议 LLM 深度分析' : '尚未进行 LLM 深度分析'}</div>
-      <button class="run-btn" onclick="runJudge('${a.key}')" style="font-size:12px">🔍 开始 LLM 分析</button>
-    </div>`;
-  }
-
-  // 操作区（代码 tab 底部）
+  const llmSlot = document.getElementById('llm-result-slot');
+  const codeSlot = document.getElementById('code-result-slot');
   const actionsBox = document.getElementById('judge-actions');
-  if (actionsBox) {
+  if (!llmSlot || !codeSlot) return;
+
+  // 代码巡检 HTML
+  const codeInner = cachedCode
+    ? renderJudgment(cachedCode.result.judgment || {}, cachedCode.result.usage, cachedCode.result.model)
+    : '<div style="color:#94a3b8;font-size:12px;padding:12px 0">' + (batchReady ? '未检测到异常' : '⚡ 加载中…') + '</div>';
+
+  if (hasLLM){
+    // LLM 顶置
+    const ts = new Date(cachedLLM.ts).toLocaleString('zh-CN');
+    llmSlot.style.display = 'block';
+    llmSlot.innerHTML = `
+      <div class="llm-block-header">🔍 AI 深度分析结果<span class="meta">· 模型 ${esc(cachedLLM.result.model||'-')} · ${ts}</span></div>
+      <div class="llm-block-body">${renderJudgment(cachedLLM.result.judgment || {}, cachedLLM.result.usage, cachedLLM.result.model)}</div>
+    `;
+    // 代码结果折叠
+    codeSlot.innerHTML = `
+      <details class="code-fold">
+        <summary>📋 代码规则判定结果（点击展开对照）</summary>
+        <div class="code-fold-body"><div id="judge-result">${codeInner}</div></div>
+      </details>
+    `;
+  } else {
+    llmSlot.style.display = 'none';
+    llmSlot.innerHTML = '';
+    codeSlot.innerHTML = `<div id="judge-result" style="margin-top:4px">${codeInner}</div>`;
+  }
+
+  // 操作按钮：AI 深度分析
+  if (actionsBox){
     actionsBox.style.display = 'block';
     actionsBox.innerHTML = `<div style="display:flex;gap:8px;margin-top:10px">
-      <button class="run-btn" onclick="runInspect('${a.key}')" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#059669,#047857)">⚡ 重新代码分析</button>
-      <button class="run-btn" onclick="runJudge('${a.key}')" style="font-size:11px;padding:6px 12px">🔍 ${cachedLLM && !cachedLLM.result.dry_run ? '重新 LLM 分析' : 'LLM 分析'}</button>
+      <button class="run-btn" onclick="runJudge('${a.key}')" style="font-size:11px;padding:6px 12px">
+        🔍 ${hasLLM ? '重新 AI 深度分析' : 'AI 深度分析'}
+      </button>
     </div>`;
   }
 }
@@ -619,6 +1026,8 @@ function renderAsinView(a, data){
   const cfgVal = (k) => {
     if (k === 'product_position') return posCN(a[k]);
     if (k === 'product_stage') return stageCN(a[k]);
+    if (k === 'target_acos_suggest') { const v = a[k]; return v != null ? (v * 100).toFixed(0) + '%' : '—'; }
+    if (k === 'daily_budget_suggest') { const v = a[k]; return v != null ? '$' + Number(v).toFixed(0) : '—'; }
     return a[k] ?? '—';
   };
 
@@ -628,50 +1037,47 @@ function renderAsinView(a, data){
     return `<span class="info-chip"><span class="info-chip-k">${CN_LABEL[k]||k}</span><span class="info-chip-v">${esc(String(v))}</span></span>`;
   }).join('');
 
+  // 上次巡检时间 chip
+  const inspectTs = parseServerTime(a.last_inspect_at);
+  const inspectChip = inspectTs > 0
+    ? `<span class="info-chip" title="${esc(a.last_inspect_at||'')}" style="background:${isInspectStale(inspectTs)?'#fee2e2':'#f0f9ff'};color:${isInspectStale(inspectTs)?'#dc2626':'#0369a1'}">
+         <span class="info-chip-k">上次巡检</span><span class="info-chip-v">${esc(formatRelativeTime(inspectTs))}</span></span>`
+    : '';
+
   const infoHtml = `<div class="card info-bar">
-    <div class="info-chips">${infoChips}</div>
+    <div class="info-chips">${infoChips}${inspectChip}</div>
     ${a.image_url ? `<img class="info-thumb" src="${esc(a.image_url)}" alt="" onerror="this.style.display='none'">` : ''}
   </div>`;
 
-  // Tab 切换：代码判定 | LLM 判定  | 原始数据
+  // Tab：巡检结果（含 AI 深度分析 + 代码巡检）| 数据问题反馈
   const tabsHtml = `<div class="tabs" style="margin-top:8px">
-    <button class="tab active" data-tab="tab-code">⚡ 代码判定</button>
-    <button class="tab" data-tab="tab-llm">🔍 LLM 判定</button>
-    <button class="tab" data-tab="tab-data">📦 原始数据</button>
+    <button class="tab active" data-tab="tab-code">⚡ 巡检结果</button>
+    <button class="tab" data-tab="tab-data">📝 数据问题反馈</button>
   </div>
   <div id="tab-code" class="tab-panel">
-    <div id="judge-result" style="margin-top:4px">
-      <div style="color:#94a3b8;font-size:12px;padding:12px 0">⚡ 加载中…</div>
+    <!-- LLM 结果 slot：仅在有 LLM 结果时展开 -->
+    <div id="llm-result-slot" style="display:none"></div>
+    <!-- 代码巡检 slot：无 LLM 时直接展示；有 LLM 时被折叠 -->
+    <div id="code-result-slot">
+      <div id="judge-result" style="margin-top:4px">
+        <div style="color:#94a3b8;font-size:12px;padding:12px 0">⚡ 加载中…</div>
+      </div>
     </div>
     <div id="judge-actions" style="margin-top:10px;display:none"></div>
-  </div>
-  <div id="tab-llm" class="tab-panel" style="display:none">
-    <div id="llm-result" style="margin-top:4px">
-      <div style="color:#94a3b8;font-size:12px;padding:12px 0">🔍 加载中…</div>
-    </div>
   </div>
   <div id="tab-data" class="tab-panel" style="display:none">
     <div id="data-result"></div>
   </div>`;
 
-  // 原始数据
-  const KIND_CN = {
-    listing: { title: '商品基础信息', desc: '标题 / 星级 / 售价 / 退款率' },
-    sales:   { title: '销售与广告',   desc: '销量 / 广告花费 / ACOS / 毛利率' },
-    campaigns:{title: '广告活动',     desc: '所有 Campaign 清单' },
-  };
+  // 数据问题反馈 tab —— 目前为占位，后续接入表单
   setTimeout(() => {
-    const dataHtml = ['listing','sales','campaigns'].map(kind => {
-      const d = data[kind] || {};
-      const meta = KIND_CN[kind];
-      const status = d.found ? `<span style="color:#059669">✓ 有数据（${d.count??0} 条）</span>` : `<span style="color:#94a3b8">— 无匹配</span>`;
-      return `<div class="card"><h4>${meta.title} <span style="font-weight:400;color:#94a3b8;font-size:11px">· ${meta.desc}</span></h4>
-        <div style="font-size:12px;color:#64748b;margin-bottom:6px">${status}</div>
-        <details><summary style="cursor:pointer;font-size:12px;color:#475569">查看原始 JSON</summary>
-        <pre style="max-height:260px;margin-top:6px">${esc(JSON.stringify(d, null, 2))}</pre></details></div>`;
-    }).join('');
     const dataBox = document.getElementById('data-result');
-    if (dataBox) dataBox.innerHTML = dataHtml;
+    if (dataBox) dataBox.innerHTML = `
+      <div class="feedback-placeholder">
+        <div class="icon">📝</div>
+        <div class="title">数据问题反馈</div>
+        <div class="desc">遇到数据缺失、数值异常或字段错位？<br>此功能开发中，稍后将支持一键提交反馈到 IT 处理。</div>
+      </div>`;
   }, 0);
 
   document.getElementById('viewer').innerHTML = infoHtml + tabsHtml;
@@ -710,44 +1116,346 @@ function kvRow(label, val){
   return `<div class="kv"><span class="k">${esc(label)}</span><span class="v${empty?' none':''}">${esc(String(val??'待补充'))}</span></div>`;
 }
 
+// 严重度中文标签 + 圆点色（表格版）
+const TC_SEV = {
+  S0: {bg:'#dc2626', txt:'S0 严重'},
+  S1: {bg:'#f59e0b', txt:'S1 中等'},
+  S2: {bg:'#3b82f6', txt:'S2 轻微'},
+  '数据不足': {bg:'#94a3b8', txt:'数据不足'},
+  '配置待补': {bg:'#64748b', txt:'配置待补'},
+};
+// 异常大类 → 文字色
+const TC_CAT_COLOR = {
+  '链接状态':'#dc2626','内容完整性':'#7c3aed','价格与促销':'#0891b2',
+  '库存与可售':'#b45309','交易表现':'#2563eb','合规与属性':'#be123c','售后':'#0d9488',
+};
+// 处理建议按 ；/;/、拆成 bullet
+function tcSplitActions(s){
+  if(!s || s==='待补充') return [];
+  return String(s).split(/[；;]/).map(x=>x.trim()).filter(Boolean);
+}
+
+// —— 异常状态：待处理 / 处理中 / 处理完成（localStorage 持久化，运营手动切）——
+const STATUS_OPTS = ['待处理','处理中','处理完成'];
+const STATUS_CLASS = {'待处理':'st-todo','处理中':'st-doing','处理完成':'st-done'};
+function _statusKey(asinKey, 问题点位, 命中变体){
+  return `hcAgent.anomStatus::${asinKey||''}::${问题点位||''}::${命中变体||''}`;
+}
+function getAnomStatus(k){ return localStorage.getItem(k) || '待处理'; }
+
+// —— 广告类冷却期（产品级；纯前端 localStorage） ——
+const COOLDOWN_DAYS = 2;
+function _cooldownKey(asinKey){ return `hcAgent.cooldown::${asinKey||''}`; }
+function getCooldownUntil(asinKey){
+  const v = parseInt(localStorage.getItem(_cooldownKey(asinKey)) || '0', 10);
+  return isNaN(v) ? 0 : v;
+}
+function setCooldown(asinKey, days){
+  const until = Date.now() + days*24*3600*1000;
+  localStorage.setItem(_cooldownKey(asinKey), String(until));
+  return until;
+}
+function clearCooldown(asinKey){ localStorage.removeItem(_cooldownKey(asinKey)); }
+function isCoolingDown(asinKey){ return getCooldownUntil(asinKey) > Date.now(); }
+function _isTradingAnom(异常类型){ return 异常类型 === '交易表现'; }
+function formatRemaining(untilTs){
+  const ms = untilTs - Date.now();
+  if (ms <= 0) return '已结束';
+  const days = Math.floor(ms / 86400000);
+  const hours = Math.floor((ms % 86400000) / 3600000);
+  if (days > 0) return `剩 ${days} 天 ${hours} 小时`;
+  const mins = Math.floor((ms % 3600000) / 60000);
+  return hours > 0 ? `剩 ${hours} 小时 ${mins} 分` : `剩 ${mins} 分`;
+}
+function formatMonthDay(ts){
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return `${d.getMonth()+1}月${d.getDate()}日`;
+}
+// 相对时间：3小时前 / 今天 10:20 / 昨天 09:15 / 3天前
+function formatRelativeTime(ts){
+  if (!ts) return '';
+  const now = Date.now();
+  const diff = now - ts;
+  if (diff < 0) return '刚刚';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hours = Math.floor(diff / 3600000);
+  const d = new Date(ts);
+  const hhmm = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tsDay = new Date(ts); tsDay.setHours(0,0,0,0);
+  const dayDiff = Math.round((today - tsDay) / 86400000);
+  if (dayDiff === 0) return `今天 ${hhmm}`;
+  if (dayDiff === 1) return `昨天 ${hhmm}`;
+  if (dayDiff < 7) return `${dayDiff} 天前`;
+  return `${d.getMonth()+1}-${d.getDate()}`;
+}
+// 后端 "2026-07-13 10:20:30" → 时间戳（iOS 兼容用 / 替换 -）
+function parseServerTime(s){
+  if (!s) return 0;
+  return new Date(String(s).replace(/-/g,'/')).getTime();
+}
+// 判断巡检是否陈旧（超过 26 小时无更新 → 显示红）
+function isInspectStale(ts){
+  return ts > 0 && (Date.now() - ts) > 26*3600*1000;
+}
+// 冷却过期检测：过期则清除冷却 + 清除该产品交易表现异常的"处理完成"记录
+function _maybeExpireCooldown(a){
+  if (!a) return;
+  const until = getCooldownUntil(a.key);
+  if (until > 0 && Date.now() >= until){
+    clearCooldown(a.key);
+    for (const p of (a.anomaly_points||[])){
+      if (_isTradingAnom(p['异常类型'])){
+        localStorage.removeItem(_statusKey(a.key, p['问题点位'], p['命中变体']));
+      }
+    }
+  }
+}
+
+// —— 状态修改：交易表现类改成"处理完成"时弹确认 + 触发冷却 ——
+function setAnomStatus(sel){
+  const newVal = sel.value;
+  const stK = sel.dataset.k;
+  const isTrading = sel.dataset.cat === '交易表现';
+  const asinKey = sel.dataset.asin;
+
+  // 交易表现类改成"处理完成"且当前不在冷却中 → 弹确认
+  if (newVal === '处理完成' && isTrading && !isCoolingDown(asinKey)){
+    const prev = getAnomStatus(stK);
+    showCooldownConfirm(
+      () => {
+        // 用户确认：落状态 + 触发冷却 + 刷新
+        localStorage.setItem(stK, newVal);
+        setCooldown(asinKey, COOLDOWN_DAYS);
+        const a = state.asinActive;
+        if (a && a.key === asinKey) _layoutJudgeTab(a);
+        renderAsins();
+      },
+      () => {
+        // 用户取消：select 回退到原值
+        sel.value = prev;
+        sel.className = STATUS_CLASS[prev] || 'st-todo';
+      }
+    );
+    return;
+  }
+
+  localStorage.setItem(stK, newVal);
+  sel.className = STATUS_CLASS[newVal] || 'st-todo';
+  renderAsins();  // 状态变更 → 左侧聚合徽章同步刷新
+}
+
+// —— 冷却确认弹窗控制 ——
+let _cooldownPending = null;
+function showCooldownConfirm(onOk, onCancel){
+  _cooldownPending = { onOk, onCancel };
+  document.getElementById('cd-mask').classList.add('open');
+}
+function cooldownConfirmOk(){
+  document.getElementById('cd-mask').classList.remove('open');
+  const p = _cooldownPending; _cooldownPending = null;
+  if (p && p.onOk) p.onOk();
+}
+function cooldownConfirmCancel(){
+  document.getElementById('cd-mask').classList.remove('open');
+  const p = _cooldownPending; _cooldownPending = null;
+  if (p && p.onCancel) p.onCancel();
+}
+
+// 聚合处理状态：优先级 处理中 > 待处理 > 处理完成 > 配置待补 > 无异常 > 冷却中(覆盖)
+// 冷却期内，交易表现类异常在聚合里视为"处理完成"；若产品最终状态为"处理完成/无异常"则展示"冷却中"
+// 返回 {label, cls, kind} 供徽章渲染 + 筛选
+function aggregateHandleStatus(a){
+  _maybeExpireCooldown(a);   // 每次聚合前检测冷却过期
+  const cooling = isCoolingDown(a.key);
+  const pts = a.anomaly_points || [];
+  const cpCnt = a.config_pending_count || 0;
+
+  // 无真异常时（冷却也不显示，因为没广告异常了）
+  if (pts.length === 0){
+    if (cpCnt > 0) return {label:'配置待补', cls:'b-hs-config', kind:'配置待补'};
+    return {label:'无异常', cls:'b-hs-empty', kind:'无异常'};
+  }
+
+  let anyDoing = false, allDone = true;
+  for (const p of pts){
+    const raw = getAnomStatus(_statusKey(a.key, p['问题点位'], p['命中变体']));
+    // 冷却期内，交易表现类异常一律视为"处理完成"
+    const st = (cooling && _isTradingAnom(p['异常类型'])) ? '处理完成' : raw;
+    if (st === '处理中') anyDoing = true;
+    if (st !== '处理完成') allDone = false;
+  }
+  if (anyDoing) return {label:'处理中', cls:'b-hs-doing', kind:'处理中'};
+  if (allDone){
+    // 冷却期内全部处理完成 → 展示"冷却中 · 剩 N 天"
+    if (cooling){
+      const until = getCooldownUntil(a.key);
+      return {label:`冷却中 · ${formatRemaining(until)}`, cls:'b-hs-cooling', kind:'冷却中'};
+    }
+    return {label:'处理完成', cls:'b-hs-done', kind:'处理完成'};
+  }
+  // 待处理：按优先级 P0/P1/P2 分色
+  const pri = a.priority || 'P2';
+  return {label:'待处理', cls:`b-hs-todo-${pri}`, kind:'待处理'};
+}
+
+// 广告决策按钮：跳转前把该异常自动标记为"处理中"
+// 规则：仅"待处理"→"处理中"；"处理中"/"处理完成"保持不变，避免已完成的被回退
+function markDoingAndOpen(url, statusKey){
+  const cur = getAnomStatus(statusKey);
+  if (cur === '待处理'){
+    localStorage.setItem(statusKey, '处理中');
+    // 更新右侧当前那个 select（如果还在页面上）
+    const sel = document.querySelector(`select[data-k="${CSS.escape(statusKey)}"]`);
+    if (sel){
+      sel.value = '处理中';
+      sel.className = STATUS_CLASS['处理中'];
+    }
+    renderAsins();  // 左侧聚合徽章刷新
+  }
+  window.open(url, '_blank', 'noopener');
+  return false;  // 阻止 <a href> 默认行为，避免重复打开
+}
+
+// —— 广告决策 agent 跳转 URL（交易表现类异常专用）——
+const AD_AGENT_BASE = 'https://mcp-gateway.example.com/demo/ad-asisitant-agent.html';
+function buildAdAgentUrl(loc){
+  const st = state.asinActive || {};
+  const q = new URLSearchParams({
+    shopAccount: st.shop_account || loc.店铺账号 || '',
+    productName: st.product_name || '',
+    shopId: st.shop_id || '',
+    parentAsin: loc.父ASIN || st.parent_asin || '',
+    parentSellerSku: st.parent_seller_sku || '',
+    productPosition: st.product_position || '',
+    productStage: st.product_stage || '',
+    seasonType: loc.淡旺季 || '',
+    siteCode: st.site_code || loc.站点 || '',
+    userId: getUrlUserId() || loc.负责人ID || '',
+  });
+  return AD_AGENT_BASE + '?' + q.toString();
+}
+
 function renderJudgment(j, usage, model){
   const P = pickPriority(j) || 'P2';
   const pm = PRI_META[P] || PRI_META.P2;
   const score = pickScore(j);
-  const scorePct = Math.min(100, Math.max(0, (Number(score) || 0) / 200 * 100));
   const summary = j.human_summary || '';
-
   const loc = j.定位信息 || {};
   const pri = j.优先级信息 || {};
 
-  // 异常明细按该条执行分数降序
   const anomalies = pickAnomalies(j).slice().sort((a,b)=>anomScore(b)-anomScore(a));
 
-  // 紧凑异常行：一行异常 = 严重度 + 点位 + 判断依据 + 建议 + 分数
-  const anomRows = anomalies.map((a,i) => {
-    const sev = a.该条严重度 || a.severity || 'S2';
-    const sm = SEV_META[sev] || SEV_META.S2;
-    const type = a.异常类型 || '';
-    const point = a.问题点位 || '-';
-    const basis = (a.判断依据||'').substring(0, 80);
-    const suggest = (a.处理建议 && a.处理建议 !== '待补充') ? a.处理建议 : '';
-    const af = anomScore(a);
-    return `<div class="anom-row">
-      <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
-      <span class="anom-point">${esc(point)}</span>
-      <span class="anom-basis">${esc(basis)}</span>
-      ${suggest ? `<span class="anom-suggest">💡 ${esc(suggest)}</span>` : ''}
-      ${af >= 0 ? `<span class="anom-af">${af}</span>` : ''}
+  // ── 头部（店铺信息 + 定位 + 优先级/严重度）──
+  const 店铺站点 = loc.店铺站点 || '—';
+  const 父ASIN = loc.父ASIN || '—';
+  const 站点 = loc.站点 || (店铺站点.split('/')[1]||'').trim() || '—';
+    const 严重度 = pri.父卡严重度 || '-';
+  const header = `
+    <div class="tc-header">
+      <div class="tc-col">
+        <span class="tc-k">店铺/站点</span><span class="tc-v">${esc(店铺站点)}</span>
+        <span class="tc-k">父ASIN</span><span class="tc-v">${esc(父ASIN)}</span>
+        <span class="tc-k">站点</span><span class="tc-v">${esc(站点)}</span>
+      </div>
+      <div class="tc-col">
+        <span class="tc-k">产品定位</span><span class="tc-v hl">${esc(posCN(loc.产品定位)||loc.产品定位||'—')}</span>
+        <span class="tc-k">产品阶段</span><span class="tc-v">${esc(stageCN(loc.产品阶段)||loc.产品阶段||'—')}</span>
+        <span class="tc-k">淡旺季</span><span class="tc-v">${esc(seasonCN(loc.淡旺季)||loc.淡旺季||'—')}</span>
+      </div>
+      <div class="tc-pri">
+        <div style="text-align:center">
+          <div class="tc-pri-badge" style="background:${pm.color}">${esc(P)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center">
+          <span class="tc-pri-time">${esc(pri.处理时限||pm.label)}</span>
+          ${严重度 && 严重度!=='-' ? `<span class="tc-sev-badge">${esc(严重度)}</span>`:''}
+        </div>
+      </div>
     </div>`;
-  }).join('');
 
-  // 定位信息 → 紧凑 chips
-  const locChips = [
-    {k:'店铺/站点', v:loc.店铺站点},
-    {k:'定位', v:loc.产品定位},
-    {k:'阶段', v:loc.产品阶段},
-    {k:'淡旺季', v:loc.淡旺季},
-  ].filter(x => x.v).map(x => `<span class="loc-chip"><b>${esc(x.k)}</b> ${esc(String(x.v))}</span>`).join('');
+  // ── 异常明细表格 ──
+  let tableBlock = '<div style="color:#94a3b8;font-size:13px;padding:16px 0">✅ 未识别到异常</div>';
+  if (anomalies.length){
+    const rows = anomalies.map(a=>{
+      const sev = a.该条严重度 || 'S2';
+      const sm = TC_SEV[sev] || TC_SEV.S2;
+      const 类型 = a.异常类型 || (a.异常大类||'').replace(/^[\d.]+\s*/,'') || '';
+      const catLabel = !类型 ? '' : (类型==='配置缺失' || 类型.endsWith('异常')) ? 类型 : 类型+'异常';
+      const catColor = TC_CAT_COLOR[类型] || '#64748b';
+      const 具体表现 = a.具体表现 || a.问题点位 || '';
+      const asin = a.命中变体 || '—';
+      const isChildAsin = asin.includes('_') || asin.includes('/');
+      const 变体 = a.变体重要性 || '';
+      const isMain = 变体.includes('主要');
+      const 层级 = a.作用层级 || '链接级';
+      const isVariant = 层级.includes('变体');
+      const 判据 = translateBasis(a.判断依据 || '');
+      // 优先用结构化"数据快照"，无则回落到技术依据
+      const 数据Html = renderSnapshot(a.数据快照, tcCleanBasis(a.技术依据 || ''));
+      const actions = tcSplitActions(a.处理建议);
+
+      // 状态：优先 localStorage 里运营手动改过的，否则默认 待处理
+      const asinKey = state.asinActive?.key || '';
+      const stK = _statusKey(asinKey, a.问题点位, a.命中变体);
+      const curSt = getAnomStatus(stK);
+      const stCls = STATUS_CLASS[curSt] || 'st-todo';
+      const 是交易表现 = 类型 === '交易表现';
+      const 是配置待补 = 类型 === '配置缺失';
+      // 冷却期内 且 是交易表现异常 → 状态列改用冷却徽章（不显示 select 也不显示广告决策）
+      const cooling = 是交易表现 && isCoolingDown(asinKey);
+      let stateCell = '';
+      if (cooling){
+        const until = getCooldownUntil(asinKey);
+        const rem = formatRemaining(until);
+        // 上次巡查时间：从 code_judgment.判定时间 拿（j 是本函数外层的 renderJudgment 参数）
+        const lastInspectTs = j?.判定时间 ? new Date(j.判定时间.replace(/-/g,'/')).getTime() : null;
+        const lastLabel = lastInspectTs ? formatMonthDay(lastInspectTs) : '—';
+        stateCell = `<div class="tc-cool">
+          <span class="tc-cool-badge">❄ 冷却中</span>
+          <span class="tc-cool-meta">${esc(rem)}</span>
+          <span class="tc-cool-meta">上次巡查 ${esc(lastLabel)}</span>
+        </div>`;
+      } else {
+        const stSelect = `<select class="${stCls}" data-k="${esc(stK)}" data-cat="${esc(类型||'')}" data-asin="${esc(asinKey)}" onchange="setAnomStatus(this)">${
+          STATUS_OPTS.map(o=>`<option value="${o}" ${o===curSt?'selected':''}>${o}</option>`).join('')
+        }</select>`;
+        // 交易表现类 + 配置待补类异常 → 提供跳转按钮到广告决策 agent
+        const adUrl = (是交易表现 || 是配置待补) ? buildAdAgentUrl(loc) : '';
+        const adBtn = (是交易表现 || 是配置待补)
+          ? `<a class="tc-adlink" href="${adUrl}" onclick="return markDoingAndOpen('${adUrl.replace(/'/g,"\\'")}', '${esc(stK)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>`
+          : '';
+        stateCell = `${stSelect}${adBtn}`;
+      }
+
+      return `<tr>
+        <td><span class="tc-sev" style="background:${sm.bg}22;color:${sm.bg}">${esc(sm.txt)}</span></td>
+        <td><div class="tc-cat" style="color:${catColor}">${esc(catLabel)}</div><div class="tc-point">${esc(a.问题点位||'')}${a.AI补录 ? '<span class="tc-ai-tag" title="AI 深度分析新发现的异常，代码规则未识别">🔮 AI 补录</span>' : ''}</div></td>
+        <td>${esc(具体表现)}</td>
+        <td><span class="tc-asin ${isChildAsin?'link':''}">${esc(asin)}</span></td>
+        <td>${变体 ? `<span class="tc-var ${isMain?'main':''}">${esc(变体)}</span>`:'—'}</td>
+        <td><span class="tc-level ${isVariant?'variant':''}">${esc(层级)}</span></td>
+        <td><div class="tc-basis">${esc(判据)}</div>${数据Html}</td>
+        <td>${actions.length ? `<ul class="tc-actions">${actions.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : '<span style="color:#cbd5e1">—</span>'}</td>
+        <td><div class="tc-status">${stateCell}</div></td>
+      </tr>`;
+    }).join('');
+    tableBlock = `
+      <div class="tc-anom-title">异常明细列表</div>
+      <div class="tc-table-wrap">
+        <table class="tc-table">
+          <thead><tr>
+            <th>严重度</th><th>异常类型</th><th>具体表现</th><th>命中ASIN</th>
+            <th>变体重要性</th><th>作用层级</th><th>判断依据/数据</th><th>处理建议</th><th>状态</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="tc-note">异常明细列表 · 默认按严重度降序 · S0(红)/S1(橙)/S2(蓝)　执行分 ${score ?? '-'} · 共 ${anomalies.length} 项</div>`;
+  }
 
   const isLLMModel = model && model !== 'code-pipeline';
   const metaLine = [
@@ -757,107 +1465,151 @@ function renderJudgment(j, usage, model){
   ].filter(Boolean).join(' · ');
 
   return `
-    <div class="judge-hero" style="background:${pm.bg}">
-      <div class="judge-hero-top">
-        <span class="pri-badge" style="background:${pm.color}">${esc(P)}</span>
-        <span class="pri-label">${esc(pri.处理时限||pm.label)}</span>
-        ${j.定位信息?.店铺站点 ? `<span class="judge-asin">${esc(j.定位信息.店铺站点)}</span>` : ''}
-        <span class="judge-score">执行分 <b>${score ?? '-'}</b> · 严重度 ${esc(pri.父卡严重度||'-')}</span>
-        <span class="judge-count">${anomalies.length} 项异常</span>
-      </div>
-      ${summary ? `<div class="judge-summary">${esc(summary)}</div>` : ''}
-      <div class="score-bar"><div class="score-bar-fill" style="width:${scorePct}%;background:${pm.color}"></div></div>
-    </div>
-
-    ${anomalies.length ? `
-    <div class="anom-compact">
-      <div class="anom-header"><span>异常明细</span><span>${anomalies.length} 项</span></div>
-      ${anomRows}
-    </div>
-    <div class="task-list">
-      <div class="task-header">📋 处理任务</div>
-      ${anomalies.filter(a => (a.处理建议 && a.处理建议 !== '待补充')).map(a => {
-        const sev = a.该条严重度 || a.severity || 'S2';
-        const sm = SEV_META[sev] || SEV_META.S2;
-        return `<div class="task-row">
-          <span class="sev-tag" style="background:${sm.bg};color:${sm.color}">${sm.label}</span>
-          <span class="task-point">${esc(a.问题点位||'')}</span>
-          <span class="task-action">${esc(a.处理建议)}</span>
-        </div>`;
-      }).join('') || '<div class="task-row"><span style="color:#94a3b8">处理建议待补充，请根据异常明细判断</span></div>'}
-    </div>` : '<div style="color:#94a3b8;font-size:12px;padding:8px 0">✅ 未识别到异常</div>'}
-
+    <div class="tc-caption">区域 2+3：商品信息 + 优先级（合并）</div>
+    ${header}
+    ${summary ? `<div class="tc-note" style="color:#64748b;margin-top:10px">${esc(summary)}</div>`:''}
+    ${tableBlock}
     ${metaLine ? `<div class="judge-meta">${metaLine}</div>` : ''}
-    <details style="margin-top:4px"><summary style="cursor:pointer;font-size:10px;color:#cbd5e1">JSON</summary>
-    <pre style="max-height:200px;margin-top:4px;font-size:11px">${esc(JSON.stringify(j, null, 2))}</pre></details>
+    <!-- <details style="margin-top:6px"><summary style="cursor:pointer;font-size:10px;color:#cbd5e1">JSON</summary>
+    <pre style="max-height:200px;margin-top:4px;font-size:11px">${esc(JSON.stringify(j, null, 2))}</pre></details> -->
   `;
 }
 
+// 数字格式化：float 兜底修显示
+// - 长小数（3+ 位）自动截断到 2 位
+// - 明显是比例（0<v<=1 且不带 %/$）视上下文格式化
+function _fmtNum(v){
+  const n = Number(v);
+  if (!isFinite(n)) return v;
+  if (Number.isInteger(n)) return String(n);
+  // 保留 2 位小数
+  return n.toFixed(2).replace(/\.?0+$/, '');
+}
+
+// 判据清洗 + 术语翻译：把后端代码术语翻译成运营语言
+function tcCleanBasis(s){
+  if(!s) return '';
+  let out = String(s)
+    // 砍后端调试串
+    .replace(/→\s*S[012].*$/,'')
+    .replace(/（[^）]*不预警[^）]*）/g,'')
+    .replace(/（[^）]*暂不告警[^）]*）/g,'')
+    // 术语替换（后端可能没改到的兜底）
+    .replace(/\bvs\b/gi, '对比')
+    .replace(/低于基线/g, '低于均值')
+    .replace(/高于基线/g, '高于均值')
+    .replace(/有效销量基线/g, '有效销量基准')
+    .replace(/有效卡位基线/g, '有效卡位基准')
+    .replace(/偏离比/g, '偏离幅度')
+    .replace(/不预警/g, '暂不告警')
+    .replace(/取高/g, '取严重')
+    .replace(/双基准/g, '两项指标')
+    .replace(/门槛/g, '触发条件')
+    .replace(/分档名/g, '等级')
+    .replace(/落档/g, '判定等级')
+    // 数字长小数截断：0.3333333 → 0.33
+    .replace(/(\d+)\.(\d{3,})/g, (m, i, d) => `${i}.${d.slice(0,2)}`)
+    .replace(/\s+/g,' ')
+    .trim();
+  return out;
+}
+
+// 数据快照渲染：kv 字段做 chip 标签、series 逐日序列做单独一行
+// 无快照时回落到"技术依据"字符串
+function renderSnapshot(snapshot, fallbackText){
+  if (Array.isArray(snapshot) && snapshot.length){
+    const kvs = snapshot.filter(x => x && x.kind !== 'series' && x.value && x.value !== '—');
+    const series = snapshot.filter(x => x && x.kind === 'series' && x.value);
+    let html = '<div class="tc-snap">';
+    if (kvs.length){
+      html += '<div class="tc-snap-kv">'
+        + kvs.map(x => `<span class="kv"><span class="k">${esc(x.label)}</span><span class="v">${esc(x.value)}</span></span>`).join('')
+        + '</div>';
+    }
+    for (const s of series){
+      html += `<div class="tc-snap-series"><span class="k">${esc(s.label)}</span>${esc(s.value)}</div>`;
+    }
+    html += '</div>';
+    return html;
+  }
+  // 无结构化快照 → 用原来的"技术依据"字符串
+  if (fallbackText){
+    return `<div class="tc-basis" style="margin-top:4px;color:#94a3b8">${esc(fallbackText)}</div>`;
+  }
+  return '';
+}
+
+// 判据翻译：更彻底的运营化改写（用在"判断依据"列，比 tcCleanBasis 更进一步）
+function translateBasis(s){
+  if(!s) return '';
+  let out = tcCleanBasis(s);
+  // "缺失字段 [xxx]" → "尚未获取 xxx 数据"（允许中文/数字/中文标点，非贪婪到 ] 或空白）
+  out = out.replace(/缺失字段\s*\[?['"]?([^\]'"\s，。；]+)['"]?\]?/g, '尚未获取 $1 数据');
+  // "分档名称=xxx" 或 "等级=xxx"（前面 tcCleanBasis 已把"分档名"→"等级"）→ "等级 xxx"
+  out = out.replace(/(?:分档名称|等级)\s*=\s*([^\s,，]+)/g, '等级 $1');
+  // "连续天数 = N" → "已连续 N 天"
+  out = out.replace(/连续天数\s*[=为]\s*(\d+)/g, '已连续 $1 天');
+  // "样本量 < N" → "样本不足（<N）"
+  out = out.replace(/样本量\s*<\s*(\d+)/g, '样本不足 (<$1)');
+  return out;
+}
+
 async function runJudge(key){
-  const llmBox = document.getElementById('llm-result');
-  const btn = document.querySelector('#tab-llm .run-btn');
-  if (llmBox) llmBox.innerHTML = '<div style="color:#64748b;animation:pulse 1.4s ease-in-out infinite;padding:16px;text-align:center">📊 拼装 prompt · 调用 DeepSeek…</div>';
-  // 切换到 LLM tab
-  const llmTab = document.querySelector('#viewer .tab[data-tab="tab-llm"]');
-  if (llmTab) llmTab.click();
+  const llmSlot = document.getElementById('llm-result-slot');
+  // loading 顶置显示
+  if (llmSlot){
+    llmSlot.style.display = 'block';
+    llmSlot.innerHTML = `<div class="llm-block-header">🔍 AI 深度分析中…</div>
+      <div class="llm-block-body" style="text-align:center;color:#64748b;animation:pulse 1.4s ease-in-out infinite;padding:20px">
+        📊 拼装 prompt · 调用 DeepSeek…
+      </div>`;
+  }
 
   try {
     const r = await fetch('/api/judge/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
     if (r.dry_run){
-      if (llmBox) llmBox.innerHTML = `<div style="background:#fef3c7;padding:10px 12px;border-radius:6px;color:#92400e;font-size:12px">
+      if (llmSlot) llmSlot.innerHTML = `<div style="background:#fef3c7;padding:10px 12px;border-radius:6px;color:#92400e;font-size:12px">
         ⚠️ ${esc(r.note)}<br>提示词长度：system ${r.system_length} 字符 · user ${r.user_length} 字符
         </div>`;
     } else {
-      judgeCache.set(key, {result: r, ts: Date.now()});
-      if (llmBox) {
-        llmBox.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model)
-          + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">📌 LLM 判定于 ${new Date().toLocaleString('zh-CN')} · 模型 ${r.model||'-'}</div>`;
-      }
-      // LLM tab 高亮
-      if (llmTab) llmTab.style.cssText = 'color:#7c3aed;font-weight:600;border-bottom-color:#7c3aed';
+      judgeCacheSet(key, {result: r, ts: Date.now()});
+      const a = allAsins.find(x => x.key === key) || state.asinActive;
+      if (a) _layoutJudgeTab(a);
       renderAsins();  // 刷新左列
     }
   } catch(e) {
-    if (llmBox) llmBox.innerHTML = `<div style="color:#dc2626">错误：${esc(String(e))}</div>`;
+    if (llmSlot) llmSlot.innerHTML = `<div style="color:#dc2626;padding:10px">错误：${esc(String(e))}</div>`;
   }
 }
 
 // ------- 代码巡检 -------
 function showInspectResult(key, r){
-  const box = document.getElementById('judge-result');
-  const actionsBox = document.getElementById('judge-actions');
-  if (box) {
-    box.innerHTML = renderJudgment(r.judgment || {}, r.usage, r.model);
-  }
-  if (actionsBox) {
-    actionsBox.style.display = 'block';
-    actionsBox.innerHTML = `<div style="display:flex;gap:8px;margin-top:10px">
-      <button class="run-btn" onclick="runInspect('${key}')" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#059669,#047857)">⚡ 重新代码分析</button>
-      <button class="run-btn" onclick="runJudge('${key}')" style="font-size:11px;padding:6px 12px">🔍 LLM 分析</button>
-    </div>`;
-  }
   // 排序分数更新
   const pri = (r.judgment || {}).优先级信息 || {};
   const aInfo = allAsins.find(x => x.key === key);
-  if (aInfo && !judgeCache.has(key)) {
+  if (aInfo && !judgeCacheHas(key)) {
     aInfo.score = pri.产品执行分数 || 0;
     aInfo.priority = pri.执行优先级 || 'P2';
   }
+  // 通过统一布局函数刷新（LLM 优先，否则展开代码结果）
+  const a = aInfo || state.asinActive;
+  if (a) _layoutJudgeTab(a);
 }
 
 async function runInspect(key, silent){
   const box = document.getElementById('judge-result');
-  if (!silent) {
+  if (!silent && box) {
     box.innerHTML = '<div style="color:#059669;animation:pulse 1.4s ease-in-out infinite">⚡ 代码巡检中…（本地判定，通常 1-2 秒）</div>';
   }
 
   try {
     const r = await fetch('/api/inspect/' + encodeURIComponent(key), {method:'POST'}).then(r=>r.json());
-    inspectCache.set(key, {result: r, ts: Date.now()});
+    inspectCacheSet(key, {result: r, ts: Date.now()});
     showInspectResult(key, r);
     renderAsins();
   } catch(e) {
-    box.innerHTML = `<div style="color:#dc2626;font-size:12px">⚡ 代码巡检错误：${esc(String(e))}</div>`;
+    const errBox = document.getElementById('judge-result');
+    if (errBox) errBox.innerHTML = `<div style="color:#dc2626;font-size:12px">⚡ 代码巡检错误：${esc(String(e))}</div>`;
   }
 }
 
@@ -869,7 +1621,7 @@ function refreshBatchTable(){
   renderBatchTable(list);
   const prog = document.getElementById('batch-progress');
   if (prog && !prog.querySelector('.bar')){
-    const cached = list.filter(a => judgeCache.has(a.key)).length;
+    const cached = list.filter(a => judgeCacheHas(a.key)).length;
     prog.innerHTML = `待判定 <b>${list.length}</b> 个 · 其中已缓存 <b>${cached}</b> 个（会直接复用）`;
   }
 }
@@ -888,7 +1640,7 @@ function pickBatch(scope, limit){
       .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
     );
   } else if (scope === 'uncached'){
-    list = list.filter(a => !judgeCache.has(a.key));
+    list = list.filter(a => !judgeCacheHas(a.key));
   }
   return list.slice(0, limit);
 }
@@ -896,7 +1648,7 @@ function pickBatch(scope, limit){
 function renderBatchTable(list){
   const tbody = document.getElementById('batch-tbody');
   tbody.innerHTML = list.map(a => {
-    const cached = judgeCache.get(a.key);
+    const cached = judgeCacheGet(a.key);
     if (cached) return rowHtml(a, cached.result.judgment, 'done');
     return `<tr data-key="${a.key}" class="batch-row-pending">
       <td><b>${esc(a.parent_asin||'-')}</b></td>
@@ -958,12 +1710,12 @@ async function runBatch(){
       if (tr) tr.className = 'batch-row-running';
       try {
         // 用缓存
-        let r = judgeCache.get(a.key)?.result;
+        let r = judgeCacheGet(a.key)?.result;
         if (!r){
           const resp = await fetch('/api/judge/' + encodeURIComponent(a.key), {method:'POST'});
           if (!resp.ok) throw new Error('HTTP '+resp.status);
           r = await resp.json();
-          if (!r.dry_run) judgeCache.set(a.key, {result: r, ts: Date.now()});
+          if (!r.dry_run) judgeCacheSet(a.key, {result: r, ts: Date.now()});
         }
         const j = r.judgment || {};
         if (tr) tr.outerHTML = rowHtml(a, j, 'done');
@@ -985,10 +1737,82 @@ async function runBatch(){
   prog.innerHTML += ' · <b style="color:#059669">完成</b>';
 }
 
+// ------- 数据抓取健康度（暂时关闭） -------
+/*
+let _healthReport = null;
+async function loadHealth(){
+  try {
+    _healthReport = await api('/api/sync-health');
+    renderHealthChip();
+  } catch(e){}
+}
+function renderHealthChip(){
+  const chip = document.getElementById('health-chip');
+  const txt = document.getElementById('health-chip-text');
+  if (!chip || !txt) return;
+  const r = _healthReport || {};
+  if (!r.summary){
+    chip.className = 'health-chip none';
+    txt.textContent = '数据 未检查';
+    return;
+  }
+  const status = r.summary.status;
+  const minCov = (r.summary.min_coverage * 100).toFixed(0);
+  chip.className = 'health-chip ' + (status === 'ok' ? 'ok' : status === 'warn' ? 'warn' : 'fail');
+  txt.textContent = `数据 ${minCov}%`;
+}
+function openHealthPanel(){
+  const mask = document.getElementById('health-mask');
+  const body = document.getElementById('health-body');
+  const summary = document.getElementById('health-summary');
+  const r = _healthReport;
+  if (!r || !r.summary){
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8">尚未执行过覆盖率检查<br><small>需在服务器上运行：<code>python -m data.check_coverage</code></small></div>';
+    summary.textContent = '';
+    mask.classList.add('open'); return;
+  }
+  summary.textContent = `生成时间 ${r.generated_at} · 最低覆盖率 ${(r.summary.min_coverage*100).toFixed(1)}% · 平均 ${(r.summary.avg_coverage*100).toFixed(1)}% · 状态 ${r.summary.status.toUpperCase()}`;
+
+  const covClass = c => c >= 0.9 ? 'cov-ok' : c >= 0.7 ? 'cov-warn' : 'cov-fail';
+  let html = '';
+  for (const [d, tbls] of Object.entries(r.daily || {})){
+    html += `<h4>▶ 日期 ${esc(d)}</h4>
+      <table><thead><tr><th>数据域</th><th>覆盖</th><th>比例</th><th>缺失</th></tr></thead><tbody>`;
+    for (const [tbl, x] of Object.entries(tbls)){
+      if (x.error){ html += `<tr><td>${esc(x.name)}</td><td colspan="3" style="color:#dc2626">${esc(x.error)}</td></tr>`; continue; }
+      html += `<tr>
+        <td>${esc(x.name)} <small style="color:#94a3b8">${esc(tbl)}</small></td>
+        <td>${x.found}/${x.expected}</td>
+        <td class="${covClass(x.coverage)}">${(x.coverage*100).toFixed(1)}%</td>
+        <td>${x.missing_count}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  if (r.snapshot){
+    html += `<h4>▶ 快照表</h4>
+      <table><thead><tr><th>数据域</th><th>覆盖</th><th>比例</th><th>缺失</th></tr></thead><tbody>`;
+    for (const [tbl, x] of Object.entries(r.snapshot)){
+      if (x.error){ html += `<tr><td>${esc(x.name)}</td><td colspan="3" style="color:#dc2626">${esc(x.error)}</td></tr>`; continue; }
+      html += `<tr>
+        <td>${esc(x.name)} <small style="color:#94a3b8">${esc(tbl)}</small></td>
+        <td>${x.found}/${x.expected}</td>
+        <td class="${covClass(x.coverage)}">${(x.coverage*100).toFixed(1)}%</td>
+        <td>${x.missing_count}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  body.innerHTML = html;
+  mask.classList.add('open');
+}
+function closeHealthPanel(){ document.getElementById('health-mask').classList.remove('open'); }
+*/
+
 function exportBatch(){
   const rows = [['ASIN','SKU','店铺','站点','优先级','时限','分数','结论','异常数','处理建议']];
   for (const a of allAsins){
-    const cached = judgeCache.get(a.key);
+    const cached = judgeCacheGet(a.key);
     if (!cached) continue;
     const j = cached.result.judgment || {};
     const anoms = pickAnomalies(j);
@@ -1007,8 +1831,53 @@ function exportBatch(){
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-loadKb();
-loadAsins();
+if (REPORT_MODE) {
+  document.querySelector(".layout").classList.add("report-mode");
+  if (REPORT_KEY && (REPORT_KEY.type === "user" || REPORT_KEY.type === "both")) {
+    // userId 模式：自动选中负责人（同步，必须在 loadAsins 前），展示其 ASIN 列表 + 负责人名
+    setUrlUserId(REPORT_KEY.userId);
+  }
+  // 预加载用户列表存入 allUsers（供 loadAsins 中 userName 显示 + header 展示）
+  // SWR：iframe 重建时命中 localStorage 缓存立即渲染
+  const _applyReportHeader = (users) => {
+    allUsers = users || [];
+    if (REPORT_KEY && (REPORT_KEY.type === "user" || REPORT_KEY.type === "both")) {
+      const u = allUsers.find(x => String(x.user_id) === String(REPORT_KEY.userId));
+      const nm = u ? u.user_name : '未知负责人';
+      const h3 = document.querySelector('.col:nth-child(2) h3');
+      if (h3) { h3.textContent = nm + ' · 巡检列表'; h3.style.cssText = 'font-size:16px;font-weight:700;color:#1e293b'; }
+      document.getElementById('viewer-title').textContent = nm;
+    }
+  };
+  swrFetch('users', () => api('/api/users').catch(() => []), _applyReportHeader).then(_applyReportHeader);
+  if (REPORT_KEY && (REPORT_KEY.type === "single" || REPORT_KEY.type === "both")) {
+    // 单产品模式：自动打开该产品判定
+    document.getElementById("viewer-title").textContent = "ASIN 巡检分析";
+    loadAsins().then(() => {
+      const a = allAsins.find(x => x.key === REPORT_KEY.key || x.parent_asin === REPORT_KEY.key);
+      if (a) viewAsin(a, null);
+      else document.getElementById("viewer").innerHTML = "<div class=placeholder style=color:#dc2626>未找到产品: " + esc(REPORT_KEY.key) + "</div>";
+    });
+    loadKb();
+    // loadHealth(); // 暂时关闭
+  } else {
+    loadKb();
+    loadAsins();
+    // loadHealth(); // 暂时关闭
+  }
+} else {
+  loadKb();
+  // loadHealth(); // 暂时关闭
+  initUserGate().then(() => {
+    if (allUsers.length === 0 && !getUrlUserId()) {
+      // 无用户数据且无 userId → 不加载，避免暴露全部 ASIN
+      document.getElementById('viewer').innerHTML =
+        '<div class=placeholder>暂无负责人数据，请联系管理员初始化用户表</div>';
+      return;
+    }
+    loadAsins();
+  });
+}
 </script>
 </body>
 </html>

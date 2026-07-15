@@ -1,4 +1,0 @@
-id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
-event:message
-data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":16.99,\\\"星级\\\":4.7,\\\"16周退款率\\\":0.0284,\\\"标题\\\":\\\"Large BBQ Blanket for Insulated Resting Meat– Reusable Smoker Grilling Meat Thermal Bag with Wide Mouth for Large BBQ Cuts like Brisket, Pork Shoulders, and Turkeys(XL,21in)\\\"}]}\"}]}"}],"isError":false}}
-

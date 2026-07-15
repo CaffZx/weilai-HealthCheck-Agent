@@ -26,6 +26,7 @@
 from __future__ import annotations
 import datetime as dt
 import logging
+import sqlite3
 from typing import Any
 
 from data import local_store as store
@@ -34,10 +35,33 @@ from data import fixture_loader
 from inspector.engine import anomaly_detector as R2
 from inspector.engine import severity_grader as R3
 from inspector.engine import score_calculator as R4
+from inspector.engine import suggestion_picker as R6
+from inspector.engine import llm_suggester
 from inspector.scheduler import daily_monitor as DM
 from inspector.scheduler import event_pool as EP
 
 log = logging.getLogger(__name__)
+
+
+def _query_owner(parent_asin: str) -> tuple[str, int | None]:
+    """从 asin_owner + sys_user 查负责人名称和 ID。优先级：principal → editor → creator。"""
+    try:
+        with sqlite3.connect(store.DB_PATH) as c:
+            c.row_factory = sqlite3.Row
+            r = c.execute("""
+                SELECT u.user_name, u.id AS user_id
+                FROM asin_owner o
+                LEFT JOIN sys_user u
+                  ON u.id = COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1))
+                WHERE o.asin = ? AND u.user_name IS NOT NULL
+                ORDER BY o.fetched_at DESC
+                LIMIT 1
+            """, (parent_asin,)).fetchone()
+        if r:
+            return r["user_name"], r["user_id"]
+    except Exception as e:
+        log.warning("_query_owner 查询失败 parent_asin=%s: %s", parent_asin, e)
+    return "", None
 
 
 # -----------------------------------------------------------------------------
@@ -51,6 +75,8 @@ def _build_task_card(
     产品定位: str | None,
     产品阶段: str | None,
     淡旺季: str | None,
+    负责人: str = "",
+    负责人ID: int | None = None,
     产品打分: R4.产品打分结果 | R4.观察类结果 | None,
     异常明细: list[dict],
     headline: str = "",
@@ -75,7 +101,11 @@ def _build_task_card(
 
     loc_info = {
         "店铺站点": f"{店铺账号}/{站点 or '-'}",
-        "负责人": "",
+        "店铺账号": 店铺账号,
+        "站点": 站点 or "-",
+        "父ASIN": 父ASIN,
+        "负责人": 负责人,
+        "负责人ID": 负责人ID,
         "产品定位": 产品定位 or "待补充",
         "产品阶段": 产品阶段 or "待补充",
         "淡旺季": 淡旺季 or "待补充",
@@ -179,7 +209,8 @@ def _grade_performance_anomalies(
     results: list[dict] = []
 
     def _collect(r, 点位: str):
-        """将 severity_grader 结果加入列表。点位优先取结果自带的问题点位。"""
+        """将 severity_grader 结果加入列表。点位优先取结果自带的问题点位。
+        广告类点位如缺 目标ACOS/目标每日预算，注入'配置待补'提示条，让运营去辅助决策 agent 设置。"""
         if isinstance(r, R3.严重度判定结果) and r.严重度:
             results.append({
                 "问题点位": r.问题点位 or 点位,
@@ -187,6 +218,16 @@ def _grade_performance_anomalies(
                 "分档名称": r.分档名称,
                 "判定过程": r.判定过程,
                 "命中值": r.命中值,
+                "数据快照": getattr(r, "数据快照", []) or [],
+            })
+        elif isinstance(r, R3.观察类结果) and 点位 in ("ACOS异常", "广告花费异常") \
+                and any(k in (r.缺失字段 or []) for k in ("目标ACOS", "目标每日预算")):
+            results.append({
+                "问题点位": r.问题点位 or 点位,
+                "严重度": "配置待补",
+                "分档名称": "配置缺失",
+                "判定过程": r.原因,
+                "命中值": None,
             })
 
     # 使用 每日聚合结果 提供的按业务分组的便捷方法（daily_monitor.py 里定义）
@@ -267,6 +308,10 @@ def 巡检单产品(
         if not g["严重度"]:
             跳过打分.append({"问题点位": g["问题点位"], "原因": "严重度为空"})
             continue
+        # "配置待补"是运营配置提示，不是异常，仅走前端明细不进打分/事件池
+        if g["严重度"] == "配置待补":
+            跳过打分.append({"问题点位": g["问题点位"], "原因": "配置待补（不进打分）"})
+            continue
         层级 = R2.查作用层级(g["问题点位"], r2_cfg)
         if 层级 is None:
             跳过打分.append({"问题点位": g["问题点位"], "原因": "R2 未定义该点位的作用层级"})
@@ -298,15 +343,18 @@ def 巡检单产品(
                       "现象即原因型", h.命中变体, h.变体重要性, h.命中依据,
                       父ASIN, 店铺账号, 站点, 批次号)
     for g in 表现判定:
-        if not g["严重度"]:
-            continue
+        if not g["严重度"] or g["严重度"] == "配置待补":
+            continue    # 配置提示不是异常，不进事件池
         层级 = R2.查作用层级(g["问题点位"], r2_cfg) or "链接级"
         _upsert_event(g["问题点位"], g["严重度"], 层级,
                       "表现型", None, None, g.get("判定过程", ""),
                       父ASIN, 店铺账号, 站点, 批次号)
 
     # Phase 6: 构建 异常明细
-    异常明细 = _build_anomaly_details(现象命中, 表现判定, 产品打分)
+    异常明细 = _build_anomaly_details(
+        现象命中, 表现判定, 产品打分,
+        product_context={"parent_asin": 父ASIN, "shop_account": 店铺账号, "site": 站点},
+    )
 
     # headline & summary
     if isinstance(产品打分, R4.产品打分结果):
@@ -319,15 +367,28 @@ def 巡检单产品(
             f"「{a['问题点位']}」{a['该条严重度']}" for a in 严重项[:5]
         ) if 严重项 else f"共 {len(异常明细)} 项异常，均为 S2 轻微"
     elif 异常明细:
-        headline = f"检测到 {len(异常明细)} 项异常（标签数据不足，未打分）"
-        human_summary = ""
+        配置待补项 = [a for a in 异常明细 if a.get("该条严重度") == "配置待补"]
+        真异常项 = [a for a in 异常明细 if a.get("该条严重度") != "配置待补"]
+        if 配置待补项 and not 真异常项:
+            # 全是配置提示，不是真异常
+            headline = f"仅 {len(配置待补项)} 项配置待补提示，未识别真实异常"
+            human_summary = "；".join(
+                f"「{a['问题点位']}」请在辅助决策 agent 设置目标值" for a in 配置待补项[:5]
+            )
+        else:
+            headline = f"检测到 {len(真异常项)} 项异常（标签数据不足，未打分）"
+            if 配置待补项:
+                headline += f"，另有 {len(配置待补项)} 项配置待补"
+            human_summary = ""
     else:
         headline = "未检测到异常"
         human_summary = ""
 
+    负责人名, 负责人ID = _query_owner(父ASIN)
     return _build_task_card(
         父ASIN=父ASIN, 店铺账号=店铺账号, 站点=站点,
         产品定位=定位, 产品阶段=阶段, 淡旺季=淡旺季,
+        负责人=负责人名, 负责人ID=负责人ID,
         产品打分=产品打分, 异常明细=异常明细,
         headline=headline, human_summary=human_summary, 批次号=批次号,
     )
@@ -337,41 +398,108 @@ def _build_anomaly_details(
     现象命中: list[R2.命中异常],
     表现判定: list[dict],
     产品打分: R4.产品打分结果 | R4.观察类结果 | None,
+    *,
+    product_context: dict | None = None,
 ) -> list[dict]:
-    """构建前端 异常明细 列表，含该条执行分数。"""
-    details: list[dict] = []
+    """构建前端 异常明细 列表，含该条执行分数。
 
+    建议生成策略：
+      1. 优先：LLM 批量生成（结合知识库话术）
+      2. 回退：R6 YAML 模板（LLM 不可用时）
+    """
     # (点位, 严重度) → 单异常执行分数
     score_map: dict[tuple[str, str], float] = {}
     if isinstance(产品打分, R4.产品打分结果):
         for r in [产品打分.最高单异常] + 产品打分.其余异常:
             score_map[(r.问题点位, r.严重度)] = r.单异常执行分数
 
+    # ---- 构建 LLM 输入用的异常原始数据列表 ----
+    anomaly_data: list[dict] = []
+    for h in 现象命中:
+        anomaly_data.append({
+            "问题点位": h.问题点位,
+            "严重度": h.默认严重度 or "数据不足",
+            "作用层级": h.作用层级,
+            "命中变体": h.命中变体 or "",
+            "变体重要性": h.变体重要性 or "",
+            "命中依据": h.命中依据 or "",
+            "类型": "现象即原因型",
+        })
+    for g in 表现判定:
+        sev = g["严重度"]
+        anomaly_data.append({
+            "问题点位": g["问题点位"],
+            "严重度": sev,
+            "作用层级": "链接级",
+            "命中变体": "",
+            "变体重要性": "",
+            "命中依据": g.get("判定过程", ""),
+            "判定过程": g.get("判定过程", ""),
+            "命中值": g.get("命中值"),
+            "分档名称": g.get("分档名称", ""),
+            "类型": "表现型",
+        })
+
+    # ---- 尝试 LLM 批量生成建议 ----
+    llm_results = llm_suggester.suggest_batch(anomaly_data, product_context) if anomaly_data else []
+
+    # ---- 逐条构建异常明细 ----
+    details: list[dict] = []
+    llm_idx = 0  # LLM 结果游标
+
     for h in 现象命中:
         大类, 类型 = _lookup_category(h.问题点位)
-        sev = h.默认严重度   # 允许 None → 展示为"数据不足"，不兜底 S2
+        sev = h.默认严重度
+
+        # LLM 建议（优先）→ R6 YAML（回退）→ 原始字段（兜底）
+        llm_r = llm_results[llm_idx] if llm_results and llm_idx < len(llm_results) else None
+        r6_r = R6.选取(h) if llm_r is None else None
+        llm_idx += 1
+
         details.append({
             "该条严重度": sev or "数据不足",
             "该条执行分数": score_map.get((h.问题点位, sev), -1) if sev else -1,
             "异常类型": 类型, "异常大类": 大类,
             "问题点位": h.问题点位, "作用层级": h.作用层级,
             "命中变体": h.命中变体 or "", "变体重要性": h.变体重要性 or "",
-            "异常状态": "新发现", "判断依据": h.命中依据,
-            "处理建议": "待补充", "初步原因": "不适用",
+            "异常状态": "新发现",
+            "具体表现": (llm_r or r6_r or {}).get("具体表现") or h.问题点位,
+            "判断依据": (llm_r or r6_r or {}).get("判断依据") or h.命中依据,
+            "处理建议": (llm_r or r6_r or {}).get("处理建议") or "待补充",
+            "初步原因": "不适用",
+            "技术依据": h.命中依据,
             "上次处理记录": "无", "复查要求": "待补充",
         })
 
     for g in 表现判定:
         大类, 类型 = _lookup_category(g["问题点位"])
         sev = g["严重度"]
+        _配置缺 = sev == "配置待补"
+
+        llm_r = llm_results[llm_idx] if llm_results and llm_idx < len(llm_results) else None
+        r6_r = R6.选取表现型(g) if llm_r is None else None
+        llm_idx += 1
+
+        # 数据快照 → "技术依据"（结构化数据点，跟判据结论互补，不重复）
+        snap = g.get("数据快照") or []
         details.append({
             "该条严重度": sev,
             "该条执行分数": score_map.get((g["问题点位"], sev), -1),
-            "异常类型": 类型, "异常大类": 大类,
+            "异常类型": "配置缺失" if _配置缺 else 类型,
+            "异常大类": 大类,
             "问题点位": g["问题点位"], "作用层级": "链接级",
             "命中变体": "", "变体重要性": "",
-            "异常状态": "新发现", "判断依据": g.get("判定过程", ""),
-            "处理建议": "待补充", "初步原因": "不适用",
+            "异常状态": "新发现",
+            "具体表现": ("目标配置缺失" if _配置缺
+                     else (llm_r or r6_r or {}).get("具体表现") or g["问题点位"]),
+            "判断依据": (llm_r or r6_r or {}).get("判断依据") or g.get("判定过程", ""),
+            "处理建议": ("请在辅助决策 agent 补齐目标配置后重新巡检" if _配置缺
+                     else (llm_r or r6_r or {}).get("处理建议") or "待补充"),
+            "初步原因": ("未设置广告目标/广告目标不完整" if _配置缺 else "不适用"),
+            # 技术依据回落到 判定过程（无快照的场景）
+            "技术依据": g.get("判定过程", ""),
+            # 数据快照 —— 前端优先渲染这个（结构化）；无则回落到技术依据
+            "数据快照": snap,
             "上次处理记录": "无", "复查要求": "待补充",
         })
 

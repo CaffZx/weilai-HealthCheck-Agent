@@ -107,6 +107,37 @@ def upsert_product_tags(asin, shop_account, seller_sku, row: dict) -> None:
                   (asin, shop_account, seller_sku, _j(row)))
 
 
+def upsert_ad_target(asin, shop_account, 目标ACOS, 目标每日预算, 源更新时间=None) -> None:
+    """广告目标覆写值落本地（来源 MySQL app_db）。全量覆盖式写入。"""
+    with _conn() as c:
+        c.execute("""INSERT INTO ad_target(asin,shop_account,"目标ACOS","目标每日预算","源更新时间")
+                     VALUES(?,?,?,?,?)
+                     ON CONFLICT(asin,shop_account) DO UPDATE SET
+                       "目标ACOS"=excluded."目标ACOS",
+                       "目标每日预算"=excluded."目标每日预算",
+                       "源更新时间"=excluded."源更新时间",
+                       fetched_at=datetime('now','localtime')""",
+                  (asin, shop_account or "", 目标ACOS, 目标每日预算, 源更新时间))
+
+
+def get_ad_target(asin: str, shop_account: str) -> dict | None:
+    """按 (asin,shop) → (asin,'') 降级查目标值；无则 None。"""
+    with _conn() as c:
+        for a, s in ((asin, shop_account or ""), (asin, "")):
+            r = c.execute('SELECT * FROM ad_target WHERE asin=? AND shop_account=? LIMIT 1',
+                          (a, s)).fetchone()
+            if r:
+                return dict(r)
+    return None
+
+
+def clear_ad_target() -> int:
+    """清空 ad_target（全量重灌前调用）。返回删除行数。"""
+    with _conn() as c:
+        cur = c.execute("DELETE FROM ad_target")
+        return cur.rowcount
+
+
 def upsert_competitor(parent_asin, shop_account, competitor_asin, row: dict) -> None:
     with _conn() as c:
         c.execute("""INSERT INTO competitors(parent_asin,shop_account,competitor_asin,data)
@@ -129,6 +160,166 @@ def log_sync(tool, target_key, stat_date, status, rows_count=0, note="") -> None
     with _conn() as c:
         c.execute("""INSERT INTO sync_log(tool,target_key,stat_date,status,rows_count,note)
                      VALUES(?,?,?,?,?,?)""", (tool, target_key, stat_date, status, rows_count, note))
+
+
+# ---------------- 新数据源 (B 方案 · azlisting-mcpserver) ----------------
+def upsert_natural_ad_flow(asin, parent_asin, shop_account, seller_sku, parent_seller_sku,
+                            stat_date, is_summary, row: dict) -> None:
+    """每日自然/广告订单流。来源 erp_listing_natural_advert_flow。"""
+    frozen = _is_frozen(stat_date)
+    with _conn() as c:
+        c.execute("""INSERT INTO daily_natural_ad_flow
+                     (asin, parent_asin, shop_account, seller_sku, parent_seller_sku,
+                      stat_date, is_summary, data, is_frozen)
+                     VALUES(?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(asin, stat_date) DO UPDATE SET
+                       data=excluded.data, fetched_at=datetime('now','localtime'),
+                       is_frozen=excluded.is_frozen, is_summary=excluded.is_summary
+                     WHERE daily_natural_ad_flow.is_frozen=0""",
+                  (asin, parent_asin, shop_account, seller_sku, parent_seller_sku,
+                   stat_date, 1 if is_summary else 0, _j(row), frozen))
+
+
+def upsert_monthly_goal(parent_asin, parent_seller_sku, shop_account, month_str, row: dict) -> None:
+    """月度目标。来源 erp_listing_monthly_goal。"""
+    with _conn() as c:
+        c.execute("""INSERT INTO monthly_goal
+                     (parent_asin, parent_seller_sku, shop_account, month_str, data)
+                     VALUES(?,?,?,?,?)
+                     ON CONFLICT(parent_asin, shop_account, month_str) DO UPDATE SET
+                       data=excluded.data, parent_seller_sku=excluded.parent_seller_sku,
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, parent_seller_sku, shop_account, month_str, _j(row)))
+
+
+def upsert_stock_alert(parent_asin, parent_seller_sku, shop_account, row: dict) -> None:
+    """库存预警全维度。来源 erp_listing_stock_alert。"""
+    with _conn() as c:
+        c.execute("""INSERT INTO stock_alert
+                     (parent_asin, parent_seller_sku, shop_account, data)
+                     VALUES(?,?,?,?)
+                     ON CONFLICT(parent_asin, shop_account) DO UPDATE SET
+                       data=excluded.data, parent_seller_sku=excluded.parent_seller_sku,
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, parent_seller_sku, shop_account, _j(row)))
+
+
+def upsert_inventory_cost(parent_asin, parent_seller_sku, shop_account,
+                          child_asin, seller_sku, fn_sku, report_month, row: dict) -> None:
+    """超龄仓租费用（子ASIN 粒度）。来源 erp_listing_inventory_cost_analysis。
+    row 里的 longTermStorageFees 数组由本函数汇总为 数量/费用 存入独立列。"""
+    fees = row.get("longTermStorageFees") or []
+    汇总数量 = sum((f.get("qtyCharged") or 0) for f in fees)
+    汇总费用 = sum((f.get("amountCharged") or 0) for f in fees)
+    with _conn() as c:
+        c.execute("""INSERT INTO inventory_cost
+                     (parent_asin, parent_seller_sku, shop_account, child_asin, seller_sku, fn_sku,
+                      report_month, data, "汇总超龄库存数", "汇总超龄仓租费")
+                     VALUES(?,?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(parent_asin, child_asin, report_month) DO UPDATE SET
+                       data=excluded.data,
+                       seller_sku=excluded.seller_sku, fn_sku=excluded.fn_sku,
+                       parent_seller_sku=excluded.parent_seller_sku,
+                       "汇总超龄库存数"=excluded."汇总超龄库存数",
+                       "汇总超龄仓租费"=excluded."汇总超龄仓租费",
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, parent_seller_sku, shop_account, child_asin, seller_sku, fn_sku,
+                   report_month, _j(row), 汇总数量, 汇总费用))
+
+
+def upsert_child_price_promo(child_asin, parent_asin, shop_account, site_code,
+                              snapshot_date, row: dict) -> None:
+    """子体实时价格促销快照。来源 erp_listing_price_promotion_analysis。
+    row.price 是 '$12.99' 字符串，本函数剥出 price_usd 供判定用。"""
+    # 从 "$12.99" 剥出 12.99；异常价格（空/'-'/中文币种）返回 None
+    price_str = (row.get("price") or "").strip()
+    price_usd = None
+    if price_str:
+        import re as _re
+        m = _re.search(r"[\d,]+\.?\d*", price_str.replace(",", ""))
+        if m:
+            try:
+                price_usd = float(m.group().replace(",", ""))
+            except ValueError:
+                price_usd = None
+    with _conn() as c:
+        c.execute("""INSERT INTO child_price_promo
+                     (child_asin, parent_asin, shop_account, site_code,
+                      snapshot_date, data, price_usd)
+                     VALUES(?,?,?,?,?,?,?)
+                     ON CONFLICT(child_asin, snapshot_date) DO UPDATE SET
+                       data=excluded.data,
+                       parent_asin=excluded.parent_asin,
+                       shop_account=excluded.shop_account,
+                       site_code=excluded.site_code,
+                       price_usd=excluded.price_usd,
+                       fetched_at=datetime('now','localtime')""",
+                  (child_asin, parent_asin, shop_account, site_code,
+                   snapshot_date, _j(row), price_usd))
+
+
+# ---------------- 读取（供 daily_monitor / 判定引擎用） ----------------
+def recent_natural_ad_flow(parent_asin: str, days: int = 30) -> list[dict]:
+    """拉近 N 天父ASIN下所有子体的自然/广告流，按 stat_date 降序。"""
+    with _conn() as c:
+        rows = c.execute("""SELECT * FROM daily_natural_ad_flow
+                            WHERE parent_asin=?
+                            ORDER BY stat_date DESC, asin""",
+                         (parent_asin,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_parent_daily_orders(parent_asin: str, days: int = 30) -> list[dict]:
+    """父ASIN每日订单/流量指标聚合（来源 daily_natural_ad_flow）。
+    仅输出整数字段（订单数/点击/曝光）与占比。
+    支撑 §3.6 销量异常 · §3.8 自然流量异常 · §3.12 放量未执行 条件5。
+
+    ⚠️ 币种说明：daily_natural_ad_flow 的金额字段是 CNY（内部固定汇率6.6），
+    本函数**故意不输出金额**。金额字段一律从 query_parent_daily_money() 取（USD）。
+    """
+    with _conn() as c:
+        rows = c.execute("""
+            SELECT
+              parent_asin, shop_account, stat_date,
+              CAST(SUM("adOrderNum") AS INTEGER)        AS 广告订单数,
+              CAST(SUM("totalOrderNum") AS INTEGER)     AS 总订单数,
+              CAST(SUM("naturalOrderNum") AS INTEGER)   AS 自然订单数,
+              CAST(SUM("adClick") AS INTEGER)           AS 广告点击,
+              CAST(SUM("adImpressions") AS INTEGER)     AS 广告曝光,
+              CAST(SUM("adSaleNum") AS INTEGER)         AS 广告销量,
+              CASE WHEN SUM("totalOrderNum") > 0
+                   THEN CAST(SUM("naturalOrderNum") AS REAL) / SUM("totalOrderNum") END AS 自然订单占比
+            FROM daily_natural_ad_flow
+            WHERE parent_asin=? AND is_summary=0
+            GROUP BY parent_asin, shop_account, stat_date
+            ORDER BY stat_date DESC
+            LIMIT ?
+        """, (parent_asin, days)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_parent_daily_money(parent_asin: str, days: int = 30) -> list[dict]:
+    """父ASIN每日金额指标（来源 daily_product_sales，USD 美元）。
+    支撑 §3.6 ACOS/广告花费异常 · §3.7 目标偏离 等所有涉及金额的判定。
+    """
+    with _conn() as c:
+        rows = c.execute("""
+            SELECT
+              parent_asin, shop_account, stat_date,
+              "广告花费"     AS 广告花费_USD,
+              "广告销售额"    AS 广告销售额_USD,
+              "全部销售额"    AS 全部销售额_USD,
+              "全部单量"     AS 全部单量,
+              "全部销量"     AS 全部销量,
+              "广告单量"     AS 广告单量,
+              "ACOS"        AS ACOS,
+              "毛利率"       AS 毛利率
+            FROM daily_product_sales
+            WHERE asin=?
+            ORDER BY stat_date DESC
+            LIMIT ?
+        """, (parent_asin, days)).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ---------------- 读取（供 rule_engine 用） ----------------
@@ -232,6 +423,19 @@ def query_image_urls(parent_asins: list[str] | None = None) -> dict[str, str]:
     with _conn() as c:
         rows = c.execute(sql, params).fetchall()
     return {r["parent_asin"]: r["url"] for r in rows if r["url"]}
+
+
+def query_product_names(parent_asins: list[str] | None = None) -> dict[str, str]:
+    """{父ASIN: 商品标题} 映射。用于前端跳转到广告决策 agent 时携带 productName。"""
+    sql = "SELECT parent_asin, json_extract(data,'$.标题') AS title FROM listing_baseline WHERE title IS NOT NULL"
+    params: tuple = ()
+    if parent_asins:
+        placeholders = ",".join("?" * len(parent_asins))
+        sql += f" AND parent_asin IN ({placeholders})"
+        params = tuple(parent_asins)
+    with _conn() as c:
+        rows = c.execute(sql, params).fetchall()
+    return {r["parent_asin"]: r["title"] for r in rows if r["title"]}
 
 
 def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:

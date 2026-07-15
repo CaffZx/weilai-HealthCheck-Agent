@@ -1,4 +1,0 @@
-id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
-event:message
-data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":null,\\\"星级\\\":null,\\\"16周退款率\\\":0.2066,\\\"标题\\\":\\\"DEMVORA Swimsuit Coverup for Women Crochet Hollow Out Bathing Suit Cover Up Sleeveless\\\"}]}\"}]}"}],"isError":false}}
-

@@ -285,6 +285,276 @@ CREATE TABLE IF NOT EXISTS inspection_batch (
 );
 
 -- ============================================================
+-- 13. 每日自然/广告订单流 (daily_natural_ad_flow)
+-- 来源：erp_listing_natural_advert_flow (azlisting-mcpserver)
+-- 一次请求 = 父ASIN × 日期 × 子体 三维数据
+-- 支撑：§3.8 自然流量异常 · §3.12 放量未执行 条件5
+--
+-- ⚠️ 币种说明：
+--   金额字段（adCostAmountCny/adSaleAmountCny/totalSaleAmountCny）单位为 CNY
+--   由 MCP 内部按固定汇率 6.6 换算（实测精确 = 6.600 与旧工具 product_sales 的 USD 值对应）
+--   本项目判定金额一律走 daily_product_sales（USD）；本表金额字段仅供交叉验证，不参与判定
+--   本表**只消费整数字段**：naturalOrderNum / totalOrderNum / adOrderNum / adClick / adImpressions / adSaleNum
+-- ============================================================
+CREATE TABLE IF NOT EXISTS daily_natural_ad_flow (
+  asin                TEXT NOT NULL,               -- 子ASIN
+  parent_asin         TEXT NOT NULL,
+  shop_account        TEXT NOT NULL,
+  seller_sku          TEXT,
+  parent_seller_sku   TEXT,
+  stat_date           TEXT NOT NULL,               -- YYYY-MM-DD
+  is_summary          INTEGER DEFAULT 0,           -- 是否父级汇总行
+  data                TEXT NOT NULL,               -- 原生字段 JSON
+  fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  is_frozen           INTEGER NOT NULL DEFAULT 0,
+  "adOrderNum"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adOrderNum'))        VIRTUAL,
+  "totalOrderNum"     INTEGER GENERATED ALWAYS AS (json_extract(data,'$.totalOrderNum'))     VIRTUAL,
+  "naturalOrderNum"   INTEGER GENERATED ALWAYS AS (json_extract(data,'$.naturalOrderNum'))   VIRTUAL,
+  "adCostAmountCny"   REAL    GENERATED ALWAYS AS (json_extract(data,'$.adCostAmountCny'))   VIRTUAL,
+  "adSaleAmountCny"   REAL    GENERATED ALWAYS AS (json_extract(data,'$.adSaleAmountCny'))   VIRTUAL,
+  "totalSaleAmountCny" REAL   GENERATED ALWAYS AS (json_extract(data,'$.totalSaleAmountCny')) VIRTUAL,
+  "tacos"             REAL    GENERATED ALWAYS AS (json_extract(data,'$.tacos'))             VIRTUAL,
+  "adClick"           INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adClick'))           VIRTUAL,
+  "adImpressions"     INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adImpressions'))     VIRTUAL,
+  "adSaleNum"         INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adSaleNum'))         VIRTUAL,
+  PRIMARY KEY (asin, stat_date)
+);
+CREATE INDEX IF NOT EXISTS idx_naf_parent ON daily_natural_ad_flow(parent_asin, stat_date);
+CREATE INDEX IF NOT EXISTS idx_naf_shop   ON daily_natural_ad_flow(shop_account);
+
+-- ============================================================
+-- 14. 月度目标 (monthly_goal)
+-- 来源：erp_listing_monthly_goal (azlisting-mcpserver)
+-- 当月 + 未来3月，每父ASIN 4 行
+-- 支撑：§3.7 目标偏离 · §3.13 库存积压 B档
+-- ============================================================
+CREATE TABLE IF NOT EXISTS monthly_goal (
+  parent_asin         TEXT NOT NULL,
+  parent_seller_sku   TEXT,
+  shop_account        TEXT NOT NULL,
+  month_str           TEXT NOT NULL,               -- 如 '2026年07月'
+  data                TEXT NOT NULL,
+  fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  "estimatedMonthOrderNum" INTEGER GENERATED ALWAYS AS (json_extract(data,'$.estimatedMonthOrderNum')) VIRTUAL,
+  "targetRank"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.targetRank'))       VIRTUAL,
+  "targetRatio"       REAL    GENERATED ALWAYS AS (json_extract(data,'$.targetRatio'))      VIRTUAL,
+  "asinPrincipalUserName" TEXT GENERATED ALWAYS AS (json_extract(data,'$.asinPrincipalUserName')) VIRTUAL,
+  PRIMARY KEY (parent_asin, shop_account, month_str)
+);
+CREATE INDEX IF NOT EXISTS idx_goal_parent ON monthly_goal(parent_asin);
+
+-- ============================================================
+-- 15. 库存预警全维度 (stock_alert)
+-- 来源：erp_listing_stock_alert (azlisting-mcpserver)
+-- 相对旧 stock_summary 更全（15+ 库存维度 + 预计缺货日/天数）
+-- 支撑：§2.4 库存不足 · §3.13 库存积压 · §3.14 滞销
+-- ============================================================
+CREATE TABLE IF NOT EXISTS stock_alert (
+  parent_asin         TEXT NOT NULL,
+  parent_seller_sku   TEXT,
+  shop_account        TEXT NOT NULL,
+  data                TEXT NOT NULL,
+  fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  "canSaleNum"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.canSaleNum'))         VIRTUAL,
+  "inStockNum"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.inStockNum'))         VIRTUAL,
+  "inStockWorkingNum" INTEGER GENERATED ALWAYS AS (json_extract(data,'$.inStockWorkingNum'))  VIRTUAL,
+  "inStockReceivingNum" INTEGER GENERATED ALWAYS AS (json_extract(data,'$.inStockReceivingNum')) VIRTUAL,
+  "reserveNum"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.reserveNum'))         VIRTUAL,
+  "noSaleNum"         INTEGER GENERATED ALWAYS AS (json_extract(data,'$.noSaleNum'))          VIRTUAL,
+  "investigationNum"  INTEGER GENERATED ALWAYS AS (json_extract(data,'$.investigationNum'))   VIRTUAL,
+  "transferInStock"   INTEGER GENERATED ALWAYS AS (json_extract(data,'$.transferInStock'))    VIRTUAL,
+  "directShipStock"   INTEGER GENERATED ALWAYS AS (json_extract(data,'$.directShipStock'))    VIRTUAL,
+  "totalStock"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.totalStock'))         VIRTUAL,
+  "purchaseOnWay"     INTEGER GENERATED ALWAYS AS (json_extract(data,'$.purchaseOnWay'))      VIRTUAL,
+  PRIMARY KEY (parent_asin, shop_account)
+);
+CREATE INDEX IF NOT EXISTS idx_stockalert_parent ON stock_alert(parent_asin);
+
+-- ============================================================
+-- 16. 超龄仓租费用 (inventory_cost)
+-- 来源：erp_listing_inventory_cost_analysis (azlisting-mcpserver)
+-- 一个父ASIN N 个子ASIN，每个子ASIN 有 longTermStorageFees 数组
+-- 支撑：§3.14 滞销异常判定必需
+-- ============================================================
+CREATE TABLE IF NOT EXISTS inventory_cost (
+  parent_asin         TEXT NOT NULL,
+  parent_seller_sku   TEXT,
+  shop_account        TEXT NOT NULL,
+  child_asin          TEXT NOT NULL,               -- 子ASIN
+  seller_sku          TEXT,
+  fn_sku              TEXT,
+  report_month        TEXT NOT NULL,               -- 如 '2026-07'
+  data                TEXT NOT NULL,               -- 原生 {longTermStorageFees:[{qtyCharged,amountCharged,surchargeAgeTier}]}
+  -- 汇总列（写入时预算好，避免生成列子查询限制）
+  "汇总超龄库存数"    INTEGER,                     -- SUM(qtyCharged)
+  "汇总超龄仓租费"    REAL,                        -- SUM(amountCharged)  单位 USD
+  fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (parent_asin, child_asin, report_month)
+);
+CREATE INDEX IF NOT EXISTS idx_invcost_parent ON inventory_cost(parent_asin, report_month);
+
+-- ============================================================
+-- 17. 子体实时价格促销快照 (child_price_promo)
+-- 来源：erp_listing_price_promotion_analysis (azlisting-mcpserver，实时爬子ASIN)
+-- 每子ASIN × 抓取日期一条快照；建议每周一次（实时爬慢）
+-- 支撑：
+--   §2.3 变体价差异常（price + coupon 到手价对比）
+--   §2.3 促销异常（前台促销展示 vs ERP配置）
+--   §2.6 类目异常（categoryName + breadCrumbs 类目路径）
+--   §3.11 评分基准B（star vs 目标评分，替代常空的 CRAW_ASIN_STAR）
+--
+-- 字段说明：
+--   price 来自 MCP 是"$12.99"字符串格式；price_usd 由代码写入时解析为数字
+--   bestSellersRank 是原始文本（可能多类目排名），bestSellersRankItems 是结构化数组
+-- ============================================================
+CREATE TABLE IF NOT EXISTS child_price_promo (
+  child_asin          TEXT NOT NULL,
+  parent_asin         TEXT NOT NULL,
+  shop_account        TEXT NOT NULL,
+  site_code           TEXT NOT NULL,
+  snapshot_date       TEXT NOT NULL,               -- YYYY-MM-DD
+  data                TEXT NOT NULL,               -- 原生完整 JSON
+  price_usd           REAL,                        -- 写入时从 "$12.99" 剥出，判定用
+  fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  "price"             TEXT GENERATED ALWAYS AS (json_extract(data,'$.price'))             VIRTUAL,
+  "coupon"            TEXT GENERATED ALWAYS AS (json_extract(data,'$.coupon'))            VIRTUAL,
+  "strikethroughPrice" TEXT GENERATED ALWAYS AS (json_extract(data,'$.strikethroughPrice')) VIRTUAL,
+  "savingsPercentage" TEXT GENERATED ALWAYS AS (json_extract(data,'$.savingsPercentage')) VIRTUAL,
+  "star"              REAL GENERATED ALWAYS AS (json_extract(data,'$.star'))              VIRTUAL,
+  "ratingsNum"        INTEGER GENERATED ALWAYS AS (json_extract(data,'$.ratingsNum'))     VIRTUAL,
+  "bestSellersRank"   TEXT GENERATED ALWAYS AS (json_extract(data,'$.bestSellersRank'))   VIRTUAL,
+  "categoryName"      TEXT GENERATED ALWAYS AS (json_extract(data,'$.categoryName'))      VIRTUAL,
+  "inStock"           INTEGER GENERATED ALWAYS AS (json_extract(data,'$.inStock'))        VIRTUAL,
+  "hasCart"           INTEGER GENERATED ALWAYS AS (json_extract(data,'$.hasCart'))        VIRTUAL,
+  PRIMARY KEY (child_asin, snapshot_date)
+);
+CREATE INDEX IF NOT EXISTS idx_ppromo_parent ON child_price_promo(parent_asin, snapshot_date);
+
+-- ============================================================
+-- ERP 决策配置（来源：app_db.t_advert_agent_decision_config）
+-- 630+ 父ASIN × 42 店铺，含 目标ACOS/预算/产品定位/阶段/淡旺季
+-- 每 (parent_asin, shop_id, site_code) 一条；enabled=0 也拉进来但打标记
+-- ============================================================
+CREATE TABLE IF NOT EXISTS erp_config (
+  id             TEXT NOT NULL,             -- ERP UUID
+  shop_id        INTEGER NOT NULL,
+  parent_asin    TEXT NOT NULL,
+  parent_seller_sku TEXT,
+  site_code      TEXT,
+  day_range      TEXT,
+  product_position TEXT,
+  product_stage  TEXT,
+  season_type    TEXT,
+  advert_purposes TEXT,
+  target_keyword_types TEXT,
+  target_acos_erp   REAL,                   -- ERP 里的整数百分比 ÷100（如 40 → 0.40）
+  daily_budget_erp  REAL,                   -- ERP daily_budget_suggest（USD）
+  advert_direction_types TEXT,
+  enabled        INTEGER DEFAULT 1,
+  frequency      TEXT,
+  create_time    TEXT,
+  update_time    TEXT,
+  fetched_at     TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_erp_config_asin ON erp_config(parent_asin, shop_id);
+CREATE INDEX IF NOT EXISTS idx_erp_config_shop ON erp_config(shop_id);
+
+-- ============================================================
+-- ERP 决策历史（来源：t_advert_agent_decision，取 is_latest=1）
+-- 主要为了拿产品名 product_name 和最新一批决策快照
+-- ============================================================
+CREATE TABLE IF NOT EXISTS erp_decision_latest (
+  id              TEXT NOT NULL,
+  parent_asin     TEXT NOT NULL,
+  shop_id         INTEGER,
+  site_code       TEXT,
+  product_name    TEXT,
+  product_position TEXT,
+  product_stage   TEXT,
+  season_type     TEXT,
+  target_acos_erp REAL,
+  daily_budget_erp REAL,
+  create_time     TEXT,
+  fetched_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_erp_decision_asin ON erp_decision_latest(parent_asin);
+
+-- ============================================================
+-- ERP 历史指标快照（来源：t_advert_agent_data_metrics）
+-- 数据是 06 月中旬，非滚动源；作为"辅助决策 agent 曾算出的历史值"参考
+-- ============================================================
+CREATE TABLE IF NOT EXISTS erp_data_metrics (
+  id            TEXT NOT NULL,
+  decision_id   TEXT NOT NULL,
+  metrics_type  TEXT NOT NULL,             -- SUMMARY / DAILY
+  day_str       TEXT,
+  avg_daily_sale_num REAL,
+  acos          REAL,
+  organic_order_rate REAL,
+  tacos         REAL,
+  overall_cvr   REAL,
+  cvr           REAL, ctr REAL, cpc REAL, daily_cost REAL,
+  create_time   TEXT,
+  fetched_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_erp_metrics_dec ON erp_data_metrics(decision_id, metrics_type);
+
+-- ============================================================
+-- 系统用户字典（来源：MCP sys_user_query）
+-- 只存脱敏字段：id + 用户名 + 登录账号 + 状态
+-- 用途：把 asin_owner.principal_user_id / editor_id / creator_id 数字翻译成中文名
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sys_user (
+  id          INTEGER NOT NULL,
+  user_name   TEXT,                        -- 显示名，如"张三"
+  user_account TEXT,                       -- 登录账号
+  user_state  INTEGER,                     -- 1=启用 / 0=停用
+  fetched_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (id)
+);
+
+-- ============================================================
+-- ASIN 级负责人（来源：MCP az_extend_detail）
+-- 每 (shop_id, asin, seller_sku) 一条；ID 都是 sys_user.id 外键
+-- 优先级链：principal_user_id → editor_id → creator_id
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asin_owner (
+  asin                TEXT NOT NULL,
+  seller_sku          TEXT NOT NULL,
+  shop_id             INTEGER,
+  shop_account        TEXT,
+  site_code           TEXT,
+  principal_user_id   INTEGER,             -- ★ 首选：ASIN_PRINCIPAL_USER_ID
+  editor_id           INTEGER,             -- 回退：EDITOR_ID
+  creator_id          INTEGER,             -- 兜底：CREATOR_ID
+  source_update_time  TEXT,                -- MCP 侧 UPDATE_TIME
+  fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (asin, seller_sku, shop_id)
+);
+CREATE INDEX IF NOT EXISTS idx_asin_owner_asin ON asin_owner(asin);
+CREATE INDEX IF NOT EXISTS idx_asin_owner_principal ON asin_owner(principal_user_id);
+
+-- ============================================================
+-- 广告目标覆写值（来源：辅助决策 agent 的 MySQL app_db）
+--   acos_override.value    → 目标ACOS
+--   budget_override.value  → 目标每日预算（USD）
+-- 由 ad_state_reader.同步覆写表到本地() 全量拉取；巡检只读本地，不依赖 MySQL 常在线。
+-- 一个 (asin, shop_account) 一条；缺记录即"未设置"，判定走"配置待补"。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS ad_target (
+  asin           TEXT NOT NULL,
+  shop_account   TEXT NOT NULL DEFAULT '',
+  目标ACOS        REAL,                    -- 小数，如 0.30；无则 NULL
+  目标每日预算     REAL,                    -- USD；无则 NULL
+  源更新时间       TEXT,                    -- MySQL 侧 updated_at（若有）
+  fetched_at     TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (asin, shop_account)
+);
+
+-- ============================================================
 -- 加新字段示例（后续需要提升某个 data 里的原生字段为可查询列时）：
 --   ALTER TABLE daily_product_sales ADD COLUMN "新字段名" REAL
 --     GENERATED ALWAYS AS (json_extract(data,'$."新字段名"')) VIRTUAL;

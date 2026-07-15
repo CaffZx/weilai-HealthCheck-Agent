@@ -1,4 +1,0 @@
-id:ffb58b89-6dc5-4c7d-a29a-e3503aa3f65d
-event:message
-data:{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"success\\\":true,\\\"found\\\":true,\\\"count\\\":1,\\\"rows\\\":[{\\\"售价\\\":16.99,\\\"星级\\\":4.4,\\\"16周退款率\\\":0.05,\\\"标题\\\":\\\"2PCS Stirnlampe LED Wiederaufladbar USB Superheller Kopflampe Superheller 350 Lumen Kopflampe 230° COB Sensor Stirnlampe 5 Lichtmodi Leichte IPX4 Wasserdichte Headlight für Joggen Angeln Laufen\\\"}]}\"}]}"}],"isError":false}}
-
