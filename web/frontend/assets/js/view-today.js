@@ -13,10 +13,13 @@ async function loadToday(){
 
 function renderToday(){
   const d = state.todayData; if (!d) return;
-  const total = d.total, done = d.done_today;
+  // 口径统一：分母 = 今日应做总数（当前开放 + 今日已完成），分子 = 今日已完成
+  // 之前用 total 做分母会 >100%，因为 total 只含开放集，done_today 是已从开放集移出的
+  const open = d.total, done = d.done_today;
+  const total = open + done;
   document.getElementById('doneNum').textContent = done;
   document.getElementById('totalNum').textContent = total;
-  document.getElementById('remainNum').textContent = Math.max(0, total - done);
+  document.getElementById('remainNum').textContent = open;
   document.getElementById('doneTodayNum').textContent = done;
   const pct = total ? Math.round(done/total*100) : 0;
   document.getElementById('goalPct').textContent = `完成 ${pct}%`;
@@ -43,7 +46,7 @@ function renderToday(){
   ).join('');
 
   document.getElementById('summaryCards').innerHTML = `
-    <div class="sum-card primary" data-action="all"><div class="sum-label"><span>今日任务进度</span><b class="good-text">${pct}%</b></div><div class="sum-value">${done} / ${total}</div><div class="sum-sub">全部开放任务</div></div>
+    <div class="sum-card primary" data-action="all"><div class="sum-label"><span>今日任务进度</span><b class="good-text">${pct}%</b></div><div class="sum-value">${done} / ${total}</div><div class="sum-sub">今日应做 = 开放 ${open} + 已完成 ${done}</div></div>
     <div class="sum-card" data-action="P0"><div class="sum-label"><span>P0 未完成</span><span>立即处理</span></div><div class="sum-value danger-text">${p0Und}</div><div class="sum-sub">${d.events.filter(e=>e.priority==='P0'&&e.days>=3).length} 条 ≥3 天</div></div>
     <div class="sum-card" data-action="P1"><div class="sum-label"><span>P1 数量</span><span>重点处理</span></div><div class="sum-value">${d.p1}</div><div class="sum-sub">影响经营目标</div></div>
     <div class="sum-card" data-action="wait"><div class="sum-label"><span>待复查</span><span>已处理</span></div><div class="sum-value">${waitCnt}</div><div class="sum-sub">到期后重新判定</div></div>
