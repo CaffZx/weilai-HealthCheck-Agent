@@ -281,6 +281,78 @@
   .action-line.best .effect-track i{background:#17805c}
   .action-line.low .effect-track i{background:#d38a24}
   .repeat-num{font-size:14px;font-weight:800;color:var(--red)}
+
+  /* ============================================================
+   * 紧凑化 + 微动画 —— 所有覆盖集中在这一块，便于维护
+   * ============================================================ */
+  /* KPI 卡：缩 padding + 字号 */
+  .kpi-card{padding:11px 13px}
+  .kpi-card b{font-size:22px;margin:5px 0 3px}
+  .kpi-card span{font-size:11px}
+  .kpi-card small{font-size:10px}
+
+  /* summary 卡（今日任务顶部）*/
+  .sum-card{padding:10px 12px;min-height:66px}
+  .sum-value{font-size:20px;margin-top:3px}
+  .sum-sub{font-size:10px;margin-top:2px}
+
+  /* 表格：行更矮 */
+  th{padding:7px 8px}
+  td{padding:6px 8px}
+  .data-table th{height:36px}
+  .data-table td{padding:7px 10px}
+
+  /* 侧边栏 */
+  .sidebar{padding:12px 11px}
+  .side-title{font-size:15px;margin-bottom:10px}
+  .goal-card{padding:12px;margin-bottom:12px}
+  .goal-num{font-size:26px}
+  .side-section{margin:12px 3px 6px}
+  .queue-item{padding:7px 9px;font-size:12px}
+
+  /* 详情面板 */
+  .detail-head{padding:11px 13px 9px}
+  .detail-title{font-size:14px;margin:5px 0 3px}
+  .section-head{padding:8px 10px;font-size:11px}
+  .section-body{padding:8px 10px}
+  .why-item{padding:7px}
+  .why-item b{font-size:13px}
+
+  /* dash-kpi 稍收紧 */
+  .dash-kpi{padding:12px 13px;min-height:86px}
+  .dash-kpi-value{font-size:22px;margin:6px 0 3px}
+
+  /* toolbar 紧凑 */
+  .toolbar{padding:8px}
+  .search input,.filter,.btn{height:32px}
+
+  /* 顶栏 */
+  .topbar{padding:0 14px;gap:16px}
+
+  /* ---- 动画 ---- */
+  /* 视图 fade-in */
+  @keyframes viewFadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  .view.active{animation:viewFadeIn .2s ease-out}
+  /* 抽屉滑入 */
+  @keyframes drawerSlide{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
+  .drawer-mask.show .drawer{animation:drawerSlide .22s ease-out}
+  @keyframes maskFade{from{opacity:0}to{opacity:1}}
+  .drawer-mask.show{animation:maskFade .18s ease-out}
+  /* KPI 卡 hover 微移（原来只有 sum-card 有，dash-kpi/kpi-card 也加） */
+  .kpi-card,.dash-kpi{transition:transform .16s,box-shadow .16s,border-color .16s}
+  .kpi-card:hover,.dash-kpi:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(31,42,68,.08)}
+  /* 队列/表格行淡入 + hover 平滑 */
+  .queue-item{transition:background .15s,border-color .15s}
+  tbody tr{transition:background .12s}
+  /* 按钮 press 反馈 */
+  .btn{transition:background .12s,transform .08s}
+  .btn:active{transform:scale(.97)}
+  /* toast 上滑更平滑 */
+  .toast{transition:opacity .22s,transform .22s cubic-bezier(.2,.7,.3,1)}
+  /* 表格空态/加载态淡入 */
+  .empty-row td,.loading{animation:viewFadeIn .25s ease-out}
+  /* 复盘效果按钮 active 状态过渡 */
+  .effect-btn,.concl-btn{transition:background .15s,border-color .15s,color .15s}
   /* 复盘按钮 */
   .review-effect-btns{display:flex;gap:4px;flex-wrap:wrap}
   .effect-btn{border:1px solid #dbe2ec;background:#fff;border-radius:6px;padding:4px 8px;font-size:10px;color:#4a5768;cursor:pointer}
