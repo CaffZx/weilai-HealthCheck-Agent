@@ -41,6 +41,22 @@ def batch_inspect_trigger():
     return {"status": "triggered"}
 
 
+@router.get("/judge/{key}")
+def judge_cached(key: str):
+    """只读：查已缓存的 AI 分析结果。没有则返回 {cached: false}。不触发 LLM。"""
+    cache = batch_cache.get_cache()
+    cached = cache.get(key, {})
+    llm_j = cached.get("llm_judgment")
+    if not llm_j:
+        return {"cached": False}
+    return {
+        "cached": True,
+        "dry_run": False,
+        "model": "cached",
+        "judgment": llm_j,
+    }
+
+
 @router.post("/judge/{key}")
 def judge(key: str):
     """LLM 二次分析：从批量缓存拿代码巡检结果作为权威事实。"""

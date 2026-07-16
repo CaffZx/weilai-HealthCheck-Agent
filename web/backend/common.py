@@ -110,6 +110,12 @@ def format_event_id(uid: str, first_seen: str | None) -> str:
 
 
 # ---- DB 查询：事件池 ----
+def _ai_ready_keys() -> set[str]:
+    """返回 batch_cache 中已有 LLM 分析结果的 fixture_key 集合（用于事件级 has_ai_result 标记）。"""
+    from . import batch_cache
+    return {k for k, v in batch_cache.get_cache().items() if v.get("llm_judgment")}
+
+
 def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
     """拉出该用户名下所有事件，附带产品定位/持续天数/最新 action 状态。"""
     with sqlite3.connect(local_store.DB_PATH) as c:
@@ -133,6 +139,7 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
 
     name_map = local_store.query_product_names()
     img_map = local_store.query_image_urls()
+    ai_ready = _ai_ready_keys()
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
         act_rows = c.execute("""
@@ -165,6 +172,7 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             judge_basis = {"命中依据": d.get("判定依据") or ""}
 
         _shop_id = shop_id_map.get(d.get("父ASIN"))
+        _fixture_key = f"{d.get('父ASIN')}__{_shop_id}" if _shop_id else None
         out.append({
             "event_uid": uid,
             "parent_asin": d.get("父ASIN"),
@@ -172,7 +180,8 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "image_url": img_map.get(d.get("父ASIN")),
             "parent_sku": d.get("父SKU"),
             "shop_id": _shop_id,
-            "fixture_key": f"{d.get('父ASIN')}__{_shop_id}" if _shop_id else None,
+            "fixture_key": _fixture_key,
+            "has_ai_result": bool(_fixture_key and _fixture_key in ai_ready),
             "shop_account": d.get("店铺账号"),
             "site": d.get("站点"),
             "category": d.get("异常大类") or "其他",

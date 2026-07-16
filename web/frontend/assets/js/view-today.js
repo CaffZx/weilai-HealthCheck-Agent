@@ -150,6 +150,7 @@ function selectEvent(uid){
     </div>
   `;
   ['rejectBtn','aiBtn','completeBtn'].forEach(id => document.getElementById(id).disabled = false);
+  setAiBtnText();  // 根据 has_ai_result 更新按钮文本
 }
 
 document.getElementById('completeBtn').onclick = async () => {
@@ -195,19 +196,42 @@ document.getElementById('aiBtn').onclick = async () => {
 
   const btn = document.getElementById('aiBtn');
   const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'AI 分析中… (15-30s)';
-  toast('已提交 AI 深度分析，请稍候…');
 
+  // 1) 先 GET 查缓存（秒返）
+  try {
+    const cached = await api(`/api/judge/${encodeURIComponent(e.fixture_key)}`);
+    if (cached?.cached) {
+      openAiJudgmentDrawer(e, cached);
+      return;
+    }
+  } catch(_){ /* 缓存查询失败也不阻塞，继续走 POST */ }
+
+  // 2) 无缓存 → POST 触发 LLM
+  btn.disabled = true; btn.textContent = 'AI 分析中… (15-30s)';
+  toast('首次分析，正在调用 AI，请稍候…');
   try {
     const r = await api(`/api/judge/${encodeURIComponent(e.fixture_key)}`, {method:'POST'});
     openAiJudgmentDrawer(e, r);
-    toast('AI 分析完成');
+    // 标记事件已分析（避免刷新前状态不同步）
+    if (e) e.has_ai_result = true;
+    // 更新按钮文本
+    setAiBtnText();
+    toast('AI 分析完成，结果已存');
   } catch(err){
     toast('AI 分析失败：' + err.message);
   } finally {
-    btn.disabled = false; btn.textContent = orig;
+    btn.disabled = false;
+    if (btn.textContent.startsWith('AI 分析中')) btn.textContent = orig;
   }
 };
+
+// 按钮文本随当前事件的 has_ai_result 状态变化
+function setAiBtnText(){
+  const btn = document.getElementById('aiBtn');
+  if (!btn) return;
+  const e = state.todayData?.events.find(x => x.event_uid === state.selectedEventUid);
+  btn.textContent = e?.has_ai_result ? '📄 查看 AI 分析' : '🔮 AI 深度分析';
+}
 
 // LLM 判定结果 → 复用抽屉展示
 function openAiJudgmentDrawer(e, result){

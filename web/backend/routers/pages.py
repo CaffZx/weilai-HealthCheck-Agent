@@ -8,7 +8,7 @@ from ..common import FRONT
 
 router = APIRouter()
 
-_CACHE_HEADERS = {"Cache-Control": "private, max-age=300, stale-while-revalidate=600"}
+_CACHE_HEADERS = {"Cache-Control": "no-cache"}  # HTML 每次 revalidate；JS/CSS 靠 ?v= 版本号做缓存失效
 
 
 @router.get("/")
