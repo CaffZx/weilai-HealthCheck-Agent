@@ -227,6 +227,19 @@ def upsert_inventory_cost(parent_asin, parent_seller_sku, shop_account,
                    report_month, _j(row), 汇总数量, 汇总费用))
 
 
+def upsert_product_info(parent_asin, parent_seller_sku, shop_account, row: dict) -> None:
+    """产品信息（五点/标题/类目/变体主题）。来源 erp_listing_product_info。"""
+    with _conn() as c:
+        c.execute("""INSERT INTO listing_product_info
+                     (parent_asin, parent_seller_sku, shop_account, data)
+                     VALUES(?,?,?,?)
+                     ON CONFLICT(parent_asin, shop_account) DO UPDATE SET
+                       data=excluded.data,
+                       parent_seller_sku=excluded.parent_seller_sku,
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, parent_seller_sku, shop_account, _j(row)))
+
+
 def upsert_child_price_promo(child_asin, parent_asin, shop_account, site_code,
                               snapshot_date, row: dict) -> None:
     """子体实时价格促销快照。来源 erp_listing_price_promotion_analysis。
@@ -439,9 +452,9 @@ def query_product_names(parent_asins: list[str] | None = None) -> dict[str, str]
 
 
 def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
-    """一次性获取 listing_baseline + stock_summary + product_tags 三表快照。
-    返回合并后的 dict，含键: listing, stock, tags。任一表缺失对应键为 None。"""
-    result = {"listing": None, "stock": None, "tags": None}
+    """一次性获取 listing_baseline + stock_summary + product_tags + listing_product_info 四表快照。
+    返回合并后的 dict，含键: listing, stock, tags, product_info。任一表缺失对应键为 None。"""
+    result = {"listing": None, "stock": None, "tags": None, "product_info": None}
     with _conn() as c:
         lb = c.execute(
             'SELECT * FROM listing_baseline WHERE parent_asin=? AND shop_account=?',
@@ -463,6 +476,13 @@ def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
         ).fetchone()
         if pt:
             result["tags"] = dict(pt)
+
+        pi = c.execute(
+            'SELECT * FROM listing_product_info WHERE parent_asin=? AND shop_account=?',
+            (parent_asin, shop_account)
+        ).fetchone()
+        if pi:
+            result["product_info"] = dict(pi)
     # 全部缺失 → None
     if all(v is None for v in result.values()):
         return None

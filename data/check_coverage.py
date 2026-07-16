@@ -51,6 +51,7 @@ SNAPSHOT_TABLES = {
     "product_tags":        {"name": "产品标签"},
     "stock_alert":         {"name": "库存预警"},
     "child_price_promo":   {"name": "子体价格/促销"},
+    "listing_product_info":{"name": "产品信息（五点/标题）"},
 }
 
 

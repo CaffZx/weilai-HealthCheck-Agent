@@ -187,7 +187,71 @@ document.getElementById('rejectBtn').onclick = async () => {
   await loadToday();
 };
 
-document.getElementById('aiBtn').onclick = () => toast('AI 深度分析接口待接入');
+document.getElementById('aiBtn').onclick = async () => {
+  const uid = state.selectedEventUid;
+  if (!uid) return;
+  const e = state.todayData?.events.find(x => x.event_uid === uid);
+  if (!e?.fixture_key){ toast('该事件缺 shop_id 映射，无法调用 AI'); return; }
+
+  const btn = document.getElementById('aiBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'AI 分析中… (15-30s)';
+  toast('已提交 AI 深度分析，请稍候…');
+
+  try {
+    const r = await api(`/api/judge/${encodeURIComponent(e.fixture_key)}`, {method:'POST'});
+    openAiJudgmentDrawer(e, r);
+    toast('AI 分析完成');
+  } catch(err){
+    toast('AI 分析失败：' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+};
+
+// LLM 判定结果 → 复用抽屉展示
+function openAiJudgmentDrawer(e, result){
+  const j = result?.judgment || {};
+  const pri = j['优先级信息'] || {};
+  const details = j['异常明细'] || [];
+  const drawer = document.getElementById('historyDrawer');
+  document.getElementById('drawerTitle').textContent = `AI 深度分析 · ${e.product_name || e.parent_asin}`;
+  document.getElementById('drawerSubtitle').textContent = `${e.parent_asin} · ${e.shop_account || ''} · 模型 ${result?.model || 'deepseek'}`;
+
+  const detailHtml = details.length ? details.map((a, i) => `
+    <div style="padding:10px 13px;border-bottom:1px solid #eef1f3;font-size:11px;line-height:1.6">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <b>#${i+1} ${esc(a['问题点位'] || '-')}</b>
+        <span><span class="priority ${(a['该条严重度']||'S2').toLowerCase()}">${esc(a['该条严重度']||'-')}</span> · 分 ${Math.round(a['该条执行分数']||0)}</span>
+      </div>
+      <div style="color:#4a5768">具体表现：${esc(a['具体表现']||'-')}</div>
+      <div style="color:#4a5768">判断依据：${esc(a['判断依据']||'-')}</div>
+      <div style="color:#345f86;margin-top:4px">💡 处理建议：${esc(a['处理建议']||'-')}</div>
+      ${a['初步原因'] && a['初步原因'] !== '不适用' ? `<div style="color:#7b8794;margin-top:2px">初步原因：${esc(a['初步原因'])}</div>` : ''}
+    </div>
+  `).join('') : '<div style="padding:20px;text-align:center;color:#8a93a2">AI 未发现具体异常明细</div>';
+
+  document.getElementById('drawerBody').innerHTML = `
+    <div class="proof-banner">
+      <i>AI</i>
+      <div><b>AI 深度分析结果</b><span>基于代码巡检 + 知识库 + 全量事实数据的二次判定</span></div>
+    </div>
+    <section class="proof-section">
+      <div class="proof-section-head"><b>综合结论</b><span>${esc(j['判定时间'] || '')}</span></div>
+      <div class="proof-grid">
+        <div class="proof-field"><span>执行优先级</span><b><span class="priority ${(pri['执行优先级']||'P2').toLowerCase()}">${esc(pri['执行优先级']||'-')}</span></b></div>
+        <div class="proof-field"><span>产品执行分</span><b>${Math.round(pri['产品执行分数']||0)}/100</b></div>
+        <div class="proof-field"><span>处理时限</span><b>${esc(pri['处理时限']||'-')}</b></div>
+        <div class="proof-field"><span>父卡严重度</span><b>${esc(pri['父卡严重度']||'-')}</b></div>
+      </div>
+    </section>
+    <section class="proof-section">
+      <div class="proof-section-head"><b>AI 识别异常明细</b><span>${details.length} 条</span></div>
+      ${detailHtml}
+    </section>
+  `;
+  drawer.classList.add('show');
+}
 
 // ---- 广告决策 agent 跳转 ----
 const AD_AGENT_BASE = 'https://mcp-gateway.example.com/demo/ad-asisitant-agent.html';

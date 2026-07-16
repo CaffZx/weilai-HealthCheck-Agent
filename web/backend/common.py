@@ -125,6 +125,12 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         pos_rows = c.execute("SELECT parent_asin, product_position FROM erp_config").fetchall()
         pos_map = {r["parent_asin"]: r["product_position"] for r in pos_rows}
 
+        # parent_asin → shop_id 映射（用于拼 fixture_key = asin__shopId，AI 深度分析用）
+        shop_rows = c.execute(
+            "SELECT DISTINCT asin, shop_id FROM asin_owner WHERE shop_id IS NOT NULL"
+        ).fetchall()
+        shop_id_map = {r["asin"]: r["shop_id"] for r in shop_rows}
+
     name_map = local_store.query_product_names()
     img_map = local_store.query_image_urls()
     with sqlite3.connect(local_store.DB_PATH) as c:
@@ -158,12 +164,15 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         except Exception:
             judge_basis = {"命中依据": d.get("判定依据") or ""}
 
+        _shop_id = shop_id_map.get(d.get("父ASIN"))
         out.append({
             "event_uid": uid,
             "parent_asin": d.get("父ASIN"),
             "product_name": name_map.get(d.get("父ASIN")),
             "image_url": img_map.get(d.get("父ASIN")),
             "parent_sku": d.get("父SKU"),
+            "shop_id": _shop_id,
+            "fixture_key": f"{d.get('父ASIN')}__{_shop_id}" if _shop_id else None,
             "shop_account": d.get("店铺账号"),
             "site": d.get("站点"),
             "category": d.get("异常大类") or "其他",

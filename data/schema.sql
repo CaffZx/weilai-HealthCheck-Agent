@@ -578,6 +578,29 @@ CREATE INDEX IF NOT EXISTS idx_task_action_user ON task_action(user_id);
 CREATE INDEX IF NOT EXISTS idx_task_action_created ON task_action(created_at);
 
 -- ============================================================
+-- Listing 产品信息（父ASIN 级快照，每日刷）
+-- 来源：erp_listing_product_info (azlisting-mcpserver)
+-- 用途：给巡检提供 五点/标题/类目/变体主题 等内容完整性字段
+-- ============================================================
+CREATE TABLE IF NOT EXISTS listing_product_info (
+  parent_asin        TEXT NOT NULL,
+  parent_seller_sku  TEXT,
+  shop_account       TEXT NOT NULL,
+  data               TEXT NOT NULL,
+  fetched_at         TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  "标题"              TEXT    GENERATED ALWAYS AS (json_extract(data,'$."productName"'))         VIRTUAL,
+  "五点1"             TEXT    GENERATED ALWAYS AS (json_extract(data,'$."fiveBulletPoint1"'))    VIRTUAL,
+  "五点2"             TEXT    GENERATED ALWAYS AS (json_extract(data,'$."fiveBulletPoint2"'))    VIRTUAL,
+  "五点3"             TEXT    GENERATED ALWAYS AS (json_extract(data,'$."fiveBulletPoint3"'))    VIRTUAL,
+  "五点4"             TEXT    GENERATED ALWAYS AS (json_extract(data,'$."fiveBulletPoint4"'))    VIRTUAL,
+  "五点5"             TEXT    GENERATED ALWAYS AS (json_extract(data,'$."fiveBulletPoint5"'))    VIRTUAL,
+  "变体主题"          TEXT    GENERATED ALWAYS AS (json_extract(data,'$."variationThemeName"'))  VIRTUAL,
+  "精细度"            TEXT    GENERATED ALWAYS AS (json_extract(data,'$."fineness"'))            VIRTUAL,
+  "目标星级"          REAL    GENERATED ALWAYS AS (json_extract(data,'$."targetStarRate"'))      VIRTUAL,
+  PRIMARY KEY (parent_asin, shop_account)
+);
+
+-- ============================================================
 -- 加新字段示例（后续需要提升某个 data 里的原生字段为可查询列时）：
 --   ALTER TABLE daily_product_sales ADD COLUMN "新字段名" REAL
 --     GENERATED ALWAYS AS (json_extract(data,'$."新字段名"')) VIRTUAL;

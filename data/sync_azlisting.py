@@ -97,7 +97,11 @@ def _parse_response(raw: str):
     obj = json.loads(m.group(1))
     res = obj.get("result", {})
     if res.get("isError"):
-        return "ERR", {"err": res["content"][0]["text"][:200]}
+        msg = res["content"][0]["text"][:200]
+        # 网关把"没数据"也用 isError=True 包出来（如"未查询到…"），语义等同 EMPTY
+        if "未查询到" in msg or "没有查询到" in msg or "无数据" in msg:
+            return "EMPTY", None
+        return "ERR", {"err": msg}
     try:
         inner = res["content"][0]["text"]
         l1 = json.loads(inner)
@@ -217,6 +221,29 @@ def sync_natural_advert_flow(sa, pa, sku, days=30, _c=None) -> tuple[int, str]:
         note += f",{异常子体数}子体行数异常"
     store.log_sync("erp_listing_natural_advert_flow", pa, None, "ok", rows_count=n, note=note)
     return n, "OK"
+
+
+def sync_product_info(sa, pa, sku, _c=None) -> tuple[int, str]:
+    """拉产品信息（五点/标题/类目/变体主题）。paramsJson 入参。"""
+    _c = _c or mcp_call
+    st, data = _c("erp_listing_product_info", {
+        "paramsJson": json.dumps({
+            "shopAccount": sa, "parentAsin": pa, "parentSellerSku": sku,
+        }, ensure_ascii=False),
+    })
+    if st != "OK":
+        store.log_sync("erp_listing_product_info", pa, None, st.lower())
+        return 0, st
+    # data 是 list（每个子体一行），我们取第一行的父级字段汇总即可（fiveBulletPoint 等父卡共享）
+    row = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else None)
+    if not row:
+        store.log_sync("erp_listing_product_info", pa, None, "empty")
+        return 0, "OK"
+    store.upsert_product_info(
+        parent_asin=pa, parent_seller_sku=sku, shop_account=sa, row=row,
+    )
+    store.log_sync("erp_listing_product_info", pa, None, "ok", rows_count=1)
+    return 1, "OK"
 
 
 def sync_monthly_goal(sa, pa, sku, _c=None) -> tuple[int, str]:
@@ -362,6 +389,10 @@ def sync_product(sa, pa, sku, sc, days=30, with_price_promo=True, session: MCPSe
     print(f"  monthly_goal       : {s2} · +{n2} 行  ({tag})")
     time.sleep(0.2)
 
+    n2b, s2b = sync_product_info(sa, pa, sku, _c=_c)
+    print(f"  product_info       : {s2b} · +{n2b} 行  ({tag})")
+    time.sleep(0.2)
+
     n3, s3 = sync_stock_alert(sa, pa, sku, _c=_c)
     print(f"  stock_alert        : {s3} · +{n3} 行  ({tag})")
     time.sleep(0.2)
@@ -418,7 +449,7 @@ def main():
     # 简要统计
     import sqlite3
     with sqlite3.connect(store.DB_PATH) as c:
-        for t in ("daily_natural_ad_flow", "monthly_goal", "stock_alert", "inventory_cost"):
+        for t in ("daily_natural_ad_flow", "monthly_goal", "listing_product_info", "stock_alert", "inventory_cost"):
             n = c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
             print(f"  {t}: {n} 行")
 

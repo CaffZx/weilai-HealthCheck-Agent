@@ -174,9 +174,10 @@ def _detect_with_local_data(
     r2_cfg: dict,
     r3_cfg: dict,
 ) -> list[R2.命中异常]:
-    """用本地库数据跑 anomaly_detector。只跑库存类（数据可用），其余需 MCP 数据跳过。"""
+    """用本地库数据跑 anomaly_detector。数据可覆盖的规则都在这里接入。"""
     hits: list[R2.命中异常] = []
     stock = (快照数据 or {}).get("stock") or {}
+    product_info = (快照数据 or {}).get("product_info") or {}
 
     r = R2.detect_FBA可售库存为0(
         FBA可售库存=stock.get("FBA可售库存"),
@@ -194,6 +195,26 @@ def _detect_with_local_data(
     )
     if isinstance(r, R2.命中异常):
         hits.append(r)
+
+    # ---- 内容完整性（来源：listing_product_info）----
+    if product_info:
+        # 五点：数 fiveBulletPoint1-5 非空项数；审核状态数据源没有，传 None
+        五点项数 = sum(1 for k in ("五点1","五点2","五点3","五点4","五点5")
+                      if (product_info.get(k) or "").strip())
+        r = R2.detect_五点异常(
+            五点内容项数=五点项数, 审核状态=None,
+            r2=r2_cfg, r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+
+        # 标题：仅在标题字段空/缺失时命中（审核状态、ERP 基准均无数据源，传 None）
+        r = R2.detect_标题异常(
+            标题字段=product_info.get("标题"), 审核状态=None, ERP标题基准=None,
+            r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
 
     return hits
 
