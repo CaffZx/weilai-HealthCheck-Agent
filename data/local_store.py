@@ -89,6 +89,33 @@ def upsert_listing_baseline(parent_asin, shop_account, site_code, row: dict) -> 
                   (parent_asin, shop_account, site_code, _j(row)))
 
 
+def update_listing_image_url(parent_asin: str, shop_account: str, site_code: str,
+                             image_url: str, source: str) -> None:
+    """仅更新已有商品快照的主图字段，不覆盖其他快照数据。"""
+    with _conn() as c:
+        existing = c.execute(
+            "SELECT data FROM listing_baseline WHERE parent_asin=? AND shop_account=?",
+            (parent_asin, shop_account),
+        ).fetchone()
+        try:
+            data = json.loads(existing["data"] or "{}") if existing else {}
+        except (TypeError, json.JSONDecodeError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data["主图URL"] = image_url
+        data["主图URL来源"] = source
+        data["主图URL抓取时间"] = datetime.datetime.now().isoformat(timespec="seconds")
+        c.execute(
+            """INSERT INTO listing_baseline(parent_asin,shop_account,site_code,data)
+               VALUES(?,?,?,?)
+               ON CONFLICT(parent_asin,shop_account) DO UPDATE SET
+                 site_code=excluded.site_code, data=excluded.data,
+                 fetched_at=datetime('now','localtime')""",
+            (parent_asin, shop_account, site_code, _j(data)),
+        )
+
+
 def upsert_stock_summary(parent_asin, shop_account, row: dict) -> None:
     with _conn() as c:
         c.execute("""INSERT INTO stock_summary(parent_asin,shop_account,data)

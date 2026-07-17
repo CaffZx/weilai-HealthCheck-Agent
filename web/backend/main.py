@@ -7,7 +7,7 @@ app 装配 + 启动钩子。业务逻辑全部拆到 routers/ 与 common.py / ba
   common.py         - 跨路由共享的常量、工具、DB 查询
   batch_cache.py    - 批量代码巡检 + LLM 缓存（内存 + 磁盘）
   routers/
-    pages.py        - / , /report, /legacy, /ui 静态
+    pages.py        - / , /report, /ui 静态
     users.py        - /api/users, /api/reports (主管/下属)
     knowledge.py    - /api/knowledge*
     fixtures.py     - /api/asins, /api/fixture/{key}, /api/sync-health
