@@ -99,8 +99,8 @@ def _parse_response(raw: str):
     if res.get("isError"):
         msg = res["content"][0]["text"][:200]
         # 网关把"没数据"也用 isError=True 包出来（如"未查询到…"），语义等同 EMPTY
-        if "未查询到" in msg or "没有查询到" in msg or "无数据" in msg:
-            return "EMPTY", None
+        if _is_no_data_message(msg):
+            return "EMPTY", {"err": msg}
         return "ERR", {"err": msg}
     try:
         inner = res["content"][0]["text"]
@@ -114,11 +114,30 @@ def _parse_response(raw: str):
     if isinstance(l2, dict) and "data" in l2:
         data = l2["data"]
         if data in (None, [], {}):
-            return "EMPTY", None
+            return "EMPTY", {"err": str(l2.get("message") or "MCP 返回空数据")[:200]}
         return "OK", data
     if isinstance(l2, list):
-        return ("OK", l2) if l2 else ("EMPTY", None)
+        return ("OK", l2) if l2 else ("EMPTY", {"err": "MCP 返回空列表"})
     return "OK", l2
+
+
+def _is_no_data_message(message: str) -> bool:
+    """识别业务上的无数据响应，避免把无目标误报成接口故障。"""
+    return any(text in message for text in (
+        "未查询到", "没有查询到", "无数据", "暂无目标", "未设置目标",
+        "目标为空", "目标不存在", "未配置目标", "没有配置目标",
+    ))
+
+
+def _is_retryable_monthly_error(status: str, data) -> bool:
+    """判断月度目标请求是否适合短暂重试一次。"""
+    if status != "ERR":
+        return False
+    message = str(data.get("err") if isinstance(data, dict) else data or "").lower()
+    return any(text in message for text in (
+        "parse:", "no sse", "empty response", "http 429", "429 too many",
+        "timed out", "timeout", "502", "503", "504",
+    ))
 
 
 # ==========================================================================
@@ -249,20 +268,58 @@ def sync_product_info(sa, pa, sku, _c=None) -> tuple[int, str]:
 def sync_monthly_goal(sa, pa, sku, _c=None) -> tuple[int, str]:
     _c = _c or mcp_call
     # 网关 2026-07 起改成必传 parentSellerSku；不传全部 ERR
-    st, data = _c("erp_listing_monthly_goal", {
+    args = {
         "shopAccount": sa, "parentAsin": pa, "parentSellerSku": sku,
-    })
+    }
+    st, data = _c("erp_listing_monthly_goal", args)
+    if _is_retryable_monthly_error(st, data):
+        time.sleep(0.5)
+        retry_status, retry_data = _c("erp_listing_monthly_goal", args)
+        if retry_status != "ERR" or not _is_retryable_monthly_error(retry_status, retry_data):
+            st, data = retry_status, retry_data
+        else:
+            first_error = data.get("err") if isinstance(data, dict) else data
+            second_error = retry_data.get("err") if isinstance(retry_data, dict) else retry_data
+            st, data = retry_status, {
+                "err": f"首次: {first_error}; 重试: {second_error}",
+            }
     if st != "OK":
-        store.log_sync("erp_listing_monthly_goal", pa, None, st.lower())
+        error = data.get("err") if isinstance(data, dict) else data
+        store.log_sync("erp_listing_monthly_goal", pa, None, st.lower(),
+                       note=str(error or "MCP 未返回月度目标数据")[:500])
         return 0, st
-    n = 0
+
+    if isinstance(data, dict):
+        data = data.get("rows") or data.get("data") or [data]
+    if not isinstance(data, list):
+        store.log_sync("erp_listing_monthly_goal", pa, None, "err",
+                       note=f"响应格式异常: {type(data).__name__}")
+        return 0, "ERR"
+
+    normalized_rows = []
     for row in data:
+        if not isinstance(row, dict):
+            normalized_rows.append(row)
+            continue
+        monthly_goals = row.get("monthlyGoals")
+        if isinstance(monthly_goals, list):
+            normalized_rows.extend(monthly_goals)
+        else:
+            normalized_rows.append(row)
+
+    n = 0
+    skipped = []
+    for row in normalized_rows:
+        if not isinstance(row, dict):
+            skipped.append(f"非对象行:{type(row).__name__}")
+            continue
         warn = row.get("warn")
         if warn:
-            store.log_sync("erp_listing_monthly_goal", pa, None, "empty", note=warn)
+            skipped.append(str(warn))
             continue
         month_str = row.get("everyMonthStr")
         if not month_str:
+            skipped.append("缺少 everyMonthStr")
             continue
         store.upsert_monthly_goal(
             parent_asin=pa,
@@ -272,7 +329,9 @@ def sync_monthly_goal(sa, pa, sku, _c=None) -> tuple[int, str]:
             row=row,
         )
         n += 1
-    store.log_sync("erp_listing_monthly_goal", pa, None, "ok" if n > 0 else "empty", rows_count=n)
+    note = "；".join(dict.fromkeys(skipped))
+    store.log_sync("erp_listing_monthly_goal", pa, None, "ok" if n > 0 else "empty",
+                   rows_count=n, note=note[:500])
     return n, "OK"
 
 

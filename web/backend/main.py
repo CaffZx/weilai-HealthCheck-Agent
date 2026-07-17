@@ -24,6 +24,7 @@ from fastapi import FastAPI
 
 from . import batch_cache
 from .common import load_settings
+from data import local_store
 from .routers import fixtures, history, judge, knowledge, pages, tasks, users
 
 load_dotenv()
@@ -50,6 +51,7 @@ pages.mount_static(app)
 # 需要触发时：POST /api/batch/inspect
 @app.on_event("startup")
 def _maybe_auto_batch():
+    local_store.init_db()
     settings = load_settings().get("startup", {})
     if not settings.get("auto_batch_inspect"):
         log.info("startup.auto_batch_inspect=false，跳过启动批量巡检（如需触发：POST /api/batch/inspect）")

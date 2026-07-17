@@ -24,10 +24,14 @@
   两条管线输出同一 schema，前端同一套 renderJudgment() 渲染。
 """
 from __future__ import annotations
+import concurrent.futures as _cf
 import datetime as dt
 import logging
 import sqlite3
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from data import local_store as store
 from data import fixture_loader
@@ -550,7 +554,7 @@ def _upsert_event(
             作用层级=作用层级, 异常类型=异常类型, 严重度=严重度,
             判定依据={"判定过程": 判定依据, "触发字段": {}, "判定日志": {"批次号": 批次号}},
             站点=站点, 异常大类=大类, 命中变体=命中变体, 变体重要性=变体重要性,
-            单异常执行分数=单异常执行分数, 参数版本="code-v1",
+            单异常执行分数=单异常执行分数, 参数版本="code-v1", 巡检批次=批次号,
         ))
         return True
     except Exception as e:
@@ -562,11 +566,27 @@ def _upsert_event(
 # -----------------------------------------------------------------------------
 # 批量巡检
 # -----------------------------------------------------------------------------
+def _load_concurrency(default: int = 8) -> int:
+    """读 config/settings.yaml → inspection.concurrency。"""
+    p = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
+    try:
+        with open(p, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        return int((cfg.get("inspection") or {}).get("concurrency") or default)
+    except Exception:
+        return default
+
+
 def 巡检批量(
     产品列表: list[dict] | None = None,
     批次号: str | None = None,
+    concurrency: int | None = None,
 ) -> list[dict]:
-    """批量巡检，返回任务卡列表（按产品执行分数降序）。"""
+    """批量巡检，返回任务卡列表（按产品执行分数降序）。
+
+    并发：默认读 config/settings.yaml 的 inspection.concurrency（默认 8）。
+    传 concurrency=1 或 concurrency<=0 走串行；否则用 ThreadPoolExecutor。
+    """
     if 批次号 is None:
         批次号 = dt.datetime.now().strftime("%Y%m%d-%H%M")
 
@@ -584,25 +604,39 @@ def 巡检批量(
     r3_cfg = R3.加载参数()
     r4_cfg = R4.加载参数()
 
-    结果: list[dict] = []
-    log.info("开始批量巡检 %d 个产品 批次=%s", len(产品列表), 批次号)
+    if concurrency is None:
+        concurrency = _load_concurrency()
 
-    for i, p in enumerate(产品列表):
+    total = len(产品列表)
+    log.info("开始批量巡检 %d 个产品 批次=%s 并发=%d", total, 批次号, max(1, concurrency))
+
+    def _run_one(p: dict) -> dict:
         try:
-            card = 巡检单产品(
+            return 巡检单产品(
                 key=p["key"], config_row=p["config"], mcp_bundle=p.get("mcp_bundle"),
                 批次号=批次号, r2_cfg=r2_cfg, r3_cfg=r3_cfg, r4_cfg=r4_cfg,
             )
-            结果.append(card)
         except Exception as e:
             log.warning("产品 %s 巡检失败: %s", p["key"], e)
-            结果.append({
+            return {
                 "来源": "code", "优先级信息": {"执行优先级": "P2", "产品执行分数": 0},
                 "定位信息": {}, "headline": f"巡检异常: {e}", "human_summary": "", "异常明细": [],
-            })
+            }
 
-        if (i + 1) % 20 == 0:
-            log.info("  进度: %d/%d", i + 1, len(产品列表))
+    结果: list[dict] = []
+    if concurrency <= 1:
+        # 串行分支（调试用；生产走并发）
+        for i, p in enumerate(产品列表):
+            结果.append(_run_one(p))
+            if (i + 1) % 20 == 0:
+                log.info("  进度: %d/%d", i + 1, total)
+    else:
+        with _cf.ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="insp") as pool:
+            futures = [pool.submit(_run_one, p) for p in 产品列表]
+            for i, fut in enumerate(_cf.as_completed(futures)):
+                结果.append(fut.result())
+                if (i + 1) % 20 == 0:
+                    log.info("  进度: %d/%d", i + 1, total)
 
     结果.sort(key=lambda c: c.get("优先级信息", {}).get("产品执行分数", 0), reverse=True)
     log.info("批量巡检完成: %d 个产品", len(结果))

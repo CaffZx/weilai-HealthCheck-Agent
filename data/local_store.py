@@ -192,6 +192,29 @@ def upsert_monthly_goal(parent_asin, parent_seller_sku, shop_account, month_str,
                   (parent_asin, parent_seller_sku, shop_account, month_str, _j(row)))
 
 
+def query_monthly_goals(parent_asin: str, shop_account: str, month_str: str | None = None) -> list[dict]:
+    """读取父 ASIN 的月度目标；可按月份精确筛选。"""
+    sql = "SELECT * FROM monthly_goal WHERE parent_asin=? AND shop_account=?"
+    params: list[str] = [parent_asin, shop_account]
+    if month_str:
+        sql += " AND month_str=?"
+        params.append(month_str)
+    sql += " ORDER BY month_str"
+    with _conn() as c:
+        rows = c.execute(sql, params).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            payload = json.loads(item.get("data") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        if isinstance(payload, dict):
+            item.update(payload)
+        result.append(item)
+    return result
+
+
 def upsert_stock_alert(parent_asin, parent_seller_sku, shop_account, row: dict) -> None:
     """库存预警全维度。来源 erp_listing_stock_alert。"""
     with _conn() as c:

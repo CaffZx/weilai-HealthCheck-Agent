@@ -522,11 +522,20 @@ def 聚合单产品(
     近3天日均单量 = 近3天日均销量  # 同一值
     月时间进度 = _算月进度()
 
-    # 日均目标单量 + 月累计完成率：从子体汇总
+    # 日均目标单量 + 月累计完成率：优先使用 monthly_goal，兼容回退 sales_child
     日均目标单量 = None
     月累计完成率 = None
-    if 子体列表:
-        总目标 = None   # 父体级目标，取第一个非空值（ERP 对每个子 SKU 冗余存储相同值，不应累加）
+    总目标 = None
+    总完成 = 0.0
+    today = dt.date.today()
+    当前月份 = today.strftime("%Y年%m月")
+    月度目标行 = store.query_monthly_goals(父ASIN, 店铺账号, 当前月份)
+    if 月度目标行:
+        总目标 = next((r.get("estimatedMonthOrderNum") for r in 月度目标行
+                      if r.get("estimatedMonthOrderNum") is not None), None)
+        总完成 = sum(float(sc.get("本月完成") or 0) for sc in 子体列表)
+    elif 子体列表:
+        总目标 = None
         总完成 = 0.0
         for sc in 子体列表:
             t = sc.get("当月目标销量")
@@ -535,16 +544,15 @@ def 聚合单产品(
                 总目标 = float(t)   # 取一次，不累加
             if c is not None:
                 总完成 += c         # 完成量是子体各自的实际销量，继续累加
-        if 总目标 is not None and 总目标 > 0:
-            # 日均目标 = 当月目标 / 当月天数
-            today = dt.date.today()
-            if today.month == 12:
-                month_end = today.replace(year=today.year + 1, month=1, day=1) - dt.timedelta(days=1)
-            else:
-                month_end = today.replace(month=today.month + 1, day=1) - dt.timedelta(days=1)
-            日均目标单量 = 总目标 / month_end.day
-            # 月累计完成率 = 已完成 / 总目标
-            月累计完成率 = 总完成 / 总目标
+    if 总目标 is not None and 总目标 > 0:
+        # 日均目标 = 当月目标 / 当月天数
+        if today.month == 12:
+            month_end = today.replace(year=today.year + 1, month=1, day=1) - dt.timedelta(days=1)
+        else:
+            month_end = today.replace(month=today.month + 1, day=1) - dt.timedelta(days=1)
+        日均目标单量 = float(总目标) / month_end.day
+        # 月累计完成率 = 已完成 / 总目标
+        月累计完成率 = 总完成 / float(总目标)
     if 日均目标单量 is None:
         缺失.append("日均目标单量")
     if 月累计完成率 is None:
@@ -565,17 +573,30 @@ def 聚合单产品(
     else:
         可售库存 = None
 
-    # 未来N月目标累计_覆盖月数
+    # 未来N月目标累计_覆盖月数：优先使用 monthly_goal，兼容回退 sales_child
     未来N月目标累计_覆盖月数 = None
-    if 子体列表 and 可售库存 is not None and 可售库存 > 0:
+    if 可售库存 is not None and 可售库存 > 0:
         总未来目标 = 0.0
         未来月数 = 0
-        for sc in 子体列表:
-            for key in ["后1月目标销量", "后2月目标销量", "后3月目标销量"]:
-                v = sc.get(key)
-                if v is not None and v > 0:
-                    总未来目标 += v
-                    未来月数 += 1
+        for offset in (1, 2, 3):
+            if today.month + offset > 12:
+                future = today.replace(year=today.year + 1, month=today.month + offset - 12, day=1)
+            else:
+                future = today.replace(month=today.month + offset, day=1)
+            future_month = future.strftime("%Y年%m月")
+            rows = store.query_monthly_goals(父ASIN, 店铺账号, future_month)
+            value = next((r.get("estimatedMonthOrderNum") for r in rows
+                          if r.get("estimatedMonthOrderNum") is not None), None)
+            if value is not None and value > 0:
+                总未来目标 += float(value)
+                未来月数 += 1
+        if not 未来月数:
+            for sc in 子体列表:
+                for key in ["后1月目标销量", "后2月目标销量", "后3月目标销量"]:
+                    v = sc.get(key)
+                    if v is not None and v > 0:
+                        总未来目标 += v
+                        未来月数 += 1
         if 总未来目标 > 0 and 未来月数 > 0:
             月均目标 = 总未来目标 / 未来月数
             if 月均目标 > 0:
