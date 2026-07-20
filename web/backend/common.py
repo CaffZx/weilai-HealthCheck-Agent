@@ -123,22 +123,24 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         rows = c.execute("""
             SELECT e.*
             FROM event_pool e
-            WHERE e.父ASIN IN (
-                SELECT DISTINCT asin FROM asin_owner
-                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+            WHERE EXISTS (
+                SELECT 1 FROM asin_owner o
+                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
+                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
             )
         """, (user_id,)).fetchall()
-        pos_rows = c.execute("SELECT parent_asin, product_position FROM erp_config").fetchall()
-        pos_map = {r["parent_asin"]: r["product_position"] for r in pos_rows}
+        pos_rows = c.execute("SELECT parent_asin, shop_id, product_position FROM erp_config").fetchall()
+        pos_map = {(r["parent_asin"], str(r["shop_id"])): r["product_position"] for r in pos_rows if r["product_position"]}
 
         # parent_asin → shop_id 映射（用于拼 fixture_key = asin__shopId，AI 深度分析用）
         shop_rows = c.execute(
-            "SELECT DISTINCT asin, shop_id FROM asin_owner WHERE shop_id IS NOT NULL"
+            "SELECT DISTINCT asin, shop_account, shop_id FROM asin_owner WHERE shop_id IS NOT NULL"
         ).fetchall()
-        shop_id_map = {r["asin"]: r["shop_id"] for r in shop_rows}
+        shop_id_map = {(r["asin"], r["shop_account"]): r["shop_id"] for r in shop_rows}
 
-    name_map = local_store.query_product_names()
-    img_map = local_store.query_image_urls()
+    name_map = local_store.query_product_names_by_shop()
+    img_map = local_store.query_image_urls_by_shop()
+    inspection_map = local_store.query_latest_inspection_results()
     ai_ready = _ai_ready_keys()
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
@@ -154,15 +156,21 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         d = dict(r)
         uid = d["唯一识别"]
         latest_action = act_map.get(uid)
-        status = d.get("当前状态") or "新发现"
+        internal_status = d.get("当前状态") or "新发现"
         if latest_action:
             t = latest_action.get("action_type")
-            status = {"完成": "已完成", "不处理": "已关闭", "标记处理中": "处理中", "待复查": "待复查"}.get(t, status)
-        if only_open and status in ("已关闭", "已完成"):
+            internal_status = {"完成": "已完成", "不处理": "已关闭", "标记处理中": "处理中", "待复查": "待复查"}.get(t, internal_status)
+        if only_open and internal_status in ("已关闭", "已完成"):
             continue
+        status = {
+            "处理中": "处理中",
+            "已完成": "已完成",
+            "已关闭": "已完成",
+        }.get(internal_status, "未完成")
 
         sev = d.get("严重度") or "S2"
-        position = pos_map.get(d.get("父ASIN"), "") or ""
+        _shop_id = shop_id_map.get((d.get("父ASIN"), d.get("店铺账号")))
+        position = pos_map.get((d.get("父ASIN"), str(_shop_id)), "") or ""
         tier = POSITION_TO_TIER.get(position, "")
         priority = SEV_TO_PRIORITY.get(sev, "P2")
         days = days_since(d.get("首次命中时间"))
@@ -171,13 +179,48 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         except Exception:
             judge_basis = {"命中依据": d.get("判定依据") or ""}
 
-        _shop_id = shop_id_map.get(d.get("父ASIN"))
         _fixture_key = f"{d.get('父ASIN')}__{_shop_id}" if _shop_id else None
+        inspection = inspection_map.get((d.get("父ASIN"), d.get("店铺账号"))) or {}
+        inspection_card = inspection.get("result_json") or {}
+        inspection_priority = inspection_card.get("优先级信息") or {}
+        product_score = inspection_priority.get("产品执行分数")
+        detail_map = {}
+        for detail in inspection_card.get("异常明细") or []:
+            key = (detail.get("问题点位"), detail.get("该条严重度"))
+            detail_map.setdefault(key, detail)
+        inspection_detail = detail_map.get((d.get("问题点位"), sev)) or {}
+        if inspection_card.get("数据状态"):
+            data_status = inspection_card["数据状态"]
+        elif inspection:
+            data_status = {
+                "状态": "UNKNOWN",
+                "状态文案": "本次巡检未记录数据状态",
+                "状态说明": "这条异常已有巡检结果，但该次巡检发生在数据状态记录功能上线前，暂时无法确认数据是否完整。",
+                "数据缺口": [{
+                    "数据项": "数据状态记录",
+                    "影响": "无法回溯确认本次巡检使用的数据是否完整",
+                    "建议": "重新运行该产品巡检，生成新的数据状态",
+                    "级别": "重要",
+                }],
+                "数据截止时间": None,
+            }
+        else:
+            data_status = {
+                "状态": "UNKNOWN",
+                "状态文案": "数据状态暂未记录",
+                "状态说明": "该事件没有关联到最近一次巡检结果，暂时无法确认数据是否完整。",
+                "数据缺口": [{
+                    "数据项": "巡检结果关联",
+                    "影响": "无法确认本次事件使用的数据是否完整",
+                    "建议": "重新运行巡检后再查看详情",
+                    "级别": "重要",
+                }],
+            }
         out.append({
             "event_uid": uid,
             "parent_asin": d.get("父ASIN"),
-            "product_name": name_map.get(d.get("父ASIN")),
-            "image_url": img_map.get(d.get("父ASIN")),
+            "product_name": name_map.get((d.get("父ASIN"), d.get("店铺账号"))),
+            "image_url": img_map.get((d.get("父ASIN"), d.get("店铺账号"))),
             "parent_sku": d.get("父SKU"),
             "shop_id": _shop_id,
             "fixture_key": _fixture_key,
@@ -191,18 +234,24 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "variant_importance": d.get("变体重要性"),
             "severity": sev,
             "priority": priority,
-            "score": d.get("单异常执行分数") or 0,
+            "score": d.get("单异常执行分数"),
+            "product_score": product_score,
             "position": position,
             "tier": tier,
             "days": days,
             "status": status,
+            "internal_status": internal_status,
             "first_seen": d.get("首次命中时间"),
             "last_seen": d.get("最近命中时间"),
             "last_action": d.get("上次处理动作"),
             "last_action_at": d.get("上次处理时间"),
             "last_action_by": d.get("上次处理人"),
             "judge_basis": judge_basis,
+            "recommendation": inspection_detail.get("处理建议"),
+            "steps": inspection_detail.get("执行步骤") or [],
+            "summary_reason": inspection_detail.get("判断依据") or inspection_detail.get("具体表现"),
             "latest_action": latest_action,
+            "数据状态": data_status,
         })
     return out
 
@@ -218,9 +267,10 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             FROM task_action a
             JOIN event_pool e ON e.唯一识别 = a.event_uid
             WHERE a.action_type IN ('完成', '不处理')
-              AND e.父ASIN IN (
-                SELECT DISTINCT asin FROM asin_owner
-                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+              AND EXISTS (
+                SELECT 1 FROM asin_owner o
+                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
+                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
               )
             ORDER BY a.created_at DESC
         """, (target_user_id,)).fetchall()
@@ -236,9 +286,10 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             SELECT 唯一识别 as uid, 父ASIN as parent_asin, 异常大类 as category, 问题点位 as issue,
                    首次命中时间 as first_seen, 严重度 as severity
             FROM event_pool
-            WHERE 父ASIN IN (
-                SELECT DISTINCT asin FROM asin_owner
-                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+            WHERE EXISTS (
+                SELECT 1 FROM asin_owner o
+                WHERE o.asin=event_pool.父ASIN AND o.shop_account=event_pool.店铺账号
+                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
             )
         """, (target_user_id,)).fetchall()
 
@@ -246,7 +297,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
     for e in events_after:
         idx.setdefault((e["parent_asin"], e["category"] or ""), []).append(dict(e))
 
-    name_map = local_store.query_product_names()
+    name_map = local_store.query_product_names_by_shop()
 
     out = []
     for r in rows:
@@ -287,7 +338,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             "owner_id": d["user_id"],
             "parent_asin": d["parent_asin"],
             "parent_sku": d["parent_sku"],
-            "product_name": name_map.get(d["parent_asin"]),
+            "product_name": name_map.get((d["parent_asin"], d["shop_account"])),
             "shop_account": d["shop_account"],
             "category": d["category"] or "其他",
             "issue": d["issue"],

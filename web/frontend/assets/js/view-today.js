@@ -1,21 +1,127 @@
 // ============================================================
-// 视图1：今日任务
+// 视图1：今日任务（按产品聚合 · 详情平铺所有异常 + 任务清单）
 // ============================================================
 async function loadToday(){
-  document.getElementById('taskBody').innerHTML = '<tr><td colspan="8" class="loading">加载中…</td></tr>';
+  document.getElementById('taskBody').innerHTML = '<div class="loading">加载中…</div>';
   try {
     state.todayData = await api(withTarget('/api/tasks/today'));
     renderToday();
   } catch(e){
-    document.getElementById('taskBody').innerHTML = `<tr><td colspan="8" class="loading">加载失败：${esc(e.message)}</td></tr>`;
+    document.getElementById('taskBody').innerHTML = `<div class="loading">加载失败：${esc(e.message)}</div>`;
   }
+}
+
+function productKey(e){
+  return `${encodeURIComponent(e.parent_asin || '')}__${encodeURIComponent(e.shop_account || '')}`;
+}
+
+function sortEventsByPriority(events){
+  const priority = {P0: 0, P1: 1, P2: 2};
+  return [...events].sort((a, b) =>
+    (priority[a.priority] ?? 3) - (priority[b.priority] ?? 3) ||
+    Number(b.score || 0) - Number(a.score || 0) ||
+    Number(b.days || 0) - Number(a.days || 0));
+}
+
+function groupProducts(events){
+  const groups = new Map();
+  events.forEach(e => {
+    const key = productKey(e);
+    if (!groups.has(key)) groups.set(key, {key, events: []});
+    groups.get(key).events.push(e);
+  });
+  return [...groups.values()].map(group => {
+    group.events = sortEventsByPriority(group.events);
+    const main = group.events[0];
+    const imageUrl = group.events.find(event => event.image_url)?.image_url || '';
+    const productStatus = productStatusForEvents(group.events);
+    return {...main, key: group.key, image_url: imageUrl, events: group.events, event_count: group.events.length,
+      issue_names: [...new Set(group.events.map(e => e.issue || e.category || '其他'))],
+      max_days: Math.max(...group.events.map(e => Number(e.days || 0))),
+      product_status: productStatus};
+  });
+}
+
+function formatScore(score){
+  if (score === null || score === undefined || score === '') return '待计算';
+  const value = Number(score);
+  return Number.isFinite(value) ? Math.round(value) : '待计算';
+}
+
+function productStatusForEvents(events){
+  if (!events.length) return '未完成';
+  if (events.every(event => event.status === '已完成')) return '已完成';
+  if (events.some(event => event.status === '处理中')) return '处理中';
+  return '未完成';
+}
+
+function productImageHtml(imageUrl, className = 'detail-product-image'){
+  return imageUrl
+    ? `<span class="image-frame"><img class="${className}" src="${esc(imageUrl)}" alt="产品主图" onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="${className} image-fallback" role="img" aria-label="主图暂不可用" style="display:none">📦</span></span>`
+    : `<span class="${className} image-fallback" role="img" aria-label="暂无产品主图">📦</span>`;
+}
+
+function evidenceRowsForEvent(event){
+  const basis = event.judge_basis || {};
+  const fields = basis['触发字段'];
+  const entries = fields && typeof fields === 'object' && !Array.isArray(fields)
+    ? Object.entries(fields).filter(([, value]) => value !== null && value !== undefined && value !== '')
+    : [];
+  if (entries.length) {
+    return entries.map(([label, value]) => `<div class="evidence-item"><span>${esc(label)}</span><b>${esc(typeof value === 'object' ? JSON.stringify(value) : value)}</b></div>`).join('');
+  }
+  return '';
+}
+
+// 步骤清单：优先用后端 R6 步骤，缺失回落通用三步
+function stepsForEvent(event){
+  if (Array.isArray(event.steps) && event.steps.length) return event.steps;
+  return [
+    '核对本次判定数据与实际业务情况',
+    event.recommendation || '根据本次异常判定完成人工处理',
+    '记录实际动作并设置复查时间',
+  ];
+}
+
+// 单条清单项（纯前端临时勾选）
+function checkItemHtml(uid, idx, text){
+  return `<label class="task-check-item" data-check-uid="${esc(uid)}" data-check-idx="${idx}"><span class="task-check-box">✓</span><span class="task-check-text">${esc(text)}</span></label>`;
+}
+
+// 单个异常块（平铺展示）
+function anomalyBlockHtml(e){
+  const basis = e.judge_basis || {};
+  const basisTxt = e.summary_reason || basis['判定过程'] || basis['命中依据'] || '系统暂未记录本次判定过程';
+  const steps = stepsForEvent(e);
+  const evidence = evidenceRowsForEvent(e);
+  const 是交易表现 = (e.category || '').includes('交易表现');
+  const adBtn = 是交易表现
+    ? `<a class="btn ghost-blue" style="text-decoration:none;font-weight:700;padding:5px 11px;font-size:11px" href="${buildAdAgentUrl(e)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(e.event_uid)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>`
+    : '';
+  const priCls = String(e.priority || 'P2').toLowerCase();
+  return `<article class="anomaly-block" data-event-uid="${esc(e.event_uid)}">
+    <div class="anomaly-block-head">
+      <span class="ab-title"><span class="priority ${priCls}">${esc(e.priority || '-')}</span><b>${esc(e.issue || e.category || '异常')}</b></span>
+      <span class="ab-meta">执行分 ${formatScore(e.score)} · ${e.days || 0}天</span>
+    </div>
+    <div class="anomaly-block-body">
+      <div><div class="ab-section-label">判断依据</div><div class="ab-sub">${esc(basisTxt)}</div></div>
+      ${evidence ? `<div><div class="ab-section-label">关键证据</div><div class="ab-evidence">${evidence}</div></div>` : ''}
+      <div>
+        <div class="ab-section-label">建议执行步骤（可勾选）</div>
+        <div class="task-checklist">${steps.map((s, i) => checkItemHtml(e.event_uid, i, s)).join('')}</div>
+        <div class="task-check-progress" data-progress-uid="${esc(e.event_uid)}">0 / ${steps.length} 已完成</div>
+      </div>
+      ${adBtn ? `<div class="ab-agent-row">${adBtn}</div>` : ''}
+    </div>
+  </article>`;
 }
 
 function renderToday(){
   const d = state.todayData; if (!d) return;
-  // 口径统一：分母 = 今日应做总数（当前开放 + 今日已完成），分子 = 今日已完成
-  // 之前用 total 做分母会 >100%，因为 total 只含开放集，done_today 是已从开放集移出的
-  const open = d.total, done = d.done_today;
+  const products = groupProducts(d.events);
+  const open = d.total_products ?? d.total ?? products.length;
+  const done = d.done_today_products ?? d.done_today ?? 0;
   const total = open + done;
   document.getElementById('doneNum').textContent = done;
   document.getElementById('totalNum').textContent = total;
@@ -25,14 +131,17 @@ function renderToday(){
   document.getElementById('goalPct').textContent = `完成 ${pct}%`;
   document.getElementById('goalBar').style.width = pct + '%';
 
-  const p0Und = d.events.filter(e => e.priority==='P0' && e.status !== '已完成').length;
-  const waitCnt = d.events.filter(e=>e.status==='待复查').length;
+  const p0Und = products.filter(e => e.priority === 'P0' && e.product_status !== '已完成').length;
+  const waitCnt = products.filter(e => e.product_status === '未完成').length;
+  const productP0 = products.filter(e => e.priority === 'P0').length;
+  const productP1 = products.filter(e => e.priority === 'P1').length;
+  const productP2 = products.filter(e => e.priority === 'P2').length;
   document.getElementById('queueList').innerHTML = `
-    <div class="queue-item ${state.filters.quickMode==='P0'?'active':''}" data-queue="P0"><i class="qdot red"></i><div class="qname">必须立即处理<small>P0 · ${d.p0} 条</small></div><div class="qcount">${d.p0}</div></div>
-    <div class="queue-item ${state.filters.quickMode==='P1'?'active':''}" data-queue="P1"><i class="qdot amber"></i><div class="qname">今日重点处理<small>P1 · ${d.p1} 条</small></div><div class="qcount">${d.p1}</div></div>
-    <div class="queue-item ${state.filters.quickMode==='P2'?'active':''}" data-queue="P2"><i class="qdot blue"></i><div class="qname">今日常规处理<small>P2 · ${d.p2} 条</small></div><div class="qcount">${d.p2}</div></div>
-    <div class="queue-item ${state.filters.quickMode==='wait'?'active':''}" data-queue="wait"><i class="qdot gray"></i><div class="qname">待复查<small>已处理待观察</small></div><div class="qcount">${waitCnt}</div></div>
-    <div class="queue-item ${state.filters.quickMode==='all'?'active':''}" data-queue="all"><i class="qdot green"></i><div class="qname">全部任务<small>不筛选</small></div><div class="qcount">${d.total}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='P0'?'active':''}" data-queue="P0"><i class="qdot red"></i><div class="qname">必须立即处理<small>P0 · ${productP0} 个产品</small></div><div class="qcount">${productP0}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='P1'?'active':''}" data-queue="P1"><i class="qdot amber"></i><div class="qname">今日重点处理<small>P1 · ${productP1} 个产品</small></div><div class="qcount">${productP1}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='P2'?'active':''}" data-queue="P2"><i class="qdot blue"></i><div class="qname">今日常规处理<small>P2 · ${productP2} 个产品</small></div><div class="qcount">${productP2}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='wait'?'active':''}" data-queue="wait"><i class="qdot gray"></i><div class="qname">未完成<small>需要继续处理</small></div><div class="qcount">${waitCnt}</div></div>
+    <div class="queue-item ${state.filters.quickMode==='all'?'active':''}" data-queue="all"><i class="qdot green"></i><div class="qname">全部任务<small>不筛选</small></div><div class="qcount">${products.length}</div></div>
   `;
   document.querySelectorAll('.queue-item[data-queue]').forEach(el => {
     el.onclick = () => { state.filters.quickMode = el.dataset.queue; renderToday(); };
@@ -46,104 +155,106 @@ function renderToday(){
   ).join('');
 
   document.getElementById('summaryCards').innerHTML = `
-    <div class="sum-card primary" data-action="all"><div class="sum-label"><span>今日任务进度</span><b class="good-text">${pct}%</b></div><div class="sum-value">${done} / ${total}</div><div class="sum-sub">今日应做 = 开放 ${open} + 已完成 ${done}</div></div>
-    <div class="sum-card" data-action="P0"><div class="sum-label"><span>P0 未完成</span><span>立即处理</span></div><div class="sum-value danger-text">${p0Und}</div><div class="sum-sub">${d.events.filter(e=>e.priority==='P0'&&e.days>=3).length} 条 ≥3 天</div></div>
-    <div class="sum-card" data-action="P1"><div class="sum-label"><span>P1 数量</span><span>重点处理</span></div><div class="sum-value">${d.p1}</div><div class="sum-sub">影响经营目标</div></div>
-    <div class="sum-card" data-action="wait"><div class="sum-label"><span>待复查</span><span>已处理</span></div><div class="sum-value">${waitCnt}</div><div class="sum-sub">到期后重新判定</div></div>
-    <div class="sum-card" data-action="P2"><div class="sum-label"><span>P2</span><span>常规</span></div><div class="sum-value">${d.p2}</div><div class="sum-sub">可优化事项</div></div>
+    <div class="sum-card"><div class="sum-label">待处理产品</div><div class="sum-value">${open}</div><div class="sum-sub">当前开放任务</div></div>
+    <div class="sum-card"><div class="sum-label">异常总数</div><div class="sum-value">${d.total_events ?? d.events.length}</div><div class="sum-sub">产品内异常合计</div></div>
+    <div class="sum-card"><div class="sum-label">今日已处理</div><div class="sum-value good-text">${done}</div><div class="sum-sub">已完成的产品</div></div>
   `;
-  document.querySelectorAll('.sum-card[data-action]').forEach(el => {
-    el.onclick = () => { state.filters.quickMode = el.dataset.action; renderToday(); };
-  });
 
   const q = state.filters.q.toLowerCase(), pf = state.filters.priority, sf = state.filters.status, qm = state.filters.quickMode;
-  let rows = d.events.filter(e => {
+  const filteredProducts = products.map(product => {
+    const matchingEvents = product.events.filter(e => {
     if (q && !`${e.parent_asin||''}${e.product_name||''}${e.parent_sku||''}`.toLowerCase().includes(q)) return false;
     if (pf && e.priority !== pf) return false;
-    if (sf && e.status !== sf) return false;
+    if (sf && product.product_status !== sf) return false;
     if (qm === 'P0' && e.priority !== 'P0') return false;
     if (qm === 'P1' && e.priority !== 'P1') return false;
     if (qm === 'P2' && e.priority !== 'P2') return false;
-    if (qm === 'wait' && e.status !== '待复查') return false;
+    if (qm === 'wait' && product.product_status !== '未完成') return false;
     return true;
-  });
-  document.getElementById('taskResultCount').textContent = rows.length;
+    });
+    if (!matchingEvents.length) return null;
+    return {...product, displayEvent: matchingEvents[0]};
+  }).filter(Boolean);
+  document.getElementById('taskResultCount').textContent = filteredProducts.length;
 
   const body = document.getElementById('taskBody');
-  if (!rows.length){
-    body.innerHTML = '<tr class="empty-row"><td colspan="8">当前筛选条件下无任务</td></tr>';
-  } else {
-    body.innerHTML = rows.map((e, i) => `
-      <tr data-uid="${esc(e.event_uid)}" ${e.event_uid===state.selectedEventUid?'class="selected"':''}>
-        <td class="rank">${String(i+1).padStart(2,'0')}</td>
-        <td><span class="priority ${e.priority.toLowerCase()}">${e.priority}</span></td>
-        <td><div class="prod"><div class="thumb">${e.image_url?`<img src="${esc(e.image_url)}" onerror="this.style.display='none'">`:'📦'}</div><div class="prod-txt"><div class="prod-name">${esc(e.product_name || e.parent_asin)}</div><div class="prod-meta">${esc(e.parent_asin)} · ${esc(e.parent_sku||'-')} · ${esc(e.shop_account||'-')}</div></div></div></td>
-        <td><div class="score">${Math.round(e.score)}<small>/100</small></div></td>
-        <td><span class="tag ${e.severity.toLowerCase()}">${esc(e.issue||e.category)}</span>${e.tier?`<span class="tag t">${e.tier}</span>`:''}${e.days>=3?`<span class="tag">${e.days}天</span>`:''}</td>
-        <td class="metric">${esc(e.category||'-')}${e.variant?`<br><span style="color:#7d8797">变体：${esc(e.variant)}</span>`:''}</td>
-        <td class="action">${esc(e.category||'-')}</td>
-        <td><span class="status ${statusClass(e.status)}">${esc(e.status)}</span></td>
-      </tr>
-    `).join('');
-    body.querySelectorAll('tr[data-uid]').forEach(tr => { tr.onclick = () => selectEvent(tr.dataset.uid); });
+  if (!filteredProducts.length){
+    body.innerHTML = '<div class="empty-row">当前筛选条件下无任务</div>';
+    state.selectedProductKey = null;
+    state.selectedEventUid = null;
+    document.getElementById('detailPriority').textContent = '-';
+    document.getElementById('detailScore').textContent = '执行分 -';
+    document.getElementById('detailTitle').textContent = '当前筛选条件下无任务';
+    document.getElementById('detailMeta').textContent = '请调整筛选条件后再查看';
+    document.getElementById('detailScroll').innerHTML = '<div class="detail-empty">暂无可查看的产品任务</div>';
+    ['rejectBtn','aiBtn','completeBtn'].forEach(id => document.getElementById(id).disabled = true);
+    return;
   }
+  body.innerHTML = filteredProducts.map((product, i) => {
+    const e = product.displayEvent || product.events[0];
+    const selected = product.key === state.selectedProductKey;
+    return `<article class="product-task-card ${selected?'selected':''}" data-product-index="${i}" data-product-key="${esc(product.key)}">
+      <div class="product-card-photo">${productImageHtml(product.image_url, 'product-card-image')}</div>
+      <div class="product-card-copy"><b>${esc(e.product_name || e.parent_asin)}</b><span>${esc(e.parent_asin)} · ${esc(e.shop_account||'-')}</span><small>${product.event_count} 个异常 · ${esc(product.product_status)}</small></div>
+      <div class="product-card-badges"><i class="priority ${String(e.priority || 'P2').toLowerCase()}">${esc(e.priority || '-')}</i><span>${formatScore(product.product_score ?? e.score)} 分</span></div>
+    </article>`;
+  }).join('');
+  body.querySelectorAll('.product-task-card[data-product-index]').forEach(card => {
+    card.onclick = () => {
+      const product = filteredProducts[Number(card.dataset.productIndex)];
+      if (product) {
+        body.querySelectorAll('.product-task-card[data-product-index]').forEach(row => row.classList.remove('selected'));
+        card.classList.add('selected');
+        selectProduct(product.key);
+      }
+    };
+  });
+  const selectedProduct = filteredProducts.find(product => product.key === state.selectedProductKey);
+  if (!selectedProduct) state.selectedProductKey = filteredProducts[0].key;
+  selectProduct(state.selectedProductKey);
 }
 
-function selectEvent(uid){
-  const e = state.todayData?.events.find(x => x.event_uid === uid);
-  if (!e) return;
-  state.selectedEventUid = uid;
-  document.querySelectorAll('#taskBody tr').forEach(tr => tr.classList.toggle('selected', tr.dataset.uid === uid));
+// 选中产品 → 平铺展示该产品所有异常
+function selectProduct(key){
+  const productEvents = sortEventsByPriority(
+    state.todayData?.events.filter(item => productKey(item) === key) || []);
+  if (!productEvents.length) return;
+  const main = productEvents[0];
+  const productScore = productEvents.find(item => item.product_score != null)?.product_score;
+  const productStatus = productStatusForEvents(productEvents);
+  const imageUrl = productEvents.find(item => item.image_url)?.image_url || '';
+  const qualityEvents = productEvents.filter(item => {
+    const quality = item['数据状态'] || {};
+    return quality['状态'] && quality['状态'] !== 'COMPLETE';
+  });
+  const firstQuality = qualityEvents[0]?.['数据状态'];
+  const priorityCounts = ['P0', 'P1', 'P2'].map(priority => ({
+    priority, count: productEvents.filter(item => item.priority === priority).length,
+  })).filter(item => item.count);
 
-  document.getElementById('detailPriority').textContent = e.priority;
-  document.getElementById('detailScore').textContent = `执行分 ${Math.round(e.score)}`;
-  document.getElementById('detailTitle').textContent = e.product_name || e.parent_asin;
-  document.getElementById('detailMeta').textContent = `${e.parent_asin} · ${e.parent_sku||'-'} · ${e.shop_account||'-'} · ${e.site||''}`;
+  state.selectedProductKey = key;
+  state.selectedEventUid = productEvents[0].event_uid;  // 默认聚焦首个异常
 
-  const basis = e.judge_basis || {};
-  const basisTxt = basis['命中依据'] || basis['判定过程'] || JSON.stringify(basis);
-
-  // 交易表现类异常 → 显示"广告决策"跳转按钮
-  const 是交易表现 = (e.category || '').includes('交易表现');
-  const adBtn = 是交易表现 ? `<a class="btn ghost-blue" style="margin-left:8px;text-decoration:none;font-weight:700;padding:4px 10px;font-size:11px" href="${buildAdAgentUrl(e)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(e.event_uid)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>` : '';
-
+  document.getElementById('detailPriority').textContent = main.priority || '产品';
+  document.getElementById('detailScore').textContent = `产品执行分 ${formatScore(productScore)}`;
+  document.getElementById('detailTitle').textContent = main.product_name || main.parent_asin;
+  document.getElementById('detailMeta').textContent = `${main.parent_asin} · ${main.parent_sku||'-'} · ${main.shop_account||'-'} · ${main.site||''}`;
+  document.getElementById('detailScroll').scrollTop = 0;
   document.getElementById('detailScroll').innerHTML = `
-    <div class="decision">
-      <div class="decision-top"><span class="decision-label">异常判定</span><span>${adBtn}<span class="risk-badge" style="margin-left:6px">${e.priority} · ${e.priority==='P0'?'立即处理':e.priority==='P1'?'今日处理':'常规处理'}</span></span></div>
-      <h3>${esc(e.issue)} · ${esc(e.category)}</h3>
-      <p>${esc(basisTxt)}</p>
+    <div class="product-summary-hero">
+      <div class="product-summary-image">${productImageHtml(imageUrl)}</div>
+      <div class="product-summary-copy"><span>父 ASIN：${esc(main.parent_asin || '-')}</span><span class="product-shop">店铺：${esc(main.shop_account || '-')}</span></div>
+      <div class="product-summary-status"><span>产品状态</span><b class="status ${statusClass(productStatus)}">${esc(productStatus)}</b></div>
     </div>
-    <div class="section">
-      <div class="section-head"><span>为什么排在前面</span><span>判定链路</span></div>
-      <div class="section-body why">
-        <div class="why-item"><b class="danger-text">${e.severity}</b><span>异常严重度</span></div>
-        <div class="why-item"><b>${e.tier||'-'}</b><span>产品定位</span></div>
-        <div class="why-item"><b>${e.days} 天</b><span>持续时间</span></div>
-        <div class="why-item"><b>${Math.round(e.score)}</b><span>执行分</span></div>
-      </div>
+    ${firstQuality ? `<div class="data-quality ${['INSUFFICIENT','FAILED','UNKNOWN'].includes(firstQuality['状态']) ? 'critical' : 'partial'}"><b>数据状态：${esc(firstQuality['状态文案'] || '部分数据不足')}</b><span>${qualityEvents.length} 个异常的辅助数据不完整，处理时请注意。</span></div>` : ''}
+    <div class="product-summary-metrics">
+      <div><span>产品执行分</span><b>${formatScore(productScore)}</b></div>
+      <div><span>产品定位</span><b>${esc(main.tier || '-')}</b></div>
+      <div><span>待处理异常</span><b>${productEvents.length} 项</b></div>
     </div>
-    <div class="section">
-      <div class="section-head"><span>事件信息</span><span>event_uid</span></div>
-      <div class="section-body evidence">
-        <div class="e-row"><span>首次命中</span><b>${fmtDate(e.first_seen)}</b></div>
-        <div class="e-row"><span>最近命中</span><b>${fmtDate(e.last_seen)}</b></div>
-        <div class="e-row"><span>作用层级</span><b>${esc(e.scope||'-')}</b></div>
-        <div class="e-row"><span>命中变体</span><b>${esc(e.variant||'-')} ${e.variant_importance?'· '+esc(e.variant_importance):''}</b></div>
-        <div class="e-row"><span>event_uid</span><b style="font-family:monospace;font-size:10px">${esc(e.event_uid)}</b></div>
-      </div>
-    </div>
-    ${e.latest_action ? `
-    <div class="section">
-      <div class="section-head"><span>最近处理记录</span><span>${fmtDate(e.latest_action.created_at)}</span></div>
-      <div class="section-body evidence">
-        <div class="e-row"><span>动作</span><b>${esc(e.latest_action.action_type)}</b></div>
-        ${e.latest_action.result?`<div class="e-row"><span>结果</span><b>${esc(e.latest_action.result)}</b></div>`:''}
-        ${e.latest_action.actual_action?`<div class="e-row"><span>实际动作</span><b>${esc(e.latest_action.actual_action)}</b></div>`:''}
-        ${e.latest_action.notes?`<div class="e-row"><span>备注</span><b>${esc(e.latest_action.notes)}</b></div>`:''}
-      </div>
-    </div>` : ''}
-    <div class="section">
-      <div class="section-head"><span>执行记录（完成时写入）</span><span>闭环必填</span></div>
+    <div class="ab-section-label" style="margin:4px 0 8px;font-size:12px">本产品异常（${productEvents.length}）· ${priorityCounts.map(item => `${item.priority} ${item.count}`).join(' · ')} · 点异常聚焦到底部处理</div>
+    ${productEvents.map(anomalyBlockHtml).join('')}
+    <div class="section" style="margin-top:4px"><div class="section-head"><span>执行记录（针对聚焦的异常）</span><span id="opFormTarget">${esc(main.issue || main.category || '')}</span></div>
       <div class="section-body op-form">
         <div class="op-row"><label>处理结果</label><select id="opResult"><option value="">请选择</option><option>已按建议执行</option><option>部分执行</option><option>建议不适用</option><option>转人工复核</option></select></div>
         <div class="op-row"><label>实际动作</label><input id="opAction" placeholder="简要描述实际执行了什么"/></div>
@@ -152,8 +263,44 @@ function selectEvent(uid){
       </div>
     </div>
   `;
+  document.querySelectorAll('.product-task-card').forEach(card => card.classList.toggle('selected', card.dataset.productKey === key));
+  bindAnomalyBlockEvents();
+  focusEvent(state.selectedEventUid);
+}
+
+// 聚焦某个异常：高亮该块 + 底部操作区绑定它
+function selectEvent(uid){ focusEvent(uid); }
+function focusEvent(uid){
+  const e = state.todayData?.events.find(x => x.event_uid === uid);
+  if (!e) return;
+  state.selectedEventUid = uid;
+  document.querySelectorAll('#detailScroll .anomaly-block').forEach(block => {
+    const on = block.dataset.eventUid === uid;
+    block.classList.toggle('focused', on);
+  });
+  const target = document.getElementById('opFormTarget');
+  if (target) target.textContent = e.issue || e.category || '';
   ['rejectBtn','aiBtn','completeBtn'].forEach(id => document.getElementById(id).disabled = false);
-  setAiBtnText();  // 根据 has_ai_result 更新按钮文本
+  setAiBtnText();
+}
+
+// 绑定异常块交互：点标题聚焦、勾选清单
+function bindAnomalyBlockEvents(){
+  document.querySelectorAll('#detailScroll .anomaly-block').forEach(block => {
+    const head = block.querySelector('.anomaly-block-head');
+    if (head) head.onclick = () => focusEvent(block.dataset.eventUid);
+  });
+  document.querySelectorAll('#detailScroll .task-check-item').forEach(item => {
+    item.onclick = (ev) => {
+      ev.preventDefault();
+      item.classList.toggle('done');
+      const uid = item.dataset.checkUid;
+      const items = [...document.querySelectorAll(`.task-check-item[data-check-uid="${CSS.escape(uid)}"]`)];
+      const done = items.filter(x => x.classList.contains('done')).length;
+      const prog = document.querySelector(`.task-check-progress[data-progress-uid="${CSS.escape(uid)}"]`);
+      if (prog) prog.textContent = `${done} / ${items.length} 已完成`;
+    };
+  });
 }
 
 document.getElementById('completeBtn').onclick = async () => {
@@ -175,8 +322,6 @@ document.getElementById('completeBtn').onclick = async () => {
   });
   toast('已标记完成');
   await loadToday();
-  const first = state.todayData?.events[0];
-  if (first) selectEvent(first.event_uid);
 };
 
 document.getElementById('rejectBtn').onclick = async () => {
@@ -207,7 +352,7 @@ document.getElementById('aiBtn').onclick = async () => {
       openAiJudgmentDrawer(e, cached);
       return;
     }
-  } catch(_){ /* 缓存查询失败也不阻塞，继续走 POST */ }
+  } catch(_){ /* 缓存查询失败不阻塞，继续走 POST */ }
 
   // 2) 无缓存 → POST 触发 LLM
   btn.disabled = true; btn.textContent = 'AI 分析中… (15-30s)';
@@ -215,9 +360,7 @@ document.getElementById('aiBtn').onclick = async () => {
   try {
     const r = await api(`/api/judge/${encodeURIComponent(e.fixture_key)}`, {method:'POST'});
     openAiJudgmentDrawer(e, r);
-    // 标记事件已分析（避免刷新前状态不同步）
     if (e) e.has_ai_result = true;
-    // 更新按钮文本
     setAiBtnText();
     toast('AI 分析完成，结果已存');
   } catch(err){
@@ -228,7 +371,6 @@ document.getElementById('aiBtn').onclick = async () => {
   }
 };
 
-// 按钮文本随当前事件的 has_ai_result 状态变化
 function setAiBtnText(){
   const btn = document.getElementById('aiBtn');
   if (!btn) return;
@@ -293,23 +435,22 @@ function buildAdAgentUrl(e){
   });
   return AD_AGENT_BASE + '?' + q.toString();
 }
-// 跳转前把该异常自动标记为"处理中"（仅当前状态是新发现/待处理时）
+// 跳转前把该异常自动标记为"处理中"（仅当前状态是未完成时）
 async function markDoingAndOpen(eventUid){
   const e = state.todayData?.events.find(x => x.event_uid === eventUid);
-  if (e && (e.status === '新发现' || e.status === '待处理')){
+  if (e && e.status === '未完成'){
     try {
       await api(`/api/tasks/${eventUid}/action`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ userId: state.viewerId, action_type: '标记处理中', notes: '跳转广告决策 agent' })
       });
-      loadToday();  // 刷新状态
+      loadToday();
     } catch(err) { console.warn('mark doing failed', err); }
   }
-  return true;  // 不阻止跳转
+  return true;
 }
 
 document.getElementById('searchInput').oninput = e => { state.filters.q = e.target.value; renderToday(); };
 document.getElementById('priorityFilter').onchange = e => { state.filters.priority = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
 document.getElementById('statusFilter').onchange = e => { state.filters.status = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
 document.getElementById('reloadBtn').onclick = () => loadToday();
-

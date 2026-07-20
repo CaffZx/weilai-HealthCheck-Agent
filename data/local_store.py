@@ -32,10 +32,160 @@ def init_db() -> None:
     sql = SCHEMA_PATH.read_text(encoding="utf-8")
     with _conn() as c:
         c.executescript(sql)
+        _migrate_shop_scoped_tables(c, sql)
+        columns = {row[1] for row in c.execute("PRAGMA table_info(event_pool)")}
+        if "inspection_result_id" not in columns:
+            c.execute("ALTER TABLE event_pool ADD COLUMN inspection_result_id INTEGER")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_event_result ON event_pool(inspection_result_id)")
+
+
+def _migrate_shop_scoped_tables(conn: sqlite3.Connection, schema_sql: str) -> None:
+    """将历史表从 ASIN 粒度安全迁移为店铺粒度。"""
+    expected = {
+        "daily_product_sales": ["asin", "shop_account", "stat_date"],
+        "daily_ad_product": ["asin", "shop_account", "stat_date"],
+        "sales_child": ["asin", "parent_asin", "shop_account"],
+        "daily_natural_ad_flow": ["asin", "shop_account", "stat_date", "is_summary"],
+    }
+    statements = schema_sql.splitlines()
+    for table, expected_pk in expected.items():
+        info = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+        if not info:
+            continue
+        current_pk = [row[1] for row in sorted(info, key=lambda row: row[5]) if row[5]]
+        if current_pk == expected_pk:
+            continue
+
+        start = next((i for i, line in enumerate(statements)
+                      if line.startswith(f"CREATE TABLE IF NOT EXISTS {table} (")), None)
+        if start is None:
+            raise RuntimeError(f"找不到 {table} 的 schema 定义")
+        end = next(i for i in range(start + 1, len(statements))
+                   if statements[i].strip() == ");")
+        create_sql = "\n".join(statements[start:end + 1])
+        temp = f"{table}__shop_scoped"
+        create_sql = create_sql.replace(
+            f"CREATE TABLE IF NOT EXISTS {table}",
+            f"CREATE TABLE {temp}",
+            1,
+        )
+        conn.execute(f'DROP TABLE IF EXISTS "{temp}"')
+        conn.execute(create_sql)
+
+        columns = [row[1] for row in conn.execute(f'PRAGMA table_xinfo("{table}")').fetchall()
+                   if row[6] == 0]
+        names = ",".join(f'"{column}"' for column in columns)
+        conn.execute(f'INSERT INTO "{temp}" ({names}) SELECT {names} FROM "{table}"')
+        conn.execute(f'DROP TABLE "{table}"')
+        conn.execute(f'ALTER TABLE "{temp}" RENAME TO "{table}"')
+
+        if table == "daily_product_sales":
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_dps_parent ON daily_product_sales(parent_asin, stat_date)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_dps_shop ON daily_product_sales(shop_account)")
+        elif table == "daily_ad_product":
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_dap_parent ON daily_ad_product(parent_asin, stat_date)")
+        elif table == "sales_child":
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_sc_parent ON sales_child(parent_asin)")
+        else:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_naf_parent ON daily_natural_ad_flow(parent_asin, stat_date)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_naf_shop ON daily_natural_ad_flow(shop_account)")
 
 
 def _j(d: dict) -> str:
     return json.dumps(d, ensure_ascii=False)
+
+
+def normalize_site_code(site_code: str | None) -> str | None:
+    """统一站点代码为 Amazon_US 形式。"""
+    if not site_code:
+        return site_code
+    return site_code if site_code.startswith("Amazon_") else f"Amazon_{site_code}"
+
+
+def upsert_inspection_result(batch_no: str, parent_asin: str, shop_account: str,
+                             site_code: str | None, card: dict,
+                             result_status: str = "SUCCESS") -> None:
+    """持久化单产品巡检结果；同批次重试覆盖同一产品记录。"""
+    priority_info = card.get("优先级信息") or {}
+    with _conn() as c:
+        c.execute(
+            """INSERT INTO inspection_result
+               (batch_no,parent_asin,shop_account,site_code,result_status,priority,score,
+                anomaly_count,result_json)
+               VALUES(?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(batch_no,parent_asin,shop_account) DO UPDATE SET
+                 site_code=excluded.site_code, result_status=excluded.result_status,
+                 priority=excluded.priority, score=excluded.score,
+                 anomaly_count=excluded.anomaly_count, result_json=excluded.result_json,
+                 updated_at=datetime('now','localtime')""",
+            (batch_no, parent_asin, shop_account, normalize_site_code(site_code),
+             result_status, priority_info.get("执行优先级"),
+             priority_info.get("产品执行分数", 0), len(card.get("异常明细") or []),
+             _j(card)),
+        )
+
+
+def query_latest_inspection_results() -> dict[tuple[str, str], dict]:
+    """读取每个产品/店铺的最新巡检结果。"""
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT r.*
+               FROM inspection_result r
+               JOIN (
+                 SELECT parent_asin, shop_account, MAX(id) AS max_id
+                 FROM inspection_result
+                 GROUP BY parent_asin, shop_account
+               ) latest ON latest.max_id=r.id"""
+        ).fetchall()
+    results = {}
+    for row in rows:
+        item = dict(row)
+        try:
+            item["result_json"] = json.loads(item["result_json"])
+        except (TypeError, json.JSONDecodeError):
+            item["result_json"] = {}
+        results[(item["parent_asin"], item["shop_account"])] = item
+    return results
+
+
+def link_inspection_events(batch_no: str, parent_asin: str, shop_account: str) -> int:
+    """将指定产品本批次事件关联到对应巡检结果。"""
+    with _conn() as c:
+        result = c.execute(
+            "SELECT id FROM inspection_result WHERE batch_no=? AND parent_asin=? AND shop_account=?",
+            (batch_no, parent_asin, shop_account),
+        ).fetchone()
+        if not result:
+            return 0
+        cur = c.execute(
+            """UPDATE event_pool SET inspection_result_id=?
+               WHERE 最近巡检批次=? AND 父ASIN=? AND 店铺账号=?""",
+            (result["id"], batch_no, parent_asin, shop_account),
+        )
+        return cur.rowcount
+
+
+def backfill_inspection_event_links() -> int:
+    """按批次、ASIN、店铺补齐已有事件的巡检结果关联。"""
+    with _conn() as c:
+        cur = c.execute(
+            """UPDATE event_pool
+               SET inspection_result_id=(
+                 SELECT r.id FROM inspection_result r
+                 WHERE r.batch_no=event_pool.最近巡检批次
+                   AND r.parent_asin=event_pool.父ASIN
+                   AND r.shop_account=event_pool.店铺账号
+               )
+               WHERE 最近巡检批次 IS NOT NULL
+                 AND inspection_result_id IS NULL
+                 AND EXISTS (
+                   SELECT 1 FROM inspection_result r
+                   WHERE r.batch_no=event_pool.最近巡检批次
+                     AND r.parent_asin=event_pool.父ASIN
+                     AND r.shop_account=event_pool.店铺账号
+                 )"""
+        )
+        return cur.rowcount
 
 
 # ---------------- 每日类（单日窗口循环写入） ----------------
@@ -44,7 +194,7 @@ def upsert_daily_sales(asin, parent_asin, shop_account, site_code, stat_date, ro
     with _conn() as c:
         c.execute("""INSERT INTO daily_product_sales(asin,parent_asin,shop_account,site_code,stat_date,data,is_frozen)
                      VALUES(?,?,?,?,?,?,?)
-                     ON CONFLICT(asin,stat_date) DO UPDATE SET
+                     ON CONFLICT(asin,shop_account,stat_date) DO UPDATE SET
                        data=excluded.data, fetched_at=datetime('now','localtime'), is_frozen=excluded.is_frozen
                      WHERE daily_product_sales.is_frozen=0""",
                   (asin, parent_asin, shop_account, site_code, stat_date, _j(row), frozen))
@@ -55,7 +205,7 @@ def upsert_daily_ad(asin, parent_asin, shop_account, site_code, stat_date, row: 
     with _conn() as c:
         c.execute("""INSERT INTO daily_ad_product(asin,parent_asin,shop_account,site_code,stat_date,data,is_frozen)
                      VALUES(?,?,?,?,?,?,?)
-                     ON CONFLICT(asin,stat_date) DO UPDATE SET
+                     ON CONFLICT(asin,shop_account,stat_date) DO UPDATE SET
                        data=excluded.data, fetched_at=datetime('now','localtime'), is_frozen=excluded.is_frozen
                      WHERE daily_ad_product.is_frozen=0""",
                   (asin, parent_asin, shop_account, site_code, stat_date, _j(row), frozen))
@@ -74,7 +224,7 @@ def upsert_sales_child(asin, parent_asin, shop_account, seller_sku, stat_month, 
     with _conn() as c:
         c.execute("""INSERT INTO sales_child(asin,parent_asin,shop_account,seller_sku,stat_month,data)
                      VALUES(?,?,?,?,?,?)
-                     ON CONFLICT(asin,parent_asin) DO UPDATE SET
+                     ON CONFLICT(asin,parent_asin,shop_account) DO UPDATE SET
                        data=excluded.data, seller_sku=excluded.seller_sku,
                        stat_month=excluded.stat_month, fetched_at=datetime('now','localtime')""",
                   (asin, parent_asin, shop_account, seller_sku, stat_month, _j(row)))
@@ -86,7 +236,7 @@ def upsert_listing_baseline(parent_asin, shop_account, site_code, row: dict) -> 
                      VALUES(?,?,?,?)
                      ON CONFLICT(parent_asin,shop_account) DO UPDATE SET
                        data=excluded.data, site_code=excluded.site_code, fetched_at=datetime('now','localtime')""",
-                  (parent_asin, shop_account, site_code, _j(row)))
+                  (parent_asin, shop_account, normalize_site_code(site_code), _j(row)))
 
 
 def update_listing_image_url(parent_asin: str, shop_account: str, site_code: str,
@@ -112,7 +262,7 @@ def update_listing_image_url(parent_asin: str, shop_account: str, site_code: str
                ON CONFLICT(parent_asin,shop_account) DO UPDATE SET
                  site_code=excluded.site_code, data=excluded.data,
                  fetched_at=datetime('now','localtime')""",
-            (parent_asin, shop_account, site_code, _j(data)),
+            (parent_asin, shop_account, normalize_site_code(site_code), _j(data)),
         )
 
 
@@ -199,7 +349,7 @@ def upsert_natural_ad_flow(asin, parent_asin, shop_account, seller_sku, parent_s
                      (asin, parent_asin, shop_account, seller_sku, parent_seller_sku,
                       stat_date, is_summary, data, is_frozen)
                      VALUES(?,?,?,?,?,?,?,?,?)
-                     ON CONFLICT(asin, stat_date) DO UPDATE SET
+                     ON CONFLICT(asin, shop_account, stat_date, is_summary) DO UPDATE SET
                        data=excluded.data, fetched_at=datetime('now','localtime'),
                        is_frozen=excluded.is_frozen, is_summary=excluded.is_summary
                      WHERE daily_natural_ad_flow.is_frozen=0""",
@@ -407,15 +557,20 @@ def get_one(table: str, **where) -> dict | None:
     return dict(r) if r else None
 
 
-def has_daily(asin: str, stat_date: str) -> bool:
+def has_daily(asin: str, stat_date: str, shop_account: str | None = None) -> bool:
     with _conn() as c:
-        r = c.execute("SELECT 1 FROM daily_product_sales WHERE asin=? AND stat_date=?",
-                      (asin, stat_date)).fetchone()
+        if shop_account:
+            r = c.execute("SELECT 1 FROM daily_product_sales WHERE asin=? AND shop_account=? AND stat_date=?",
+                          (asin, shop_account, stat_date)).fetchone()
+        else:
+            r = c.execute("SELECT 1 FROM daily_product_sales WHERE asin=? AND stat_date=?",
+                          (asin, stat_date)).fetchone()
     return r is not None
 
 
 # ---------------- 聚合查询（供 daily_monitor 用） ----------------
-def query_parent_daily_sales(parent_asin: str, days: int = 30) -> list[dict]:
+def query_parent_daily_sales(parent_asin: str, days: int = 30,
+                             shop_account: str | None = None) -> list[dict]:
     """获取父ASIN下所有子体的每日销售数据，同一天多子体汇总为一条。
     返回按 stat_date 降序排列，含所有生成列。"""
     with _conn() as c:
@@ -438,10 +593,11 @@ def query_parent_daily_sales(parent_asin: str, days: int = 30) -> list[dict]:
                      ELSE NULL END  AS "ACOS"
             FROM daily_product_sales
             WHERE parent_asin=?
-            GROUP BY stat_date
+              AND (? IS NULL OR shop_account=?)
+            GROUP BY stat_date, shop_account
             ORDER BY stat_date DESC
             LIMIT ?
-        """, (parent_asin, days)).fetchall()
+        """, (parent_asin, shop_account, shop_account, days)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -474,6 +630,16 @@ def query_sales_children(parent_asin: str, shop_account: str | None = None) -> l
     return [dict(r) for r in rows]
 
 
+def query_child_asins(parent_asin: str, shop_account: str) -> list[str]:
+    """读取父产品下可用于外部商品抓取的真实子 ASIN。"""
+    rows = query_sales_children(parent_asin, shop_account)
+    return [
+        row["asin"] for row in rows
+        if isinstance(row.get("asin"), str) and row["asin"].startswith("B")
+        and len(row["asin"]) == 10
+    ]
+
+
 def query_image_urls(parent_asins: list[str] | None = None) -> dict[str, str]:
     """{父ASIN: 主图URL} 映射。传 parent_asins 只查这批；不传查全部。
     只包含 data.主图URL 非空的父ASIN。"""
@@ -488,6 +654,25 @@ def query_image_urls(parent_asins: list[str] | None = None) -> dict[str, str]:
     return {r["parent_asin"]: r["url"] for r in rows if r["url"]}
 
 
+def query_image_urls_by_shop(
+    parent_asins: list[str] | None = None,
+) -> dict[tuple[str, str], str]:
+    """返回按 (父ASIN, 店铺账号) 隔离的主图映射。"""
+    sql = """SELECT parent_asin, shop_account,
+                    json_extract(data,'$.主图URL') AS url
+             FROM listing_baseline
+             WHERE json_extract(data,'$.主图URL') IS NOT NULL
+               AND json_extract(data,'$.主图URL') != ''"""
+    params: tuple = ()
+    if parent_asins:
+        placeholders = ",".join("?" * len(parent_asins))
+        sql += f" AND parent_asin IN ({placeholders})"
+        params = tuple(parent_asins)
+    with _conn() as c:
+        rows = c.execute(sql, params).fetchall()
+    return {(r["parent_asin"], r["shop_account"]): r["url"] for r in rows}
+
+
 def query_product_names(parent_asins: list[str] | None = None) -> dict[str, str]:
     """{父ASIN: 商品标题} 映射。用于前端跳转到广告决策 agent 时携带 productName。"""
     sql = "SELECT parent_asin, json_extract(data,'$.标题') AS title FROM listing_baseline WHERE title IS NOT NULL"
@@ -499,6 +684,19 @@ def query_product_names(parent_asins: list[str] | None = None) -> dict[str, str]
     with _conn() as c:
         rows = c.execute(sql, params).fetchall()
     return {r["parent_asin"]: r["title"] for r in rows if r["title"]}
+
+
+def query_product_names_by_shop() -> dict[tuple[str, str], str]:
+    """返回按 (父ASIN, 店铺账号) 隔离的商品标题。"""
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT parent_asin, shop_account,
+                      json_extract(data,'$.标题') AS title
+               FROM listing_baseline
+               WHERE json_extract(data,'$.标题') IS NOT NULL
+                 AND json_extract(data,'$.标题') != ''"""
+        ).fetchall()
+    return {(r["parent_asin"], r["shop_account"]): r["title"] for r in rows}
 
 
 def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:

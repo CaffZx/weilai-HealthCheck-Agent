@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
+import re
+import threading
 import time
 from typing import Any
 
@@ -24,13 +27,24 @@ def _walk(value: Any):
             yield from _walk(child)
 
 
+def _image_strings(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in value.values():
+            yield from _image_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _image_strings(child)
+
+
 def _first_image(payload: Any) -> str | None:
     for item in _walk(payload):
-        candidates = item.get("galleryThumbnails")
-        if isinstance(candidates, list):
-            for url in candidates:
-                if isinstance(url, str) and url.startswith(("http://", "https://")):
-                    return url
+        for key in ("highResolutionImages", "galleryThumbnails", "image", "imageUrl", "image_url", "mainImage", "main_image", "mainImageUrl", "main_image_url", "hiResImage"):
+            value = item.get(key)
+            for nested in _image_strings(value):
+                if nested.startswith(("http://", "https://")):
+                    return nested
     return None
 
 
@@ -58,11 +72,17 @@ def _product_url(parent_asin: str, site_code: str) -> str:
     return f"https://{domain}/dp/{parent_asin}"
 
 
-def fetch_one(parent_asin: str, shop_account: str, site_code: str) -> tuple[str, str | None]:
+def fetch_one(parent_asin: str, shop_account: str, site_code: str,
+              request_asin: str | None = None,
+              session: sync_daily.MCPSession | None = None) -> tuple[str, str | None]:
     site_name = _site_name(site_code)
-    status, payload = sync_daily.mcp_call("pangolinfo_api_sync_Extract", {
-        "asin": parent_asin,
-        "url": _product_url(parent_asin, site_name),
+    if site_name not in _SITE_DOMAINS:
+        return "ERR", None
+    caller = session.call if session is not None else sync_daily.mcp_call
+    request_asin = request_asin or parent_asin
+    status, payload = caller("pangolinfo_api_sync_Extract", {
+        "asin": request_asin,
+        "url": _product_url(request_asin, site_name),
         "parserName": "amzProductDetail",
         "siteCode": site_name,
     })
@@ -71,43 +91,79 @@ def fetch_one(parent_asin: str, shop_account: str, site_code: str) -> tuple[str,
     return status, _first_image(payload)
 
 
-def run(limit: int = 10, interval: float = 1.5) -> dict[str, int]:
+def run(limit: int = 10, interval: float = 1.5, offset: int = 0,
+        concurrency: int = 1, skip_existing: bool = True) -> dict[str, int]:
     store.init_db()
     configs = {c["fixture_key"]: c for c in fixture_loader.load_configs()}
     shop_map = fixture_loader.load_shop_map()
     products = []
+    seen_products = set()
     for key in fixture_loader.list_keys():
         cfg = configs.get(key, {})
         shop = shop_map.get(str(cfg.get("shop_id", "")), {})
         account = shop.get("account")
-        if account:
-            products.append((cfg["parent_asin"], account, cfg.get("site_code") or "US"))
-        if len(products) >= limit:
-            break
+        parent_asin = cfg.get("parent_asin")
+        product_key = (parent_asin, account)
+        if account and parent_asin and product_key not in seen_products:
+            seen_products.add(product_key)
+            site_code = shop.get("site_code") or cfg.get("site_code") or "US"
+            products.append((parent_asin, account, site_code))
+
+    if skip_existing:
+        image_map = store.query_image_urls_by_shop()
+        products = [
+            item for item in products
+            if (item[0], item[1]) not in image_map
+        ]
+    products = products[offset:offset + limit]
 
     stats = {"selected": len(products), "saved": 0, "empty": 0, "error": 0}
-    for index, (parent_asin, account, site_code) in enumerate(products):
+    worker_state = threading.local()
+
+    def process(item):
+        index, parent_asin, account, site_code = item
         try:
-            status, image_url = fetch_one(parent_asin, account, site_code)
+            if not hasattr(worker_state, "session"):
+                worker_state.session = sync_daily.MCPSession()
+                worker_state.last_request = 0.0
+            wait_for = interval - (time.monotonic() - worker_state.last_request)
+            if wait_for > 0:
+                time.sleep(wait_for)
+            session = worker_state.session
+            is_standard_asin = bool(re.fullmatch(r"B[A-Z0-9]{9}", parent_asin))
+            child_asins = store.query_child_asins(parent_asin, account)
+            request_asin = parent_asin if is_standard_asin else (child_asins[0] if child_asins else parent_asin)
+            status, image_url = fetch_one(parent_asin, account, site_code, request_asin, session)
+            if not image_url:
+                attempted = {request_asin}
+                for child_asin in child_asins[:3]:
+                    if child_asin in attempted:
+                        continue
+                    attempted.add(child_asin)
+                    status, image_url = fetch_one(parent_asin, account, site_code, child_asin, session)
+                    if image_url:
+                        break
+            worker_state.last_request = time.monotonic()
             if image_url:
                 store.update_listing_image_url(
                     parent_asin, account, site_code, image_url,
                     "pangolinfo_api_sync_Extract.galleryThumbnails",
                 )
-                stats["saved"] += 1
                 outcome = "saved"
             elif status == "OK":
-                stats["empty"] += 1
                 outcome = "empty"
             else:
-                stats["error"] += 1
-                outcome = status.lower()
-            print(f"[{index + 1}/{len(products)}] {parent_asin}@{account} {outcome}")
+                outcome = "error"
+            return outcome, f"[{index + 1}/{len(products)}] {parent_asin}@{account} {outcome}"
         except Exception as exc:
-            stats["error"] += 1
-            print(f"[{index + 1}/{len(products)}] {parent_asin}@{account} error={exc}")
-        if index + 1 < len(products):
-            time.sleep(interval)
+            return "error", f"[{index + 1}/{len(products)}] {parent_asin}@{account} error={exc}"
+
+    tasks = [(index, parent_asin, account, site_code)
+             for index, (parent_asin, account, site_code) in enumerate(products)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        for outcome, message in pool.map(process, tasks):
+            stats[outcome] += 1
+            print(message, flush=True)
     return stats
 
 
@@ -115,5 +171,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--interval", type=float, default=1.5)
+    parser.add_argument("--offset", type=int, default=0)
+    parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument("--no-skip-existing", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(run(args.limit, args.interval), ensure_ascii=False))
+    print(json.dumps(run(
+        args.limit, args.interval, args.offset, args.concurrency,
+        skip_existing=not args.no_skip_existing,
+    ), ensure_ascii=False), flush=True)

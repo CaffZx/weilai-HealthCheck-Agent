@@ -2,11 +2,12 @@
 from __future__ import annotations
 import logging
 import threading
+import datetime as dt
 
 from fastapi import APIRouter, HTTPException, Query
 
 from core import llm_judge
-from data import fixture_loader
+from data import fixture_loader, local_store
 from .. import batch_cache
 from ..common import config_by_key
 
@@ -17,13 +18,14 @@ router = APIRouter(prefix="/api")
 @router.get("/batch/status")
 def batch_status():
     cache = batch_cache.get_cache()
+    persisted = local_store.query_latest_inspection_results()
     with batch_cache.lock:
         total = len(cache)
         llm_done = sum(1 for v in cache.values() if v.get("llm_status") == "llm_done")
         llm_pending = sum(1 for v in cache.values() if v.get("llm_status") in ("llm_pending", "llm_error"))
     return {
         "ready": batch_cache.ready.is_set(),
-        "total": total,
+        "total": max(total, len(persisted)),
         "llm_done": llm_done,
         "llm_pending": llm_pending,
     }
@@ -71,11 +73,20 @@ def judge(key: str):
     if cached.get("code_judgment"):
         code_j = cached["code_judgment"]
     else:
+        persisted = local_store.query_latest_inspection_results().get(
+            (cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
+        )
+        code_j = (persisted or {}).get("result_json")
+    if code_j is None:
         try:
             from inspector.inspector_main import 巡检单产品
-            from data import local_store as store
-            store.init_db()
-            code_j = 巡检单产品(key=key, config_row=cfg)
+            local_store.init_db()
+            batch_no = dt.datetime.now().strftime("single-%Y%m%d-%H%M%S")
+            code_j = 巡检单产品(key=key, config_row=cfg, 批次号=batch_no)
+            local_store.upsert_inspection_result(
+                batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
+                cfg.get("site_code"), code_j, "SUCCESS",
+            )
             batch_cache.update_entry(key, {
                 "priority": (code_j.get("优先级信息") or {}).get("执行优先级", "P2"),
                 "score": (code_j.get("优先级信息") or {}).get("产品执行分数", 0),
@@ -116,11 +127,23 @@ def inspect_single(key: str):
     cfg = config_by_key(key)
     if not cfg:
         raise HTTPException(404, "unknown key")
+    persisted = local_store.query_latest_inspection_results().get(
+        (cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
+    )
+    if persisted and persisted.get("result_json"):
+        return {
+            "dry_run": False, "model": "code-pipeline-persisted", "usage": None,
+            "judgment": persisted["result_json"],
+        }
     try:
         from inspector.inspector_main import 巡检单产品
-        from data import local_store as store
-        store.init_db()
-        card = 巡检单产品(key=key, config_row=cfg)
+        local_store.init_db()
+        batch_no = dt.datetime.now().strftime("single-%Y%m%d-%H%M%S")
+        card = 巡检单产品(key=key, config_row=cfg, 批次号=batch_no)
+        local_store.upsert_inspection_result(
+            batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
+            cfg.get("site_code"), card, "SUCCESS",
+        )
         pri = card.get("优先级信息", {})
         batch_cache.set_entry(key, {
             "priority": pri.get("执行优先级", "P2"),

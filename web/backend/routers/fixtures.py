@@ -46,9 +46,10 @@ def asins(userId: int | None = Query(None, description="按负责人 ID 过滤")
 
     configs = {c["fixture_key"]: c for c in fixture_loader.load_configs()}
     smap = fixture_loader.load_shop_map()
-    _img_map = local_store.query_image_urls()
-    _name_map = local_store.query_product_names()
+    _img_map = local_store.query_image_urls_by_shop()
+    _name_map = local_store.query_product_names_by_shop()
     cache = batch_cache.get_cache()
+    persisted = local_store.query_latest_inspection_results()
 
     out = []
     for key in fixture_loader.list_keys():
@@ -58,12 +59,16 @@ def asins(userId: int | None = Query(None, description="按负责人 ID 过滤")
         if owned_asins is not None and parent_asin not in owned_asins:
             continue
 
+        shop_account = shop.get("account")
         cached = cache.get(key, {})
+        persisted_row = persisted.get((parent_asin, shop_account))
+        persisted_card = (persisted_row or {}).get("result_json") or {}
+        result_card = persisted_card or (cached.get("code_judgment") or {})
 
         # 抽出真异常的 (问题点位, 命中变体)
         anomaly_points: list[dict] = []
         config_pending_count = 0
-        for a in ((cached.get("code_judgment") or {}).get("异常明细") or []):
+        for a in (result_card.get("异常明细") or []):
             if a.get("该条严重度") == "配置待补":
                 config_pending_count += 1
                 continue
@@ -78,22 +83,22 @@ def asins(userId: int | None = Query(None, description="按负责人 ID 过滤")
             "parent_asin": parent_asin,
             "parent_seller_sku": cfg.get("parent_seller_sku"),
             "shop_id": cfg.get("shop_id"),
-            "shop_account": shop.get("account"),
-            "site_code": cfg.get("site_code"),
+            "shop_account": shop_account,
+            "site_code": shop.get("site_code") or cfg.get("site_code"),
             "product_stage": cfg.get("product_stage"),
             "product_position": cfg.get("product_position"),
             "target_acos_suggest": cfg.get("target_acos_suggest"),
             "daily_budget_suggest": cfg.get("daily_budget_suggest"),
-            "image_url": _img_map.get(parent_asin),
-            "product_name": _name_map.get(parent_asin),
+            "image_url": _img_map.get((parent_asin, shop.get("account"))),
+            "product_name": _name_map.get((parent_asin, shop_account)),
             "anomaly_points": anomaly_points,
             "config_pending_count": config_pending_count,
-            "last_inspect_at": ((cached.get("code_judgment") or {}).get("判定时间") or None),
-            "priority": cached.get("priority", ""),
-            "score": cached.get("score", 0),
+            "last_inspect_at": (persisted_row or {}).get("updated_at") or ((cached.get("code_judgment") or {}).get("判定时间") or None),
+            "priority": (persisted_row or {}).get("priority") or cached.get("priority", ""),
+            "score": (persisted_row or {}).get("score") if persisted_row else cached.get("score", 0),
             "llm_status": cached.get("llm_status", "pending"),
             "llm_score": cached.get("llm_score"),
-            "anomaly_count": cached.get("anomaly_count", 0),
+            "anomaly_count": (persisted_row or {}).get("anomaly_count") if persisted_row else cached.get("anomaly_count", 0),
             "batch_ready": batch_cache.ready.is_set(),
         })
     return out

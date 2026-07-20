@@ -68,7 +68,23 @@ fi
 
 # ---- 触发批量巡检（POST）----
 _log "INFO " "inspect_trigger" "POST /api/batch/inspect"
-"${PROJECT_ROOT}/scripts/cron_wrapper.sh" inspect curl -s -X POST http://127.0.0.1:8000/api/batch/inspect
+"${PROJECT_ROOT}/scripts/cron_wrapper.sh" inspect curl --fail-with-body -s -X POST http://127.0.0.1:8000/api/batch/inspect
+
+# 批量巡检接口只负责启动后台任务；必须等待 ready 后再做覆盖率检查，
+# 否则健康报告可能先于巡检完成，且前端仍看到上一批结果。
+INSPECT_DEADLINE=$(( $(date +%s) + 7200 ))
+while true; do
+  STATUS=$(curl --fail-with-body -s http://127.0.0.1:8000/api/batch/status || true)
+  if [[ "${STATUS}" == *'"ready":true'* ]]; then
+    _log "INFO " "inspect_finished" "status=${STATUS}"
+    break
+  fi
+  if [ "$(date +%s)" -ge "${INSPECT_DEADLINE}" ]; then
+    _log "ERROR" "inspect_timeout" "status=${STATUS}"
+    exit 1
+  fi
+  sleep 30
+done
 
 # ---- 触发覆盖率检查 ----
 _log "INFO " "health_trigger" "python -m data.check_coverage --days 3"

@@ -31,10 +31,22 @@ def api_tasks_today(
         TIER_ORDER.get(e["tier"], 4),
         -e["days"],
     ))
-    p0 = sum(1 for e in events if e["priority"] == "P0")
-    p1 = sum(1 for e in events if e["priority"] == "P1")
-    p2 = sum(1 for e in events if e["priority"] == "P2")
+    products = {}
+    for event in events:
+        key = (event.get("parent_asin"), event.get("shop_account"))
+        current = products.get(key)
+        if current is None or (
+            PRIORITY_ORDER.get(event["priority"], 3), -float(event["score"] or 0)
+        ) < (
+            PRIORITY_ORDER.get(current["priority"], 3), -float(current["score"] or 0)
+        ):
+            products[key] = event
+    p0 = sum(1 for e in products.values() if e["priority"] == "P0")
+    p1 = sum(1 for e in products.values() if e["priority"] == "P1")
+    p2 = sum(1 for e in products.values() if e["priority"] == "P2")
 
+    all_events = fetch_events_for_user(target, only_open=False)
+    completed_today_keys = set()
     with sqlite3.connect(local_store.DB_PATH) as c:
         today = _dt.date.today().isoformat()
         # 归属该 target 的事件，今天有人（自己或主管代操作）标记完成 = done
@@ -42,16 +54,38 @@ def api_tasks_today(
             SELECT COUNT(DISTINCT a.event_uid) FROM task_action a
             JOIN event_pool e ON e.唯一识别 = a.event_uid
             WHERE a.action_type='完成' AND date(a.created_at)=?
-              AND e.父ASIN IN (
-                SELECT DISTINCT asin FROM asin_owner
-                WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1)) = ?
+              AND EXISTS (
+                SELECT 1 FROM asin_owner o
+                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
+                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
               )
         """, (today, target)).fetchone()[0]
+        done_today_products = c.execute("""
+            SELECT DISTINCT e.父ASIN, e.店铺账号 FROM task_action a
+            JOIN event_pool e ON e.唯一识别 = a.event_uid
+            WHERE a.action_type='完成' AND date(a.created_at)=?
+              AND EXISTS (
+                SELECT 1 FROM asin_owner o
+                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
+                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
+              )
+        """, (today, target)).fetchall()
+        completed_today_keys = {(row[0], row[1]) for row in done_today_products}
+    all_product_events = {}
+    for event in all_events:
+        all_product_events.setdefault((event.get("parent_asin"), event.get("shop_account")), []).append(event)
+    done_today_product_count = sum(
+        1 for key in completed_today_keys
+        if all_product_events.get(key) and all(event["status"] == "已完成" for event in all_product_events[key])
+    )
     return {
         "target_user_id": target,
-        "total": len(events),
+        "total": len(products),
+        "total_events": len(events),
+        "total_products": len(products),
         "p0": p0, "p1": p1, "p2": p2,
         "done_today": done_today,
+        "done_today_products": done_today_product_count,
         "events": events,
     }
 

@@ -394,7 +394,7 @@ def 聚合单产品(
 
     # ---- 加载数据 ----
     if 销售数据 is None:
-        销售数据 = store.query_parent_daily_sales(父ASIN, days=30)
+        销售数据 = store.query_parent_daily_sales(父ASIN, days=30, shop_account=店铺账号)
     if 快照数据 is None:
         快照数据 = store.query_product_snapshots(父ASIN, 店铺账号) or {}
 
@@ -732,7 +732,7 @@ def 批量聚合(
 
         try:
             # 预加载数据：查询一次
-            销售数据 = store.query_parent_daily_sales(parent, days=30)
+            销售数据 = store.query_parent_daily_sales(parent, days=30, shop_account=shop)
             快照数据 = store.query_product_snapshots(parent, shop) or {}
 
             r = 聚合单产品(

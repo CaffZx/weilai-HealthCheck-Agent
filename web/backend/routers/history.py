@@ -175,7 +175,7 @@ def api_dashboard(
 
     # 高频异常产品
     top_asins = [a for a, c in asin_counts.most_common(20) if c >= 2]
-    name_map = local_store.query_product_names()
+    name_map = local_store.query_product_names_by_shop()
     repeat_products_list = []
     for asin in top_asins:
         asin_events = [e for e in all_events if e["parent_asin"] == asin]
@@ -184,7 +184,7 @@ def api_dashboard(
         recent = next((r for r in records if r["parent_asin"] == asin), None)
         repeat_products_list.append({
             "parent_asin": asin,
-            "product_name": name_map.get(asin),
+            "product_name": name_map.get((asin, (recent or {}).get("shop_account"))),
             "count": asin_counts[asin],
             "issue": latest.get("issue"),
             "actions": actions_cnt,

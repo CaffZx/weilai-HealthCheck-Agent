@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import datetime as dt
 from pathlib import Path
 
 from data import fixture_loader
@@ -101,7 +102,8 @@ def run_batch_inspect() -> None:
     smap = fixture_loader.load_shop_map()
     keys = fixture_loader.list_keys()
 
-    log.info("批量代码巡检开始: %d 个产品", len(keys))
+    batch_no = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    log.info("批量代码巡检开始: %d 个产品 批次=%s", len(keys), batch_no)
 
     llm_queue: list[tuple[str, dict]] = []
 
@@ -110,7 +112,12 @@ def run_batch_inspect() -> None:
         shop = smap.get(cfg.get("shop_id", ""), {})
         cfg["shop_account"] = shop.get("account", "")
         try:
-            card = 巡检单产品(key=key, config_row=cfg)
+            card = 巡检单产品(key=key, config_row=cfg, 批次号=batch_no)
+            store.upsert_inspection_result(
+                batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
+                cfg.get("site_code"), card, "SUCCESS",
+            )
+            store.link_inspection_events(batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
             pri = card.get("优先级信息", {})
             set_entry(key, {
                 "priority": pri.get("执行优先级", "P2"),
@@ -133,6 +140,28 @@ def run_batch_inspect() -> None:
                 "code_judgment": None, "llm_judgment": None,
                 "error": str(e),
             })
+            try:
+                store.upsert_inspection_result(
+                    batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
+                    cfg.get("site_code"), {
+                        "来源": "code", "优先级信息": {"执行优先级": "P2", "产品执行分数": 0},
+                        "定位信息": {}, "headline": f"巡检异常: {e}",
+                        "human_summary": "", "异常明细": [],
+                        "数据状态": {
+                            "状态": "FAILED", "状态文案": "巡检失败",
+                            "状态说明": "本次巡检没有完成，以下结果不能作为可靠判断。",
+                            "数据缺口": [{
+                                "数据项": "本次巡检结果",
+                                "影响": "无法确认异常和执行分是否完整",
+                                "建议": "稍后重新运行巡检", "级别": "关键",
+                            }],
+                            "数据截止时间": None,
+                        },
+                    }, "FAILED",
+                )
+                store.link_inspection_events(batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
+            except Exception as persist_error:
+                log.warning("巡检失败结果持久化失败 %s: %s", key, persist_error)
         if (i + 1) % 20 == 0:
             log.info("  代码巡检进度: %d/%d", i + 1, len(keys))
 

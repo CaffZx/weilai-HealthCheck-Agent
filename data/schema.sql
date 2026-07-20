@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS daily_product_sales (
   "广告单量"          INTEGER GENERATED ALWAYS AS (json_extract(data,'$."广告单量"'))   VIRTUAL,
   "ACOS"             REAL    GENERATED ALWAYS AS (json_extract(data,'$."ACOS"'))      VIRTUAL,
   "毛利率"            REAL    GENERATED ALWAYS AS (json_extract(data,'$."毛利率"'))     VIRTUAL,
-  PRIMARY KEY (asin, stat_date)
+  PRIMARY KEY (asin, shop_account, stat_date)
 );
 CREATE INDEX IF NOT EXISTS idx_dps_parent ON daily_product_sales(parent_asin, stat_date);
 CREATE INDEX IF NOT EXISTS idx_dps_shop   ON daily_product_sales(shop_account);
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS daily_ad_product (
   "CPC"             REAL    GENERATED ALWAYS AS (json_extract(data,'$."CPC"'))      VIRTUAL,
   "CTR"             REAL    GENERATED ALWAYS AS (json_extract(data,'$."CTR"'))      VIRTUAL,
   "CVR"             REAL    GENERATED ALWAYS AS (json_extract(data,'$."CVR"'))      VIRTUAL,
-  PRIMARY KEY (asin, stat_date)
+  PRIMARY KEY (asin, shop_account, stat_date)
 );
 CREATE INDEX IF NOT EXISTS idx_dap_parent ON daily_ad_product(parent_asin, stat_date);
 
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS sales_child (
   "销量"             REAL GENERATED ALWAYS AS (json_extract(data,'$."销量"'))        VIRTUAL,
   "毛利率"            REAL GENERATED ALWAYS AS (json_extract(data,'$."毛利率"'))       VIRTUAL,
   "大类排名"          INTEGER GENERATED ALWAYS AS (json_extract(data,'$."大类排名"'))   VIRTUAL,
-  PRIMARY KEY (asin, parent_asin)
+  PRIMARY KEY (asin, parent_asin, shop_account)
 );
 CREATE INDEX IF NOT EXISTS idx_sc_parent ON sales_child(parent_asin);
 
@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS event_pool (
   处理备注              TEXT,                        -- JSON: {误报原因/忽略期限/长期跟进类型 等}
   -- 关联
   最近巡检批次          TEXT,                        -- 巡检批次号
+  inspection_result_id INTEGER,
   参数版本              TEXT,                        -- 用哪一版 R2/R3/R4 判的
   -- 追踪
   创建时间              TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -285,6 +286,30 @@ CREATE TABLE IF NOT EXISTS inspection_batch (
 );
 
 -- ============================================================
+-- 12.1 巡检结果快照 (inspection_result)
+-- 每个批次、父ASIN、店铺一条；保留完整任务卡 JSON，供前端/历史查询
+-- ============================================================
+CREATE TABLE IF NOT EXISTS inspection_result (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  batch_no           TEXT NOT NULL,
+  parent_asin        TEXT NOT NULL,
+  shop_account       TEXT NOT NULL,
+  site_code          TEXT,
+  result_status      TEXT NOT NULL,                -- SUCCESS | FAILED
+  priority           TEXT,
+  score              REAL,
+  anomaly_count      INTEGER NOT NULL DEFAULT 0,
+  result_json        TEXT NOT NULL,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  UNIQUE(batch_no, parent_asin, shop_account)
+);
+CREATE INDEX IF NOT EXISTS idx_inspection_result_product
+  ON inspection_result(parent_asin, shop_account, created_at);
+CREATE INDEX IF NOT EXISTS idx_inspection_result_batch
+  ON inspection_result(batch_no, result_status);
+
+-- ============================================================
 -- 13. 每日自然/广告订单流 (daily_natural_ad_flow)
 -- 来源：erp_listing_natural_advert_flow (azlisting-mcpserver)
 -- 一次请求 = 父ASIN × 日期 × 子体 三维数据
@@ -317,7 +342,7 @@ CREATE TABLE IF NOT EXISTS daily_natural_ad_flow (
   "adClick"           INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adClick'))           VIRTUAL,
   "adImpressions"     INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adImpressions'))     VIRTUAL,
   "adSaleNum"         INTEGER GENERATED ALWAYS AS (json_extract(data,'$.adSaleNum'))         VIRTUAL,
-  PRIMARY KEY (asin, stat_date)
+  PRIMARY KEY (asin, shop_account, stat_date, is_summary)
 );
 CREATE INDEX IF NOT EXISTS idx_naf_parent ON daily_natural_ad_flow(parent_asin, stat_date);
 CREATE INDEX IF NOT EXISTS idx_naf_shop   ON daily_natural_ad_flow(shop_account);

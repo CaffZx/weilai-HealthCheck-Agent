@@ -146,8 +146,8 @@ def sync_product(sa, pa, sku, sc, days=14, session: MCPSession | None = None):
     # --- 1. 每日销售序列（单日窗口循环）---
     got_days = 0
     for d in _daterange(days):
-        if store.has_daily(pa, d):
-            existing = store.get_one("daily_product_sales", asin=pa, stat_date=d)
+        if store.has_daily(pa, d, sa):
+            existing = store.get_one("daily_product_sales", asin=pa, shop_account=sa, stat_date=d)
             if existing and existing.get("is_frozen"):
                 continue
         st, rows = _c("product_sales", {"shop_account": sa, "parent_asin": pa,
@@ -162,7 +162,7 @@ def sync_product(sa, pa, sku, sc, days=14, session: MCPSession | None = None):
     # --- 1.5 每日广告日报 ---
     ad_days = 0
     for d in _daterange(days):
-        existing = store.get_one("daily_ad_product", asin=pa, stat_date=d)
+        existing = store.get_one("daily_ad_product", asin=pa, shop_account=sa, stat_date=d)
         if existing and existing.get("is_frozen"):
             continue
         st, rows = _c("ad_product_report", {"shop_account": sa, "parent_asin": pa,

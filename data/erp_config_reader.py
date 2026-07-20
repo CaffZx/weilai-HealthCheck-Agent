@@ -72,13 +72,26 @@ def 列出所有产品(enabled_only: bool = True) -> list[dict]:
             {where}
         """).fetchall()
 
-    # 去重：同 (parent_asin, shop_id) 取最新 update_time
-    best: dict[tuple[str, int], dict] = {}
+    # 去重：同 (parent_asin, shop_id) 取最新记录；空字段回填最近一条非空历史值。
+    grouped: dict[tuple[str, int], list[dict]] = {}
     for r in rows:
-        key = (r["parent_asin"], r["shop_id"])
-        cur = best.get(key)
-        if cur is None or (r["update_time"] or "") > (cur["update_time"] or ""):
-            best[key] = dict(r)
+        grouped.setdefault((r["parent_asin"], r["shop_id"]), []).append(dict(r))
+
+    best: dict[tuple[str, int], dict] = {}
+    fill_fields = (
+        "parent_seller_sku", "site_code", "product_position", "product_stage",
+        "season_type", "target_acos_erp", "daily_budget_erp",
+    )
+    for key, history in grouped.items():
+        history.sort(key=lambda row: row.get("update_time") or "", reverse=True)
+        merged = dict(history[0])
+        for field in fill_fields:
+            if merged.get(field) in (None, ""):
+                merged[field] = next(
+                    (row.get(field) for row in history[1:] if row.get(field) not in (None, "")),
+                    merged.get(field),
+                )
+        best[key] = merged
 
     out = []
     for (pa, sid), r in best.items():

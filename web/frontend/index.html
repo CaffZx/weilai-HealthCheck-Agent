@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>业务巡检 Agent · 运营工作台</title>
-<link rel="stylesheet" href="/ui/assets/app.css"/>
+<link rel="stylesheet" href="/ui/assets/app.css?v=15"/>
 </head>
 <body>
 <div class="app">
@@ -28,47 +28,36 @@
 </header>
 
 <!-- 视图1: 今日任务 -->
-<div class="view active" id="viewToday"><div class="layout">
-  <aside class="sidebar">
-    <div class="date" id="sideDate"></div>
-    <div class="side-title">我的运营任务</div>
-    <div class="goal-card">
-      <div class="goal-line">
-        <div class="goal-num"><b id="doneNum">0</b><span> / <span id="totalNum">0</span> 条</span></div>
-        <div class="goal-pct" id="goalPct">完成 0%</div>
+<div class="view active" id="viewToday"><div class="today-workspace">
+  <header class="today-heading">
+    <div><div class="today-eyebrow" id="sideDate"></div><h1>需要关注的产品</h1></div>
+    <section class="today-stats" id="summaryCards"></section>
+  </header>
+  <details class="task-overview" open>
+    <summary><span>任务概览与筛选</span><span class="overview-summary">当前显示 <b id="taskResultCount">0</b> 个产品</span></summary>
+    <div class="task-overview-body">
+      <div class="goal-card compact-goal">
+        <div class="goal-line"><div class="goal-num"><b id="doneNum">0</b><span> / <span id="totalNum">0</span> 个产品</span></div><div class="goal-pct" id="goalPct">完成 0%</div></div>
+        <div class="progress"><i id="goalBar"></i></div>
+        <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 个产品</span><span>今日完成 <span id="doneTodayNum">0</span> 个产品</span></div>
       </div>
-      <div class="progress"><i id="goalBar"></i></div>
-      <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 条</span><span>今日完成 <span id="doneTodayNum">0</span> 条</span></div>
+      <div class="overview-block"><div class="overview-label">任务池</div><div class="queue queue-inline" id="queueList"></div></div>
+      <div class="overview-block"><div class="overview-label">异常结构</div><div class="dist dist-inline" id="distList"></div></div>
+      <div class="tip overview-tip"><b>排序口径</b><br/>P0 → P1 → P2；同优先级按执行分降序；再按产品重要级 T0→T3、异常持续天数降序。</div>
     </div>
-    <div class="side-section">
-      <div class="side-head">任务池</div>
-      <div class="queue" id="queueList"></div>
-    </div>
-    <div class="side-section">
-      <div class="side-head">异常结构</div>
-      <div class="dist" id="distList"></div>
-    </div>
-    <div class="tip"><b>排序口径</b><br/>P0 → P1 → P2；同优先级按执行分降序；再按产品重要级 T0→T3、异常持续天数降序。</div>
-  </aside>
-  <main class="main">
-    <section class="summary" id="summaryCards"></section>
-    <div class="toolbar">
-      <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
-      <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
-      <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="新发现">新发现</option><option value="处理中">处理中</option><option value="待复查">待复查</option><option value="已完成">已完成</option></select>
-      <div class="toolbar-spacer"></div>
-      <button class="btn" id="reloadBtn">刷新</button>
-    </div>
-    <div class="sort-note"><span class="sort-rule">排序：<b>优先级</b> ＞ <b>执行分</b> ＞ <b>产品定位</b> ＞ 异常持续天数</span><span class="legend"><span>当前显示 <b id="taskResultCount">0</b> 条</span></span></div>
-    <div class="table-wrap">
-      <table>
-        <colgroup><col style="width:36px"/><col style="width:50px"/><col style="width:230px"/><col style="width:56px"/><col style="width:200px"/><col style="width:130px"/><col style="width:120px"/><col style="width:76px"/></colgroup>
-        <thead><tr><th>#</th><th>优先</th><th>产品</th><th>执行分</th><th>异常判定</th><th>关键证据</th><th>建议动作</th><th>状态</th></tr></thead>
-        <tbody id="taskBody"><tr><td colspan="8" class="loading">加载中…</td></tr></tbody>
-      </table>
-    </div>
-  </main>
-  <aside class="detail">
+  </details>
+  <div class="today-content">
+    <section class="product-pane">
+      <div class="product-pane-head"><h2>产品列表</h2><span>按优先级排序</span></div>
+      <div class="toolbar product-toolbar">
+        <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
+        <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
+        <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="未完成">未完成</option><option value="处理中">处理中</option><option value="已完成">已完成</option></select>
+        <button class="btn" id="reloadBtn">刷新</button>
+      </div>
+      <div class="task-list-wrap" id="taskListWrap"><div id="taskBody"><div class="loading">加载中…</div></div></div>
+    </section>
+    <section class="detail detail-pane">
     <div class="detail-head">
       <div class="detail-kicker"><span>任务详情 · <b id="detailPriority">-</b></span><span id="detailScore">执行分 -</span></div>
       <div class="detail-title" id="detailTitle">请从左侧选择一条任务</div>
@@ -82,7 +71,8 @@
       <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
       <button class="btn primary" id="completeBtn" disabled>完成并下一条</button>
     </div>
-  </aside>
+    </section>
+  </div>
 </div></div>
 
 <!-- 视图2: 全部异常 -->
@@ -98,7 +88,7 @@
         <div class="search wide"><input id="allSearch" placeholder="搜索 ASIN / 问题点位"/></div>
         <select id="allPriority"><option value="">全部优先级</option><option>P0</option><option>P1</option><option>P2</option></select>
         <select id="allCategory"><option value="">全部异常大类</option></select>
-        <select id="allStatus"><option value="">全部状态</option><option>新发现</option><option>处理中</option><option>待复查</option><option>已完成</option><option>已关闭</option></select>
+        <select id="allStatus"><option value="">全部状态</option><option>未完成</option><option>处理中</option><option>已完成</option></select>
         <span class="filter-result">共 <b id="allResultCount">0</b> 条</span>
       </div>
       <div class="data-table-scroll">
@@ -247,7 +237,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/ui/assets/js/common.js?v=8"></script>
-<script src="/ui/assets/js/view-today.js?v=8"></script>
+<script src="/ui/assets/js/view-today.js?v=15"></script>
 <script src="/ui/assets/js/view-all.js?v=8"></script>
 <script src="/ui/assets/js/view-review.js?v=8"></script>
 <script src="/ui/assets/js/view-history.js?v=8"></script>

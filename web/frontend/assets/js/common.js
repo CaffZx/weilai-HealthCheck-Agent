@@ -3,7 +3,7 @@ var state = {
   role: 'operator', reports: [], users: [],
   todayData: null, allData: null, reviewData: null, healthData: null,
   historyData: null, dashboardData: null, historyRange: 'all', dashRange: '7',
-  selectedEventUid: null,
+  selectedEventUid: null, selectedProductKey: null,
   filters: { q:'', priority:'', status:'', quickMode:'all' },
   view: 'today',
 };
@@ -96,7 +96,7 @@ async function enterAs(uid){
     ts.onchange = () => {
       state.targetId = Number(ts.value);
       state.todayData = state.allData = state.reviewData = null;
-      state.selectedEventUid = null;
+      state.selectedEventUid = state.selectedProductKey = null;
       loadCurrentView();
     };
   }
@@ -114,4 +114,3 @@ function loadCurrentView(){
   else if (state.view === 'dashboard') loadDashboard();
   else if (state.view === 'health') loadHealth();
 }
-

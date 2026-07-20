@@ -86,6 +86,7 @@ def _build_task_card(
     headline: str = "",
     human_summary: str = "",
     批次号: str | None = None,
+    数据状态: dict | None = None,
 ) -> dict:
     """构建与前端 renderJudgment() 兼容的任务卡 JSON。"""
     pri_info: dict[str, Any] = {
@@ -124,6 +125,79 @@ def _build_task_card(
         "异常明细": 异常明细,
         "批次号": 批次号,
         "判定时间": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "数据状态": 数据状态 or {"状态": "COMPLETE", "状态文案": "数据完整", "数据缺口": []},
+    }
+
+
+def _build_failed_data_quality() -> dict:
+    return {
+        "状态": "FAILED",
+        "状态文案": "巡检失败",
+        "状态说明": "本次巡检没有完成，以下结果不能作为可靠判断。",
+        "数据缺口": [{
+            "数据项": "本次巡检结果",
+            "影响": "无法确认异常和执行分是否完整",
+            "建议": "稍后重新运行巡检",
+            "级别": "关键",
+        }],
+        "数据截止时间": None,
+    }
+
+
+def _build_data_quality(聚合: DM.每日聚合结果, 产品打分, *, failed: bool = False) -> dict:
+    """将技术缺失字段转换为任务详情可读的数据状态。"""
+    if failed:
+        return _build_failed_data_quality()
+
+    missing = list(dict.fromkeys(聚合.缺失字段 or []))
+    if isinstance(产品打分, R4.观察类结果):
+        missing.extend(产品打分.缺失字段 or [])
+    missing = list(dict.fromkeys(missing))
+    labels = {
+        "无任何销售数据": ("销售数据", "无法判断销量、目标完成和销售趋势", "补充最近销售数据", "关键"),
+        "近3天日均销量": ("最近3天销量", "无法判断近期销量变化", "补充最近3天销售数据", "关键"),
+        "过去7天日均销量": ("最近7天销量", "无法建立销量基线", "补充最近7天销售数据", "关键"),
+        "近7天平均ACOS": ("最近7天广告 ACOS", "无法判断广告投入产出是否异常", "补充最近7天广告数据", "重要"),
+        "近3天平均ACOS": ("最近3天广告 ACOS", "无法判断近期广告投入产出变化", "补充最近3天广告数据", "重要"),
+        "近7天平均花费": ("最近7天广告花费", "无法判断广告花费趋势", "补充最近7天广告数据", "重要"),
+        "近3天平均花费": ("最近3天广告花费", "无法判断近期广告花费变化", "补充最近3天广告数据", "重要"),
+        "日均目标单量": ("月度销售目标", "无法判断目标偏离", "补充或同步月度目标", "关键"),
+        "月累计完成率": ("月度销售完成量", "无法判断月度完成进度", "同步本月销售完成数据", "重要"),
+        "目标ACOS（ERP 未设置）": ("目标 ACOS", "无法判断 ACOS 是否偏离目标", "补充目标 ACOS", "重要"),
+        "目标每日预算（ERP 未设置）": ("目标每日预算", "无法判断广告花费是否偏离预算", "补充目标每日预算", "重要"),
+        "上周退款率": ("退款历史对比", "无法比较本周和上周退款变化", "当前仅能使用已有退款快照", "一般"),
+        "上周转化率": ("转化历史对比", "无法比较本周和上周转化变化", "补充历史转化数据", "一般"),
+        "目标评分": ("目标评分", "无法判断评分是否达到目标", "补充目标评分", "重要"),
+        "产品定位": ("产品定位", "无法计算产品重要性权重和执行分", "补充产品定位", "关键"),
+        "产品阶段": ("产品阶段", "无法计算阶段权重和执行分", "补充产品阶段", "关键"),
+        "淡旺季": ("淡旺季", "无法计算季节权重和执行分", "补充淡旺季", "关键"),
+    }
+    gaps = []
+    for raw in missing:
+        text = str(raw)
+        matched = next((value for key, value in labels.items() if key in text), None)
+        if matched:
+            item, impact, advice, level = matched
+        else:
+            item, impact, advice, level = text, "部分巡检判断可能不完整", "补充或重新同步相关数据", "一般"
+        gaps.append({"数据项": item, "影响": impact, "建议": advice, "级别": level})
+
+    if not gaps:
+        return {
+            "状态": "COMPLETE",
+            "状态文案": "数据完整",
+            "状态说明": "本次巡检所需数据已准备完成。",
+            "数据缺口": [],
+            "数据截止时间": 聚合.数据窗口_止,
+        }
+    critical = any(g["级别"] == "关键" for g in gaps)
+    return {
+        "状态": "INSUFFICIENT" if critical else "PARTIAL",
+        "状态文案": "关键数据缺失" if critical else "部分数据不足",
+        "状态说明": "已识别异常，但部分关键数据缺失，执行分或部分判断可能不完整。" if critical
+        else "已完成主要巡检，但部分辅助数据缺失。",
+        "数据缺口": gaps,
+        "数据截止时间": 聚合.数据窗口_止,
     }
 
 
@@ -299,7 +373,7 @@ def 巡检单产品(
         r4_cfg = R4.加载参数()
 
     # Phase 0: 加载数据
-    销售数据 = store.query_parent_daily_sales(父ASIN, days=30)
+    销售数据 = store.query_parent_daily_sales(父ASIN, days=30, shop_account=店铺账号)
     快照数据 = store.query_product_snapshots(父ASIN, 店铺账号) or {}
 
     聚合 = DM.聚合单产品(
@@ -424,6 +498,7 @@ def 巡检单产品(
         负责人=负责人名, 负责人ID=负责人ID,
         产品打分=产品打分, 异常明细=异常明细,
         headline=headline, human_summary=human_summary, 批次号=批次号,
+        数据状态=_build_data_quality(聚合, 产品打分),
     )
 
 
@@ -485,8 +560,9 @@ def _build_anomaly_details(
         sev = h.默认严重度
 
         # LLM 建议（优先）→ R6 YAML（回退）→ 原始字段（兜底）
+        # 执行步骤是固定 SOP，永远从 R6 取，不让 LLM 生成
         llm_r = llm_results[llm_idx] if llm_results and llm_idx < len(llm_results) else None
-        r6_r = R6.选取(h) if llm_r is None else None
+        r6_r = R6.选取(h)
         llm_idx += 1
 
         details.append({
@@ -499,6 +575,7 @@ def _build_anomaly_details(
             "具体表现": (llm_r or r6_r or {}).get("具体表现") or h.问题点位,
             "判断依据": (llm_r or r6_r or {}).get("判断依据") or h.命中依据,
             "处理建议": (llm_r or r6_r or {}).get("处理建议") or "待补充",
+            "执行步骤": (r6_r or {}).get("执行步骤") or [],
             "初步原因": "不适用",
             "技术依据": h.命中依据,
             "上次处理记录": "无", "复查要求": "待补充",
@@ -509,8 +586,9 @@ def _build_anomaly_details(
         sev = g["严重度"]
         _配置缺 = sev == "配置待补"
 
+        # 执行步骤固定从 R6 取（LLM 不生成步骤）
         llm_r = llm_results[llm_idx] if llm_results and llm_idx < len(llm_results) else None
-        r6_r = R6.选取表现型(g) if llm_r is None else None
+        r6_r = R6.选取表现型(g)
         llm_idx += 1
 
         # 数据快照 → "技术依据"（结构化数据点，跟判据结论互补，不重复）
@@ -528,6 +606,7 @@ def _build_anomaly_details(
             "判断依据": (llm_r or r6_r or {}).get("判断依据") or g.get("判定过程", ""),
             "处理建议": ("请在辅助决策 agent 补齐目标配置后重新巡检" if _配置缺
                      else (llm_r or r6_r or {}).get("处理建议") or "待补充"),
+            "执行步骤": ([] if _配置缺 else (r6_r or {}).get("执行步骤") or []),
             "初步原因": ("未设置广告目标/广告目标不完整" if _配置缺 else "不适用"),
             # 技术依据回落到 判定过程（无快照的场景）
             "技术依据": g.get("判定过程", ""),
@@ -611,17 +690,35 @@ def 巡检批量(
     log.info("开始批量巡检 %d 个产品 批次=%s 并发=%d", total, 批次号, max(1, concurrency))
 
     def _run_one(p: dict) -> dict:
+        config = p.get("config") or {}
+        parent_asin = config.get("parent_asin", "")
+        shop_account = config.get("shop_account", "")
+        site_code = config.get("site_code", "")
         try:
-            return 巡检单产品(
+            card = 巡检单产品(
                 key=p["key"], config_row=p["config"], mcp_bundle=p.get("mcp_bundle"),
                 批次号=批次号, r2_cfg=r2_cfg, r3_cfg=r3_cfg, r4_cfg=r4_cfg,
             )
+            store.upsert_inspection_result(
+                批次号, parent_asin, shop_account, site_code, card, "SUCCESS",
+            )
+            store.link_inspection_events(批次号, parent_asin, shop_account)
+            return card
         except Exception as e:
             log.warning("产品 %s 巡检失败: %s", p["key"], e)
-            return {
+            card = {
                 "来源": "code", "优先级信息": {"执行优先级": "P2", "产品执行分数": 0},
                 "定位信息": {}, "headline": f"巡检异常: {e}", "human_summary": "", "异常明细": [],
+                "数据状态": _build_failed_data_quality(),
             }
+            try:
+                store.upsert_inspection_result(
+                    批次号, parent_asin, shop_account, site_code, card, "FAILED",
+                )
+                store.link_inspection_events(批次号, parent_asin, shop_account)
+            except Exception as persist_error:
+                log.warning("巡检失败结果持久化失败 %s: %s", p["key"], persist_error)
+            return card
 
     结果: list[dict] = []
     if concurrency <= 1:
