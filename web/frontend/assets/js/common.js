@@ -101,7 +101,8 @@ async function enterAs(uid){
     };
   }
 
-  document.getElementById('sideDate').textContent = new Date().toLocaleDateString('zh-CN', {year:'numeric', month:'long', day:'numeric', weekday:'long'});
+  const sideDate = document.getElementById('sideDate');
+  if (sideDate) sideDate.textContent = new Date().toLocaleDateString('zh-CN', {year:'numeric', month:'long', day:'numeric', weekday:'long'});
   document.getElementById('freshInfo').textContent = `数据更新：${new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'})}`;
 
   loadCurrentView();

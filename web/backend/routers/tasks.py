@@ -159,9 +159,11 @@ def api_review_due(
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
         rows = c.execute("""
-            SELECT a.*, e.父ASIN, e.父SKU, e.店铺账号, e.问题点位, e.严重度
+            SELECT a.*, e.父ASIN, e.父SKU, e.店铺账号, e.问题点位, e.严重度,
+                   ir.created_at AS inspection_time, ir.batch_no AS inspection_batch
             FROM task_action a
             JOIN event_pool e ON e.唯一识别 = a.event_uid
+            LEFT JOIN inspection_result ir ON ir.id = e.inspection_result_id
             WHERE a.review_at IS NOT NULL
               AND e.父ASIN IN (
                 SELECT DISTINCT asin FROM asin_owner

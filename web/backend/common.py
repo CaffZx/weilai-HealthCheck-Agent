@@ -246,6 +246,8 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "last_action": d.get("上次处理动作"),
             "last_action_at": d.get("上次处理时间"),
             "last_action_by": d.get("上次处理人"),
+            "inspection_time": inspection.get("created_at"),
+            "inspection_batch": inspection.get("batch_no"),
             "judge_basis": judge_basis,
             "recommendation": inspection_detail.get("处理建议"),
             "steps": inspection_detail.get("执行步骤") or [],
@@ -263,9 +265,11 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
         rows = c.execute("""
             SELECT a.*, e.父ASIN as parent_asin, e.父SKU as parent_sku, e.店铺账号 as shop_account,
                    e.异常大类 as category, e.问题点位 as issue, e.严重度 as severity,
-                   e.单异常执行分数 as score, e.首次命中时间 as first_seen
+                   e.单异常执行分数 as score, e.首次命中时间 as first_seen,
+                   ir.created_at as inspection_time, ir.batch_no as inspection_batch
             FROM task_action a
             JOIN event_pool e ON e.唯一识别 = a.event_uid
+            LEFT JOIN inspection_result ir ON ir.id = e.inspection_result_id
             WHERE a.action_type IN ('完成', '不处理')
               AND EXISTS (
                 SELECT 1 FROM asin_owner o
@@ -333,6 +337,8 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             "event_id": format_event_id(d["event_uid"], d["first_seen"]),
             "event_uid": d["event_uid"],
             "time": d["created_at"],
+            "inspection_time": d.get("inspection_time"),
+            "inspection_batch": d.get("inspection_batch"),
             "date_key": d["created_at"][:10] if d["created_at"] else "",
             "owner": users.get(d["user_id"], f"用户{d['user_id']}") if d["user_id"] else "-",
             "owner_id": d["user_id"],

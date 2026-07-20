@@ -48,6 +48,42 @@ def _first_image(payload: Any) -> str | None:
     return None
 
 
+def _first_product_result(payload: Any) -> dict | None:
+    """从 pangolinfo 的多层返回中取第一条商品详情。"""
+    for item in _walk(payload):
+        results = item.get("results") if isinstance(item, dict) else None
+        if isinstance(results, list) and results and isinstance(results[0], dict):
+            return results[0]
+    return None
+
+
+def _page_snapshot(payload: Any) -> dict | None:
+    detail = _first_product_result(payload)
+    if not detail:
+        return None
+    gallery = detail.get("highResolutionImages") or detail.get("images") or []
+    product_description = detail.get("productDescription") or []
+    aplus_count = sum(
+        len(item.get("images") or []) for item in product_description
+        if isinstance(item, dict)
+    )
+    strikethrough = detail.get("strikethroughPrice")
+    if isinstance(strikethrough, dict):
+        strikethrough = strikethrough.get("value")
+    return {
+        "main_image_url": detail.get("image") or _first_image(detail),
+        "gallery_count": len(gallery),
+        "aplus_image_count": aplus_count,
+        "has_cart": detail.get("has_cart", detail.get("hasCart")),
+        "in_stock": detail.get("inStock"),
+        "price": detail.get("price"),
+        "coupon": detail.get("coupon"),
+        "strikethrough_price": strikethrough,
+        "promotion_summary": detail.get("promotionSummary"),
+        "variant_details": detail.get("variantDetails") or [],
+    }
+
+
 def _site_name(site_code: str) -> str:
     return site_code if site_code.startswith("Amazon_") else f"Amazon_{site_code or 'US'}"
 
@@ -89,6 +125,21 @@ def fetch_one(parent_asin: str, shop_account: str, site_code: str,
     if status != "OK":
         return status, None
     return status, _first_image(payload)
+
+
+def fetch_page_snapshot(parent_asin: str, site_code: str, request_asin: str,
+                        session: sync_daily.MCPSession | None = None) -> tuple[str, dict | None]:
+    site_name = _site_name(site_code)
+    if site_name not in _SITE_DOMAINS:
+        return "ERR", None
+    caller = session.call if session is not None else sync_daily.mcp_call
+    status, payload = caller("pangolinfo_api_sync_Extract", {
+        "asin": request_asin,
+        "url": _product_url(request_asin, site_name),
+        "parserName": "amzProductDetail",
+        "siteCode": site_name,
+    })
+    return status, _page_snapshot(payload) if status == "OK" else None
 
 
 def run(limit: int = 10, interval: float = 1.5, offset: int = 0,
@@ -133,16 +184,20 @@ def run(limit: int = 10, interval: float = 1.5, offset: int = 0,
             is_standard_asin = bool(re.fullmatch(r"B[A-Z0-9]{9}", parent_asin))
             child_asins = store.query_child_asins(parent_asin, account)
             request_asin = parent_asin if is_standard_asin else (child_asins[0] if child_asins else parent_asin)
-            status, image_url = fetch_one(parent_asin, account, site_code, request_asin, session)
+            status, page = fetch_page_snapshot(parent_asin, site_code, request_asin, session)
+            image_url = (page or {}).get("main_image_url")
             if not image_url:
                 attempted = {request_asin}
                 for child_asin in child_asins[:3]:
                     if child_asin in attempted:
                         continue
                     attempted.add(child_asin)
-                    status, image_url = fetch_one(parent_asin, account, site_code, child_asin, session)
+                    status, page = fetch_page_snapshot(parent_asin, site_code, child_asin, session)
+                    image_url = (page or {}).get("main_image_url")
                     if image_url:
                         break
+            if page:
+                store.upsert_listing_page_snapshot(parent_asin, account, site_code, page)
             worker_state.last_request = time.monotonic()
             if image_url:
                 store.update_listing_image_url(

@@ -456,6 +456,22 @@ CREATE TABLE IF NOT EXISTS child_price_promo (
 CREATE INDEX IF NOT EXISTS idx_ppromo_parent ON child_price_promo(parent_asin, snapshot_date);
 
 -- ============================================================
+-- 17.1 Listing 前台详情快照（pangolinfo_api_sync_Extract，按需实时抓取）
+-- 用途：链接可购性、主图/副图、A+ 内容、前台价格优惠的真实页面证据。
+-- 注意：该来源不提供后台抑制状态、明确 Buy Box 归属或 ERP 活动配置。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS listing_page_snapshot (
+  parent_asin        TEXT NOT NULL,
+  shop_account       TEXT NOT NULL,
+  site_code          TEXT,
+  data               TEXT NOT NULL,
+  fetched_at         TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (parent_asin, shop_account)
+);
+CREATE INDEX IF NOT EXISTS idx_page_snapshot_fetched
+  ON listing_page_snapshot(fetched_at);
+
+-- ============================================================
 -- ERP 决策配置（来源：app_db.t_advert_agent_decision_config）
 -- 630+ 父ASIN × 42 店铺，含 目标ACOS/预算/产品定位/阶段/淡旺季
 -- 每 (parent_asin, shop_id, site_code) 一条；enabled=0 也拉进来但打标记

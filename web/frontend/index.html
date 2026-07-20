@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>业务巡检 Agent · 运营工作台</title>
-<link rel="stylesheet" href="/ui/assets/app.css?v=15"/>
+<link rel="stylesheet" href="/ui/assets/app.css?v=27"/>
 </head>
 <body>
 <div class="app">
@@ -29,27 +29,20 @@
 
 <!-- 视图1: 今日任务 -->
 <div class="view active" id="viewToday"><div class="today-workspace">
-  <header class="today-heading">
-    <div><div class="today-eyebrow" id="sideDate"></div><h1>需要关注的产品</h1></div>
-    <section class="today-stats" id="summaryCards"></section>
-  </header>
-  <details class="task-overview" open>
-    <summary><span>任务概览与筛选</span><span class="overview-summary">当前显示 <b id="taskResultCount">0</b> 个产品</span></summary>
+  <section class="task-overview">
     <div class="task-overview-body">
       <div class="goal-card compact-goal">
         <div class="goal-line"><div class="goal-num"><b id="doneNum">0</b><span> / <span id="totalNum">0</span> 个产品</span></div><div class="goal-pct" id="goalPct">完成 0%</div></div>
         <div class="progress"><i id="goalBar"></i></div>
         <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 个产品</span><span>今日完成 <span id="doneTodayNum">0</span> 个产品</span></div>
       </div>
-      <div class="overview-block"><div class="overview-label">任务池</div><div class="queue queue-inline" id="queueList"></div></div>
-      <div class="overview-block"><div class="overview-label">异常结构</div><div class="dist dist-inline" id="distList"></div></div>
-      <div class="tip overview-tip"><b>排序口径</b><br/>P0 → P1 → P2；同优先级按执行分降序；再按产品重要级 T0→T3、异常持续天数降序。</div>
+      <div class="overview-block"><div class="queue queue-inline" id="queueList"></div></div>
     </div>
-  </details>
+  </section>
   <div class="today-content">
     <section class="product-pane">
       <div class="product-pane-head"><h2>产品列表</h2><span>按优先级排序</span></div>
-      <div class="toolbar product-toolbar">
+      <div class="toolbar product-filters">
         <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
         <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
         <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="未完成">未完成</option><option value="处理中">处理中</option><option value="已完成">已完成</option></select>
@@ -69,7 +62,7 @@
     <div class="detail-actions">
       <button class="btn" id="rejectBtn" disabled>不处理</button>
       <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
-      <button class="btn primary" id="completeBtn" disabled>完成并下一条</button>
+      <button class="btn primary" id="completeBtn" disabled>完成当前异常</button>
     </div>
     </section>
   </div>
@@ -93,7 +86,7 @@
       </div>
       <div class="data-table-scroll">
         <table class="data-table">
-          <thead><tr><th>优先级</th><th>产品</th><th>异常大类</th><th>问题点位</th><th>持续</th><th>执行分</th><th>状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>最高优先级</th><th>产品</th><th>异常数量 / 类型</th><th>异常列表</th><th>最长持续</th><th>最高执行分</th><th>产品状态</th><th>操作</th></tr></thead>
           <tbody id="allBody"><tr><td colspan="8" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
@@ -116,8 +109,8 @@
       </div>
       <div class="data-table-scroll">
         <table class="data-table">
-          <thead><tr><th>产品</th><th>原异常</th><th>执行动作</th><th>复查时间</th><th>效果 (点击标记)</th><th>结论 (点击写入)</th></tr></thead>
-          <tbody id="reviewBody"><tr><td colspan="6" class="loading">加载中…</td></tr></tbody>
+          <thead><tr><th>产品</th><th>原异常</th><th>巡检时间</th><th>执行动作</th><th>复查时间</th><th>效果 (点击标记)</th><th>结论 (点击写入)</th></tr></thead>
+          <tbody id="reviewBody"><tr><td colspan="7" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -236,11 +229,11 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/ui/assets/js/common.js?v=8"></script>
-<script src="/ui/assets/js/view-today.js?v=15"></script>
-<script src="/ui/assets/js/view-all.js?v=8"></script>
-<script src="/ui/assets/js/view-review.js?v=8"></script>
-<script src="/ui/assets/js/view-history.js?v=8"></script>
+<script src="/ui/assets/js/common.js?v=9"></script>
+<script src="/ui/assets/js/view-today.js?v=25"></script>
+<script src="/ui/assets/js/view-all.js?v=9"></script>
+<script src="/ui/assets/js/view-review.js?v=9"></script>
+<script src="/ui/assets/js/view-history.js?v=9"></script>
 <script src="/ui/assets/js/view-dashboard.js?v=8"></script>
 <script src="/ui/assets/js/view-health.js?v=8"></script>
 <script src="/ui/assets/js/boot.js?v=8"></script>

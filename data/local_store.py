@@ -471,6 +471,19 @@ def upsert_child_price_promo(child_asin, parent_asin, shop_account, site_code,
                    snapshot_date, _j(row), price_usd))
 
 
+def upsert_listing_page_snapshot(parent_asin: str, shop_account: str,
+                                 site_code: str | None, row: dict) -> None:
+    """保存前台商品详情的规范化快照，供内容/可购性/价格促销巡检使用。"""
+    with _conn() as c:
+        c.execute("""INSERT INTO listing_page_snapshot
+                     (parent_asin, shop_account, site_code, data)
+                     VALUES(?,?,?,?)
+                     ON CONFLICT(parent_asin, shop_account) DO UPDATE SET
+                       site_code=excluded.site_code, data=excluded.data,
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, shop_account, normalize_site_code(site_code), _j(row)))
+
+
 # ---------------- 读取（供 daily_monitor / 判定引擎用） ----------------
 def recent_natural_ad_flow(parent_asin: str, days: int = 30) -> list[dict]:
     """拉近 N 天父ASIN下所有子体的自然/广告流，按 stat_date 降序。"""
@@ -700,9 +713,9 @@ def query_product_names_by_shop() -> dict[tuple[str, str], str]:
 
 
 def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
-    """一次性获取 listing_baseline + stock_summary + product_tags + listing_product_info 四表快照。
-    返回合并后的 dict，含键: listing, stock, tags, product_info。任一表缺失对应键为 None。"""
-    result = {"listing": None, "stock": None, "tags": None, "product_info": None}
+    """获取巡检所需的本地快照；每个数据域缺失时保留 None。"""
+    result = {"listing": None, "stock": None, "tags": None, "product_info": None,
+              "page": None, "price_promo": []}
     with _conn() as c:
         lb = c.execute(
             'SELECT * FROM listing_baseline WHERE parent_asin=? AND shop_account=?',
@@ -731,6 +744,19 @@ def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
         ).fetchone()
         if pi:
             result["product_info"] = dict(pi)
+        page = c.execute(
+            'SELECT * FROM listing_page_snapshot WHERE parent_asin=? AND shop_account=?',
+            (parent_asin, shop_account)
+        ).fetchone()
+        if page:
+            result["page"] = dict(page)
+        promos = c.execute("""SELECT child_asin, data, price_usd, snapshot_date, fetched_at
+                             FROM child_price_promo
+                             WHERE parent_asin=? AND shop_account=?
+                               AND snapshot_date=(SELECT MAX(snapshot_date) FROM child_price_promo
+                                                  WHERE parent_asin=? AND shop_account=?)""",
+                          (parent_asin, shop_account, parent_asin, shop_account)).fetchall()
+        result["price_promo"] = [dict(row) for row in promos]
     # 全部缺失 → None
     if all(v is None for v in result.values()):
         return None

@@ -3,12 +3,12 @@
 // ============================================================
 async function loadReview(){
   const p = document.getElementById('reviewPeriod').value;
-  document.getElementById('reviewBody').innerHTML = '<tr><td colspan="6" class="loading">加载中…</td></tr>';
+  document.getElementById('reviewBody').innerHTML = '<tr><td colspan="7" class="loading">加载中…</td></tr>';
   try {
     state.reviewData = await api(withTarget('/api/review/due') + `&period=${p}`);
     renderReview();
   } catch(e){
-    document.getElementById('reviewBody').innerHTML = `<tr><td colspan="6" class="loading">加载失败：${esc(e.message)}</td></tr>`;
+    document.getElementById('reviewBody').innerHTML = `<tr><td colspan="7" class="loading">加载失败：${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -37,7 +37,8 @@ function renderReview(){
   document.getElementById('reviewBody').innerHTML = d.records.length ? d.records.map(r => `
     <tr data-uid="${esc(r.event_uid)}">
       <td><div class="mini-product"><b>${esc(r['父ASIN']||'-')}</b><span>${esc(r['店铺账号']||'-')}</span></div></td>
-      <td>${esc(r['问题点位']||'-')}</td>
+     <td>${esc(r['问题点位']||'-')}</td>
+      <td>${r.inspection_time ? esc(r.inspection_time.slice(0, 16)) : '未关联'}</td>
       <td>${esc(r.actual_action||r.action_type||'-')}<div style="color:#8a93a2;font-size:10px;margin-top:3px">${esc(r.notes||'')}</div></td>
       <td>${fmtDate(r.review_at)}</td>
       <td>
@@ -55,7 +56,7 @@ function renderReview(){
         </div>
       </td>
     </tr>
-  `).join('') : '<tr class="empty-row"><td colspan="6">当前区间无到期复查记录</td></tr>';
+  `).join('') : '<tr class="empty-row"><td colspan="7">当前区间无到期复查记录</td></tr>';
 }
 
 // 复盘效果标记（变好/变差/待观察）

@@ -76,6 +76,7 @@ async function openHistoryDrawer(recordId){
           <div class="proof-field"><span>产品</span><b>${esc(r.product_name || r.parent_asin)}<br>${esc(r.parent_asin)} · ${esc(r.parent_sku||'-')}</b></div>
           <div class="proof-field"><span>优先级 · 执行分</span><b>${esc(r.priority)} · ${Math.round(r.score)}/100</b></div>
           <div class="proof-field"><span>点击完成时间</span><b>${esc(r.time)}</b></div>
+          <div class="proof-field"><span>巡检时间</span><b>${esc(r.inspection_time || '未关联')}</b></div>
           <div class="proof-field"><span>操作人</span><b>${esc(r.owner)}</b></div>
           <div class="proof-field"><span>处理结果</span><b>${esc(r.result||'待补')}</b></div>
           <div class="proof-field"><span>复查节点</span><b>${esc(r.review_at||'不复查')}</b></div>
@@ -116,4 +117,3 @@ document.getElementById('historyReloadBtn').onclick = () => loadHistory();
   const el = document.getElementById(id);
   el.addEventListener(id === 'historySearch' ? 'input' : 'change', () => loadHistory());
 });
-
