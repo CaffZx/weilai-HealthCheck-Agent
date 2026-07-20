@@ -2,17 +2,39 @@
 // 视图1：今日任务（按产品聚合 · 详情平铺所有异常 + 任务清单）
 // ============================================================
 async function loadToday(){
+  const taskListWrap = document.getElementById('taskListWrap');
+  const taskListScrollTop = taskListWrap?.scrollTop || 0;
   document.getElementById('taskBody').innerHTML = '<div class="loading">加载中…</div>';
   try {
-    state.todayData = await api(withTarget('/api/tasks/today'));
+    state.todayData = await api(withTarget('/api/tasks/today?includeCompleted=true'));
     renderToday();
+    if (taskListWrap) taskListWrap.scrollTop = taskListScrollTop;
   } catch(e){
     document.getElementById('taskBody').innerHTML = `<div class="loading">加载失败：${esc(e.message)}</div>`;
   }
 }
 
 function productKey(e){
-  return `${encodeURIComponent(e.parent_asin || '')}__${encodeURIComponent(e.shop_account || '')}`;
+  return `${e.parent_asin || ''}__${e.shop_account || ''}`;
+}
+
+function productMatchesStatus(product, requestedStatus){
+  return !requestedStatus || product.product_status === requestedStatus;
+}
+
+function sortProducts(products, sortMode){
+  const priorityOrder = {P0: 0, P1: 1, P2: 2};
+  return [...products].sort((left, right) => {
+    if (sortMode === 'anomalyCount') {
+      const countDifference = Number(right.event_count || 0) - Number(left.event_count || 0);
+      if (countDifference) return countDifference;
+    }
+    const priorityDifference = (priorityOrder[left.priority] ?? 3) - (priorityOrder[right.priority] ?? 3);
+    if (priorityDifference) return priorityDifference;
+    const scoreDifference = Number(right.product_score || 0) - Number(left.product_score || 0);
+    if (scoreDifference) return scoreDifference;
+    return Number(right.max_days || 0) - Number(left.max_days || 0);
+  });
 }
 
 function sortEventsByPriority(events){
@@ -21,25 +43,6 @@ function sortEventsByPriority(events){
     (priority[a.priority] ?? 3) - (priority[b.priority] ?? 3) ||
     Number(b.score || 0) - Number(a.score || 0) ||
     Number(b.days || 0) - Number(a.days || 0));
-}
-
-function groupProducts(events){
-  const groups = new Map();
-  events.forEach(e => {
-    const key = productKey(e);
-    if (!groups.has(key)) groups.set(key, {key, events: []});
-    groups.get(key).events.push(e);
-  });
-  return [...groups.values()].map(group => {
-    group.events = sortEventsByPriority(group.events);
-    const main = group.events[0];
-    const imageUrl = group.events.find(event => event.image_url)?.image_url || '';
-    const productStatus = productStatusForEvents(group.events);
-    return {...main, key: group.key, image_url: imageUrl, events: group.events, event_count: group.events.length,
-      issue_names: [...new Set(group.events.map(e => e.issue || e.category || '其他'))],
-      max_days: Math.max(...group.events.map(e => Number(e.days || 0))),
-      product_status: productStatus};
-  });
 }
 
 function formatScore(score){
@@ -56,11 +59,43 @@ function severityClass(event){
   return String(eventSeverity(event)).toLowerCase();
 }
 
-function productStatusForEvents(events){
-  if (!events.length) return '未完成';
-  if (events.every(event => event.status === '已完成')) return '已完成';
-  if (events.some(event => event.status === '处理中')) return '处理中';
-  return '未完成';
+function isEventHandled(event){
+  return ['已完成', '已关闭'].includes(event?.status);
+}
+
+function productIssueTagsHtml(events){
+  const severityOrder = {S0: 0, S1: 1, S2: 2};
+  return [...events]
+    .sort((left, right) =>
+      (severityOrder[eventSeverity(left)] ?? 3) - (severityOrder[eventSeverity(right)] ?? 3) ||
+      String(left.issue || left.category || '').localeCompare(String(right.issue || right.category || ''), 'zh-CN'))
+    .map(event => {
+      const handled = isEventHandled(event);
+      return `<span class="product-issue-tag ${severityClass(event)} ${handled ? 'resolved' : ''}">${esc(eventSeverity(event))} · ${esc(event.issue || event.category || '异常')}</span>`;
+    }).join('');
+}
+
+function displayCategoryName(category){
+  return String(category || '其他').replace(/^\d+(?:\.\d+)?\s*/, '') || '其他';
+}
+
+function renderAnomalyStructure(products){
+  const structure = document.getElementById('anomalyStructure');
+  const counts = new Map();
+  products.forEach(product => product.events.forEach(event => {
+    const category = displayCategoryName(event.category);
+    counts.set(category, (counts.get(category) || 0) + 1);
+  }));
+  const rows = [...counts.entries()].sort((left, right) => right[1] - left[1]);
+  const visibleRows = rows.slice(0, 5);
+  if (rows.length > visibleRows.length) {
+    const otherCount = rows.slice(visibleRows.length).reduce((sum, [, count]) => sum + count, 0);
+    visibleRows.push(['其他', otherCount]);
+  }
+  const maximum = Math.max(...visibleRows.map(([, count]) => count), 1);
+  structure.innerHTML = `<div class="anomaly-structure-title">异常结构</div>${visibleRows.length
+    ? `<div class="anomaly-structure-list">${visibleRows.map(([category, count]) => `<div class="anomaly-structure-row"><div class="anomaly-structure-top"><span>${esc(category)}</span><b>${count}</b></div><i><em style="width:${Math.round(count / maximum * 100)}%"></em></i></div>`).join('')}</div>`
+    : '<div class="anomaly-structure-empty">当前筛选条件下暂无异常</div>'}`;
 }
 
 function productImageHtml(imageUrl, className = 'detail-product-image'){
@@ -81,66 +116,56 @@ function evidenceRowsForEvent(event){
   return '';
 }
 
-// 步骤清单：优先用后端 R6 步骤，缺失回落通用三步
-function stepsForEvent(event){
-  if (Array.isArray(event.steps) && event.steps.length) return event.steps;
-  return [
-    '核对本次判定数据与实际业务情况',
-    event.recommendation || '根据本次异常判定完成人工处理',
-    '记录实际动作并设置复查时间',
-  ];
-}
-
-// 单条清单项（纯前端临时勾选）
-function checkItemHtml(uid, idx, text){
-  return `<label class="task-check-item" data-check-uid="${esc(uid)}" data-check-idx="${idx}"><span class="task-check-box">✓</span><span class="task-check-text">${esc(text)}</span></label>`;
-}
-
 // 选中的单个异常详情
 function anomalyDetailHtml(e){
   const basis = e.judge_basis || {};
   const basisTxt = e.summary_reason || basis['判定过程'] || basis['命中依据'] || '系统暂未记录本次判定过程';
-  const steps = stepsForEvent(e);
   const evidence = evidenceRowsForEvent(e);
-  const 是交易表现 = (e.category || '').includes('交易表现');
-  const adBtn = 是交易表现
-    ? `<a class="btn ghost-blue" style="text-decoration:none;font-weight:700;padding:5px 11px;font-size:11px" href="${buildAdAgentUrl(e)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(e.event_uid)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>`
+  const hitAsin = e.scope === '变体级' && e.variant
+    ? `<div class="ab-sub anomaly-hit-asin"><b>命中 ASIN：</b>${esc(e.variant)}</div>`
     : '';
+  const recommendation = e.recommendation || '请结合判断依据核对实际业务情况后处理，并记录实际动作。';
   const sev = eventSeverity(e);
   const sevCls = severityClass(e);
   return `<article class="anomaly-detail" data-event-uid="${esc(e.event_uid)}">
     <div class="anomaly-detail-head">
       <span class="ab-title"><span class="severity-badge ${sevCls}">${esc(sev)}</span><b>${esc(e.issue || e.category || '异常')}</b></span>
-      <span class="ab-meta">执行分 ${formatScore(e.score)} · ${e.days || 0}天</span>
+      <span class="ab-meta"><span class="status ${statusClass(e.status)}">${esc(e.status || '未完成')}</span> · 执行分 ${formatScore(e.score)} · ${e.days || 0}天</span>
     </div>
     <div class="anomaly-detail-body">
+      ${hitAsin}
       <div><div class="ab-section-label">判断依据</div><div class="ab-sub">${esc(basisTxt)}</div></div>
       ${evidence ? `<div><div class="ab-section-label">关键证据</div><div class="ab-evidence">${evidence}</div></div>` : ''}
-      <div>
-        <div class="ab-section-label">建议执行步骤（可勾选）</div>
-        <div class="task-checklist">${steps.map((s, i) => checkItemHtml(e.event_uid, i, s)).join('')}</div>
-        <div class="task-check-progress" data-progress-uid="${esc(e.event_uid)}">0 / ${steps.length} 已完成</div>
-      </div>
-      ${adBtn ? `<div class="ab-agent-row">${adBtn}</div>` : ''}
+      <div><div class="ab-section-label">处理建议</div><div class="ab-sub">${esc(recommendation)}</div></div>
     </div>
   </article>`;
 }
 
 function renderToday(){
   const d = state.todayData; if (!d) return;
-  const products = groupProducts(d.events);
-  const open = d.total_products ?? d.total ?? products.length;
-  const done = d.done_today_products ?? d.done_today ?? 0;
-  const total = open + done;
+  const products = d.products || [];
+  const total = d.total_products ?? products.length;
+  const done = products.filter(product => product.product_status === '已完成').length;
+  const handledEvents = products.reduce((sum, product) => sum + Number(product.handled_event_count || 0), 0);
+  const totalEvents = products.reduce((sum, product) => sum + Number(product.event_count || 0), 0);
+  const open = Math.max(0, total - products.filter(product => ['已完成', '已关闭'].includes(product.product_status)).length);
   document.getElementById('doneNum').textContent = done;
   document.getElementById('totalNum').textContent = total;
   document.getElementById('remainNum').textContent = open;
-  document.getElementById('doneTodayNum').textContent = done;
+  document.getElementById('doneTodayNum').textContent = d.done_today_products ?? 0;
+  document.getElementById('doneEventNum').textContent = handledEvents;
+  document.getElementById('totalEventNum').textContent = totalEvents;
   const pct = total ? Math.round(done/total*100) : 0;
   document.getElementById('goalPct').textContent = `完成 ${pct}%`;
   document.getElementById('goalBar').style.width = pct + '%';
 
-  const waitCnt = products.filter(e => e.product_status === '未完成').length;
+  const historicalEventCount = Number(d.historical_event_count || 0);
+  const historicalProductCount = Number(d.historical_product_count || 0);
+  const historicalNotice = historicalEventCount
+    ? `<div class="task-history-notice">另有 ${historicalEventCount} 条历史异常（${historicalProductCount} 个产品）未出现在最新巡检结果中，已保留在“全部异常”供确认，不计入本页完成进度。</div>`
+    : '';
+
+  const waitCnt = products.filter(product => !['已完成', '已关闭'].includes(product.product_status)).length;
   // 产品只归入其最高优先级的一个任务池，避免同一产品因包含多个异常而重复计数。
   const productP0 = products.filter(product => product.priority === 'P0').length;
   const productP1 = products.filter(product => product.priority === 'P1').length;
@@ -153,21 +178,33 @@ function renderToday(){
     <div class="queue-item ${state.filters.quickMode==='all'?'active':''}" data-queue="all"><i class="qdot green"></i><div class="qname">全部任务<small>不筛选</small></div><div class="qcount">${products.length}</div></div>
   `;
   document.querySelectorAll('.queue-item[data-queue]').forEach(el => {
-    el.onclick = () => { state.filters.quickMode = el.dataset.queue; renderToday(); };
+    el.onclick = () => {
+      const mode = el.dataset.queue;
+      state.filters.quickMode = mode;
+      state.filters.priority = ['P0', 'P1', 'P2'].includes(mode) ? mode : '';
+      state.filters.status = mode === 'wait' ? '未完成' : '';
+      const priorityFilter = document.getElementById('priorityFilter');
+      const statusFilter = document.getElementById('statusFilter');
+      if (priorityFilter) priorityFilter.value = state.filters.priority || 'all';
+      if (statusFilter) statusFilter.value = state.filters.status || 'all';
+      renderToday();
+    };
   });
 
   const q = state.filters.q.toLowerCase(), pf = state.filters.priority, sf = state.filters.status, qm = state.filters.quickMode;
-  const filteredProducts = products.filter(product => {
+  const filteredProducts = sortProducts(products.filter(product => {
     const productSearchText = product.events.map(event =>
       `${event.parent_asin || ''}${event.product_name || ''}${event.parent_sku || ''}`
     ).join('').toLowerCase();
     if (q && !productSearchText.includes(q)) return false;
     if (pf && product.priority !== pf) return false;
-    if (sf && product.product_status !== sf) return false;
+    if (!productMatchesStatus(product, sf)) return false;
     if (['P0', 'P1', 'P2'].includes(qm) && product.priority !== qm) return false;
-    if (qm === 'wait' && product.product_status !== '未完成') return false;
+    if (qm === 'wait' && ['已完成', '已关闭'].includes(product.product_status)) return false;
     return true;
-  });
+  }), state.filters.sort);
+  document.getElementById('productSortLabel').textContent = state.filters.sort === 'anomalyCount' ? '按异常数量排序' : '按优先级排序';
+  renderAnomalyStructure(filteredProducts);
   const body = document.getElementById('taskBody');
   if (!filteredProducts.length){
     body.innerHTML = '<div class="empty-row">当前筛选条件下无任务</div>';
@@ -177,17 +214,18 @@ function renderToday(){
     document.getElementById('detailScore').textContent = '执行分 -';
     document.getElementById('detailTitle').textContent = '当前筛选条件下无任务';
     document.getElementById('detailMeta').textContent = '请调整筛选条件后再查看';
+    document.getElementById('detailInspectionTime').textContent = '巡检时间：-';
     document.getElementById('detailScroll').innerHTML = '<div class="detail-empty">暂无可查看的产品任务</div>';
     ['rejectBtn','aiBtn','completeBtn'].forEach(id => document.getElementById(id).disabled = true);
     return;
   }
-  body.innerHTML = filteredProducts.map((product, i) => {
+  body.innerHTML = historicalNotice + filteredProducts.map((product, i) => {
     const e = product.events[0];
     const selected = product.key === state.selectedProductKey;
     return `<article class="product-task-card ${selected?'selected':''}" data-product-index="${i}" data-product-key="${esc(product.key)}">
       <div class="product-card-photo">${productImageHtml(product.image_url, 'product-card-image')}</div>
-      <div class="product-card-copy"><b>${esc(e.product_name || e.parent_asin)}</b><span>${esc(e.parent_asin)} · ${esc(e.shop_account||'-')}</span><small>${product.event_count} 个异常 · ${esc(product.product_status)}</small></div>
-      <div class="product-card-badges"><i class="priority ${String(e.priority || 'P2').toLowerCase()}">${esc(e.priority || '-')}</i><span>${formatScore(product.product_score ?? e.score)} 分</span></div>
+      <div class="product-card-copy"><b>${esc(e.product_name || e.parent_asin)}</b><span>${esc(e.parent_asin)} · ${esc(e.shop_account||'-')}</span><div class="product-issue-tags">${productIssueTagsHtml(product.events)}</div></div>
+      <div class="product-card-badges"><i class="priority ${String(e.priority || 'P2').toLowerCase()}">${esc(e.priority || '-')}</i><span>${formatScore(product.product_score ?? e.score)} 分</span><b class="status ${statusClass(product.product_status)}">${esc(product.product_status)}</b></div>
     </article>`;
   }).join('');
   body.querySelectorAll('.product-task-card[data-product-index]').forEach(card => {
@@ -207,12 +245,15 @@ function renderToday(){
 
 // 选中产品 → 产品摘要 + 单异常展开
 function selectProduct(key){
-  const productEvents = sortEventsByPriority(
-    state.todayData?.events.filter(item => productKey(item) === key) || []);
+  const detailScroll = document.getElementById('detailScroll');
+  const sameProduct = state.selectedProductKey === key;
+  const previousScrollTop = detailScroll ? detailScroll.scrollTop : 0;
+  const product = state.todayData?.products?.find(item => item.key === key);
+  const productEvents = sortEventsByPriority(product?.events || []);
   if (!productEvents.length) return;
   const main = productEvents[0];
   const productScore = productEvents.find(item => item.product_score != null)?.product_score;
-  const productStatus = productStatusForEvents(productEvents);
+  const productStatus = product?.product_status || '未完成';
   const imageUrl = productEvents.find(item => item.image_url)?.image_url || '';
   const qualityEvents = productEvents.filter(item => {
     const quality = item['数据状态'] || {};
@@ -233,9 +274,9 @@ function selectProduct(key){
   document.getElementById('detailPriority').textContent = `产品 ${main.priority || 'P2'}`;
   document.getElementById('detailScore').textContent = `产品执行分 ${formatScore(productScore)}`;
   document.getElementById('detailTitle').textContent = main.product_name || main.parent_asin;
-  document.getElementById('detailMeta').textContent = `${main.parent_asin} · ${main.parent_sku||'-'} · ${main.shop_account||'-'} · ${main.site||''} · 巡检时间：${main.inspection_time ? main.inspection_time.slice(0, 16) : '未关联'}`;
-  document.getElementById('detailScroll').scrollTop = 0;
-  document.getElementById('detailScroll').innerHTML = `
+  document.getElementById('detailMeta').textContent = `${main.parent_asin} · ${main.parent_sku||'-'} · ${main.shop_account||'-'} · ${main.site||''}`;
+  document.getElementById('detailInspectionTime').textContent = `巡检时间：${main.inspection_time ? main.inspection_time.slice(0, 16) : '未关联'}`;
+  detailScroll.innerHTML = `
     <div class="product-summary-hero">
       <div class="product-summary-image">${productImageHtml(imageUrl)}</div>
       <div class="product-summary-copy">
@@ -252,22 +293,79 @@ function selectProduct(key){
     ${firstQuality ? `<div class="data-quality ${['INSUFFICIENT','FAILED','UNKNOWN'].includes(firstQuality['状态']) ? 'critical' : 'partial'}"><b>数据状态：${esc(firstQuality['状态文案'] || '部分数据不足')}</b><span>${qualityEvents.length} 个异常的辅助数据不完整，处理时请注意。</span></div>` : ''}
     <section class="summary-section product-issues-section">
       <div class="summary-section-head"><span>本产品异常</span><div class="summary-issues-tools"><small>${productEvents.length} 项 · ${severityCounts.map(item => `${item.severity} ${item.count}`).join(' · ')}</small><a class="btn ghost-blue ad-agent-summary-btn" href="${buildAdAgentUrl(adEvent)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(adEvent.event_uid)}')">点击进入广告决策Agent页面</a></div></div>
-      <div class="summary-issue-grid">${productEvents.map(event => `<button class="summary-issue-card ${severityClass(event)} ${event.event_uid === selectedEvent.event_uid ? 'primary-issue' : ''}" type="button" data-event-uid="${esc(event.event_uid)}"><span class="severity-badge ${severityClass(event)}">${esc(eventSeverity(event))}</span><b>${esc(event.issue || event.category || '异常')}</b><span>${formatScore(event.score)} 分 · 已持续 ${event.days || 0} 天</span></button>`).join('')}</div>
+      <div class="summary-issue-grid">${productEvents.map(event => `<button class="summary-issue-card ${isEventHandled(event) ? 'done-issue' : severityClass(event)} ${event.event_uid === selectedEvent.event_uid ? 'primary-issue' : ''}" type="button" data-event-uid="${esc(event.event_uid)}"><span class="severity-badge ${isEventHandled(event) ? 'done' : severityClass(event)}">${isEventHandled(event) ? '已完成' : esc(eventSeverity(event))}</span><b>${esc(event.issue || event.category || '异常')}</b><span>${formatScore(event.score)} 分 · 已持续 ${event.days || 0} 天</span></button>`).join('')}</div>
     </section>
     ${anomalyDetailHtml(selectedEvent)}
     <div class="section" style="margin-top:4px"><div class="section-head"><span>执行记录</span><span id="opFormTarget">${esc(selectedEvent.issue || selectedEvent.category || '')}</span></div>
       <div class="section-body op-form">
         <div class="op-row"><label>处理结果</label><select id="opResult"><option value="">请选择</option><option>已按建议执行</option><option>部分执行</option><option>建议不适用</option><option>转人工复核</option></select></div>
         <div class="op-row"><label>实际动作</label><input id="opAction" placeholder="简要描述实际执行了什么"/></div>
-        <div class="op-row"><label>复查时间</label><select id="opReview"><option value="3" selected>3天后</option><option value="">不复查</option><option value="7">7天后</option><option value="14">14天后</option></select></div>
+        <div class="op-row"><label>复查时间</label><div class="op-review-control"><select id="opReview"><option value="3" selected>3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option><option value="">不复查</option></select><div class="op-review-custom" id="opReviewCustomWrap" style="display:none"><input id="opReviewCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义复查天数"/><span class="op-review-date" id="opReviewDateHint">-</span></div></div></div>
         <div class="op-row"><label>备注</label><input id="opNotes" placeholder="补充人工判断或例外原因"/></div>
       </div>
     </div>
   `;
+  detailScroll.scrollTop = sameProduct ? previousScrollTop : 0;
   document.querySelectorAll('.product-task-card').forEach(card => card.classList.toggle('selected', card.dataset.productKey === key));
   bindAnomalyBlockEvents();
-  ['rejectBtn','aiBtn','completeBtn'].forEach(id => document.getElementById(id).disabled = false);
+  bindReviewScheduleControls();
+  const eventDone = isEventHandled(selectedEvent);
+  const completeBtn = document.getElementById('completeBtn');
+  const rejectBtn = document.getElementById('rejectBtn');
+  const aiBtn = document.getElementById('aiBtn');
+  rejectBtn.disabled = eventDone;
+  completeBtn.disabled = eventDone;
+  completeBtn.textContent = eventDone ? '已提交，待复查' : '提交处理并复查';
+  aiBtn.disabled = false;
   setAiBtnText();
+}
+
+function bindReviewScheduleControls(){
+  const reviewSelect = document.getElementById('opReview');
+  const customDays = document.getElementById('opReviewCustom');
+  const customWrap = document.getElementById('opReviewCustomWrap');
+  const dateHint = document.getElementById('opReviewDateHint');
+  if (!reviewSelect || !customDays || !customWrap || !dateHint) return;
+  const updateDateHint = () => {
+    const days = Number(customDays.value);
+    dateHint.textContent = Number.isInteger(days) && days > 0 ? formatReviewDateHint(days) : '-';
+  };
+  reviewSelect.onchange = () => {
+    const isCustom = reviewSelect.value === 'custom';
+    customWrap.style.display = isCustom ? 'flex' : 'none';
+    customDays.required = isCustom;
+    if (isCustom) {
+      updateDateHint();
+      customDays.focus();
+    }
+  };
+  customDays.oninput = updateDateHint;
+}
+
+function localDateAfter(days){
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatReviewDateHint(days){
+  const [, month, day] = localDateAfter(days).split('-');
+  return `${Number(month)}月${Number(day)}日`;
+}
+
+function selectedReviewDate(){
+  const reviewValue = document.getElementById('opReview').value;
+  if (reviewValue === 'custom') {
+    const customDays = Number(document.getElementById('opReviewCustom').value);
+    if (!Number.isInteger(customDays) || customDays < 1) throw new Error('请输入大于 0 的复查天数');
+    return localDateAfter(customDays);
+  }
+  const days = Number(reviewValue);
+  return Number.isFinite(days) && days > 0 ? localDateAfter(days) : null;
 }
 
 // 聚焦某个异常：重绘该产品的唯一展开详情，并绑定底部操作区。
@@ -284,38 +382,37 @@ function bindAnomalyBlockEvents(){
   document.querySelectorAll('#detailScroll .summary-issue-card[data-event-uid]').forEach(card => {
     card.onclick = () => focusEvent(card.dataset.eventUid);
   });
-  document.querySelectorAll('#detailScroll .task-check-item').forEach(item => {
-    item.onclick = (ev) => {
-      ev.preventDefault();
-      item.classList.toggle('done');
-      const uid = item.dataset.checkUid;
-      const items = [...document.querySelectorAll(`.task-check-item[data-check-uid="${CSS.escape(uid)}"]`)];
-      const done = items.filter(x => x.classList.contains('done')).length;
-      const prog = document.querySelector(`.task-check-progress[data-progress-uid="${CSS.escape(uid)}"]`);
-      if (prog) prog.textContent = `${done} / ${items.length} 已完成`;
-    };
-  });
 }
 
 document.getElementById('completeBtn').onclick = async () => {
   if (!state.selectedEventUid) return;
-  const days = parseInt(document.getElementById('opReview').value);
-  const reviewAt = days ? (() => {
-    const d = new Date(); d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0,10);
-  })() : null;
-  await api(`/api/tasks/${state.selectedEventUid}/action`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      userId: state.viewerId, action_type: '完成',
-      result: document.getElementById('opResult').value,
-      actual_action: document.getElementById('opAction').value,
-      review_at: reviewAt,
-      notes: document.getElementById('opNotes').value,
-    })
-  });
-  toast('已标记完成');
-  await loadToday();
+  const btn = document.getElementById('completeBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const reviewAt = selectedReviewDate();
+    const result = await api(`/api/tasks/${state.selectedEventUid}/action`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        userId: state.viewerId, action_type: '完成',
+        result: document.getElementById('opResult').value,
+        actual_action: document.getElementById('opAction').value,
+        review_at: reviewAt,
+        notes: document.getElementById('opNotes').value,
+      })
+    });
+    toast(result.product_status === '已完成'
+      ? '该产品全部异常已处理，已进入已完成'
+      : '当前异常已完成；该产品还有其他异常待处理');
+    await loadToday();
+  } catch (error) {
+    toast(error.message.includes('已处理待复扫') ? '该异常已经提交过，当前等待复查' : `提交失败：${error.message}`);
+    await loadToday();
+  } finally {
+    const current = state.todayData?.events.find(event => event.event_uid === state.selectedEventUid);
+    btn.disabled = ['已完成', '已关闭'].includes(current?.status);
+    btn.textContent = btn.disabled ? '已提交，待复查' : '提交处理并复查';
+  }
 };
 
 document.getElementById('rejectBtn').onclick = async () => {
@@ -326,7 +423,7 @@ document.getElementById('rejectBtn').onclick = async () => {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ userId: state.viewerId, action_type: '不处理', notes })
   });
-  toast('已标记不处理');
+  toast('已记录不处理原因，并关闭该异常');
   await loadToday();
 };
 
@@ -445,6 +542,18 @@ async function markDoingAndOpen(eventUid){
 }
 
 document.getElementById('searchInput').oninput = e => { state.filters.q = e.target.value; renderToday(); };
-document.getElementById('priorityFilter').onchange = e => { state.filters.priority = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
-document.getElementById('statusFilter').onchange = e => { state.filters.status = e.target.value === 'all' ? '' : e.target.value; renderToday(); };
+document.getElementById('priorityFilter').onchange = e => {
+  state.filters.priority = e.target.value === 'all' ? '' : e.target.value;
+  state.filters.quickMode = 'all';
+  renderToday();
+};
+document.getElementById('statusFilter').onchange = e => {
+  state.filters.status = e.target.value === 'all' ? '' : e.target.value;
+  state.filters.quickMode = 'all';
+  renderToday();
+};
+document.getElementById('sortFilter').onchange = e => {
+  state.filters.sort = e.target.value;
+  renderToday();
+};
 document.getElementById('reloadBtn').onclick = () => loadToday();

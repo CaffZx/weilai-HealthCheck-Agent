@@ -65,7 +65,7 @@ def api_history(
             "proof": sum(1 for r in records if r["complete"] == "完整"),
             "pending": sum(1 for r in records if r["complete"] == "待补"),
             "with_new_event": sum(1 for r in records if r["new_event"]),
-            "products": len({r["parent_asin"] for r in records}),
+            "products": len({(r["parent_asin"], r["shop_account"]) for r in records}),
         },
     }
 
@@ -124,9 +124,9 @@ def api_dashboard(
     p0_ontime = sum(1 for r in p0_records if r["on_time"])
     p0_rate = round(p0_ontime / len(p0_records) * 100, 1) if p0_records else 0
 
-    asin_counts = Counter(e["parent_asin"] for e in all_events)
-    repeat_products = sum(1 for c in asin_counts.values() if c >= 2)
-    repeat_rate = round(repeat_products / (len(asin_counts) or 1) * 100, 1)
+    product_counts = Counter((e["parent_asin"], e["shop_account"]) for e in all_events)
+    repeat_products = sum(1 for c in product_counts.values() if c >= 2)
+    repeat_rate = round(repeat_products / (len(product_counts) or 1) * 100, 1)
 
     # 每日完成量
     day_map = {(since + _dt.timedelta(days=i)).isoformat(): 0 for i in range(days)}
@@ -141,7 +141,7 @@ def api_dashboard(
     for e in all_events:
         cat = e.get("category") or "其他"
         cat_counter[cat] += 1
-        cat_products.setdefault(cat, set()).add(e["parent_asin"])
+        cat_products.setdefault(cat, set()).add((e["parent_asin"], e["shop_account"]))
     anomaly = sorted(
         [{"name": k, "events": v, "products": len(cat_products[k])} for k, v in cat_counter.items()],
         key=lambda x: -x["events"],
@@ -174,18 +174,19 @@ def api_dashboard(
     )
 
     # 高频异常产品
-    top_asins = [a for a, c in asin_counts.most_common(20) if c >= 2]
+    top_products = [key for key, count in product_counts.most_common(20) if count >= 2]
     name_map = local_store.query_product_names_by_shop()
     repeat_products_list = []
-    for asin in top_asins:
-        asin_events = [e for e in all_events if e["parent_asin"] == asin]
-        latest = max(asin_events, key=lambda e: e.get("last_seen") or "")
-        actions_cnt = sum(1 for r in records if r["parent_asin"] == asin and r["action_type"] == "完成")
-        recent = next((r for r in records if r["parent_asin"] == asin), None)
+    for parent_asin, shop_account in top_products:
+        product_events = [e for e in all_events if (e["parent_asin"], e["shop_account"]) == (parent_asin, shop_account)]
+        latest = max(product_events, key=lambda e: e.get("last_seen") or "")
+        actions_cnt = sum(1 for r in records if (r["parent_asin"], r["shop_account"]) == (parent_asin, shop_account) and r["action_type"] == "完成")
+        recent = next((r for r in records if (r["parent_asin"], r["shop_account"]) == (parent_asin, shop_account)), None)
         repeat_products_list.append({
-            "parent_asin": asin,
-            "product_name": name_map.get((asin, (recent or {}).get("shop_account"))),
-            "count": asin_counts[asin],
+            "parent_asin": parent_asin,
+            "shop_account": shop_account,
+            "product_name": name_map.get((parent_asin, shop_account)),
+            "count": product_counts[(parent_asin, shop_account)],
             "issue": latest.get("issue"),
             "actions": actions_cnt,
             "effect": (recent or {}).get("effect") or "-",

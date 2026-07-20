@@ -117,7 +117,7 @@ def _ai_ready_keys() -> set[str]:
 
 
 def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
-    """拉出该用户名下所有事件，附带产品定位/持续天数/最新 action 状态。"""
+    """拉出该用户名下所有事件，事件状态只以 event_pool 正式状态机为准。"""
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
         rows = c.execute("""
@@ -142,31 +142,14 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
     img_map = local_store.query_image_urls_by_shop()
     inspection_map = local_store.query_latest_inspection_results()
     ai_ready = _ai_ready_keys()
-    with sqlite3.connect(local_store.DB_PATH) as c:
-        c.row_factory = sqlite3.Row
-        act_rows = c.execute("""
-            SELECT event_uid, action_type, result, actual_action, review_at, notes, effect, created_at
-            FROM task_action
-            WHERE id IN (SELECT MAX(id) FROM task_action GROUP BY event_uid)
-        """).fetchall()
-        act_map = {r["event_uid"]: dict(r) for r in act_rows}
-
     out = []
     for r in rows:
         d = dict(r)
         uid = d["唯一识别"]
-        latest_action = act_map.get(uid)
-        internal_status = d.get("当前状态") or "新发现"
-        if latest_action:
-            t = latest_action.get("action_type")
-            internal_status = {"完成": "已完成", "不处理": "已关闭", "标记处理中": "处理中", "待复查": "待复查"}.get(t, internal_status)
-        if only_open and internal_status in ("已关闭", "已完成"):
+        lifecycle_status = d.get("当前状态") or "新发现"
+        status = event_display_status(lifecycle_status)
+        if only_open and status in ("已完成", "已关闭"):
             continue
-        status = {
-            "处理中": "处理中",
-            "已完成": "已完成",
-            "已关闭": "已完成",
-        }.get(internal_status, "未完成")
 
         sev = d.get("严重度") or "S2"
         _shop_id = shop_id_map.get((d.get("父ASIN"), d.get("店铺账号")))
@@ -217,6 +200,14 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
                     "级别": "重要",
                 }],
             }
+        latest_card_issues = {
+            (detail.get("问题点位"), detail.get("该条严重度"))
+            for detail in inspection_card.get("异常明细") or []
+        }
+        appears_in_latest_inspection = (
+            (d.get("问题点位"), sev) in latest_card_issues
+            if inspection else None
+        )
         out.append({
             "event_uid": uid,
             "parent_asin": d.get("父ASIN"),
@@ -242,7 +233,8 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "tier": tier,
             "days": days,
             "status": status,
-            "internal_status": internal_status,
+            "internal_status": lifecycle_status,
+            "lifecycle_status": lifecycle_status,
             "first_seen": d.get("首次命中时间"),
             "last_seen": d.get("最近命中时间"),
             "last_action": d.get("上次处理动作"),
@@ -250,14 +242,114 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "last_action_by": d.get("上次处理人"),
             "inspection_time": inspection.get("created_at"),
             "inspection_batch": inspection.get("batch_no"),
+            "appears_in_latest_inspection": appears_in_latest_inspection,
             "judge_basis": judge_basis,
             "recommendation": inspection_detail.get("处理建议"),
             "steps": inspection_detail.get("执行步骤") or [],
             "summary_reason": inspection_detail.get("判断依据") or inspection_detail.get("具体表现"),
-            "latest_action": latest_action,
             "数据状态": data_status,
         })
     return out
+
+
+def unassigned_event_summary() -> dict:
+    """返回无法归属到负责人工作台的事件概览，供数据健康页提示。"""
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        row = c.execute("""
+            SELECT COUNT(*) AS event_count,
+                   COUNT(DISTINCT e.父ASIN || char(31) || e.店铺账号) AS product_count
+            FROM event_pool e
+            WHERE NOT EXISTS (
+                SELECT 1 FROM asin_owner o
+                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
+            )
+        """).fetchone()
+    return {"event_count": row[0], "product_count": row[1]}
+
+
+def event_display_status(lifecycle_status: str | None) -> str:
+    """把事件生命周期映射为运营任务状态；复查状态单独由复盘页管理。"""
+    if lifecycle_status == "处理中":
+        return "处理中"
+    if lifecycle_status in ("待观察", "长期跟进"):
+        return "待复查"
+    if lifecycle_status == "已处理待复扫":
+        return "已完成"
+    if lifecycle_status in ("误报", "忽略", "人工中断"):
+        return "已关闭"
+    if lifecycle_status == "已关闭":
+        return "已完成"
+    return "未完成"
+
+
+def product_status_for_events(events: list[dict]) -> str:
+    """父 ASIN + 店铺的唯一状态口径。"""
+    statuses = [event.get("status") for event in events]
+    if not statuses:
+        return "未完成"
+    handled = {"已完成", "已关闭"}
+    if any(status == "处理中" for status in statuses):
+        return "处理中"
+    if all(status == "已完成" for status in statuses):
+        return "已完成"
+    if all(status in ("已完成", "已关闭") for status in statuses):
+        return "已关闭"
+    if any(status in handled for status in statuses):
+        return "处理中"
+    if any(status == "待复查" for status in statuses):
+        return "待复查"
+    return "未完成"
+
+
+def product_matches_status(product_status: str | None, requested_status: str | None) -> bool:
+    """产品状态筛选口径：各状态互斥；未完成不包含处理中。"""
+    return not requested_status or product_status == requested_status
+
+
+def group_events_by_product(events: list[dict]) -> list[dict]:
+    """集中构造产品 DTO，所有页面共享同一 ASIN + 店铺聚合口径。"""
+    groups: dict[tuple[str | None, str | None], list[dict]] = {}
+    for event in events:
+        groups.setdefault((event.get("parent_asin"), event.get("shop_account")), []).append(event)
+
+    products = []
+    for (parent_asin, shop_account), product_events in groups.items():
+        product_events.sort(key=lambda event: (
+            PRIORITY_ORDER.get(event.get("priority"), 3),
+            -float(event.get("score") or 0),
+            TIER_ORDER.get(event.get("tier"), 4),
+            -int(event.get("days") or 0),
+        ))
+        main = product_events[0]
+        product_status = product_status_for_events(product_events)
+        products.append({
+            "key": f"{parent_asin or ''}__{shop_account or ''}",
+            "parent_asin": parent_asin,
+            "shop_account": shop_account,
+            "product_name": main.get("product_name"),
+            "image_url": next((event.get("image_url") for event in product_events if event.get("image_url")), ""),
+            "parent_sku": main.get("parent_sku"),
+            "site": main.get("site"),
+            "priority": main.get("priority") or "P2",
+            "product_score": next((event.get("product_score") for event in product_events if event.get("product_score") is not None), None),
+            "tier": main.get("tier"),
+            "product_status": product_status,
+            "event_count": len(product_events),
+            "status_counts": {status: sum(1 for event in product_events if event.get("status") == status)
+                              for status in ("未完成", "处理中", "待复查", "已完成", "已关闭")},
+            "handled_event_count": sum(1 for event in product_events if event.get("status") in ("已完成", "已关闭")),
+            "open_event_count": sum(1 for event in product_events if event.get("status") not in ("已完成", "已关闭")),
+            "max_days": max(int(event.get("days") or 0) for event in product_events),
+            "issue_names": list(dict.fromkeys(event.get("issue") or event.get("category") or "其他" for event in product_events)),
+            "events": product_events,
+        })
+    products.sort(key=lambda product: (
+        PRIORITY_ORDER.get(product["priority"], 3),
+        -float(product.get("product_score") or max((event.get("score") or 0 for event in product["events"]), default=0)),
+        TIER_ORDER.get(product.get("tier"), 4),
+        -product["max_days"],
+    ))
+    return products
 
 
 def fetch_history_records(target_user_id: int) -> list[dict]:
@@ -289,7 +381,8 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
                 users[u["id"]] = u["user_name"]
 
         events_after = c.execute("""
-            SELECT 唯一识别 as uid, 父ASIN as parent_asin, 异常大类 as category, 问题点位 as issue,
+            SELECT 唯一识别 as uid, 父ASIN as parent_asin, 店铺账号 as shop_account,
+                   异常大类 as category, 问题点位 as issue,
                    首次命中时间 as first_seen, 严重度 as severity
             FROM event_pool
             WHERE EXISTS (
@@ -301,7 +394,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
 
     idx = {}
     for e in events_after:
-        idx.setdefault((e["parent_asin"], e["category"] or ""), []).append(dict(e))
+        idx.setdefault((e["parent_asin"], e["shop_account"], e["category"] or ""), []).append(dict(e))
 
     name_map = local_store.query_product_names_by_shop()
 
@@ -319,7 +412,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
         complete = "完整" if (d.get("result") and d.get("actual_action")) else "待补"
 
         new_event = None
-        for e in idx.get((d["parent_asin"], d["category"] or ""), []):
+        for e in idx.get((d["parent_asin"], d["shop_account"], d["category"] or ""), []):
             if e["uid"] == d["event_uid"]:
                 continue
             if e["first_seen"] and d["created_at"] and e["first_seen"] > d["created_at"]:

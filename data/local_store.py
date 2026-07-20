@@ -37,6 +37,113 @@ def init_db() -> None:
         if "inspection_result_id" not in columns:
             c.execute("ALTER TABLE event_pool ADD COLUMN inspection_result_id INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_event_result ON event_pool(inspection_result_id)")
+        _migrate_task_action_statuses(c)
+        _repair_event_history_integrity(c)
+        _repair_pending_review_statuses(c)
+
+
+def _migrate_task_action_statuses(conn: sqlite3.Connection) -> None:
+    """一次性将旧工作台操作回填到 event_pool 的正式状态机。"""
+    marker = "event_status_backfill_v1"
+    if conn.execute("SELECT 1 FROM app_migration WHERE migration_key=?", (marker,)).fetchone():
+        return
+
+    rows = conn.execute("""
+        SELECT a.event_uid, a.action_type, a.review_at, a.notes, a.created_at,
+               e.id, e.当前状态, e.严重度
+        FROM task_action a
+        JOIN event_pool e ON e.唯一识别=a.event_uid
+        WHERE a.id IN (SELECT MAX(id) FROM task_action GROUP BY event_uid)
+    """).fetchall()
+    targets = {
+        "标记处理中": "处理中",
+        "完成": "已处理待复扫",
+        "不处理": "忽略",
+        "待复查": "新发现",
+    }
+    changed = 0
+    for row in rows:
+        target = targets.get(row["action_type"])
+        if not target or target == row["当前状态"]:
+            continue
+        conn.execute("""
+            UPDATE event_pool
+            SET 当前状态=?, 下一次复查时间=CASE WHEN ?='已处理待复扫' THEN ? ELSE 下一次复查时间 END,
+                复查时间来源=CASE WHEN ?='已处理待复扫' THEN 'manual' ELSE 复查时间来源 END,
+                上次处理动作=?, 上次处理时间=?, 更新时间=datetime('now','localtime')
+            WHERE id=?
+        """, (target, target, row["review_at"], target, row["action_type"], row["created_at"], row["id"]))
+        conn.execute("""
+            INSERT INTO event_state_log
+              (event_id, 变更前状态, 变更后状态, 变更前严重度, 变更后严重度,
+               变更类型, 变更原因, 操作人, 上下文)
+            VALUES (?,?,?,?,?,'历史回填','根据旧工作台最新操作回填正式状态','系统','{}')
+        """, (row["id"], row["当前状态"], target, row["严重度"], row["严重度"]))
+        changed += 1
+    conn.execute(
+        "INSERT INTO app_migration (migration_key, details) VALUES (?, ?)",
+        (marker, json.dumps({"changed_events": changed}, ensure_ascii=False)),
+    )
+
+
+def _repair_event_history_integrity(conn: sqlite3.Connection) -> None:
+    """清理早期无父事件的状态日志，并记录一次性迁移结果。"""
+    marker = "event_history_integrity_v1"
+    if conn.execute("SELECT 1 FROM app_migration WHERE migration_key=?", (marker,)).fetchone():
+        return
+
+    orphan_count = conn.execute("""
+        SELECT COUNT(*)
+        FROM event_state_log AS log
+        LEFT JOIN event_pool AS event ON event.id=log.event_id
+        WHERE event.id IS NULL
+    """).fetchone()[0]
+    if orphan_count:
+        conn.execute("""
+            DELETE FROM event_state_log
+            WHERE NOT EXISTS (
+                SELECT 1 FROM event_pool WHERE event_pool.id=event_state_log.event_id
+            )
+        """)
+    conn.execute(
+        "INSERT INTO app_migration (migration_key, details) VALUES (?, ?)",
+        (marker, json.dumps({"removed_orphan_state_logs": orphan_count}, ensure_ascii=False)),
+    )
+
+
+def _repair_pending_review_statuses(conn: sqlite3.Connection) -> None:
+    """将旧版“待复查”操作恢复为正式待观察状态，避免任务与历史记录冲突。"""
+    marker = "event_pending_review_backfill_v1"
+    if conn.execute("SELECT 1 FROM app_migration WHERE migration_key=?", (marker,)).fetchone():
+        return
+
+    rows = conn.execute("""
+        SELECT e.id, e.当前状态, e.严重度, a.created_at
+        FROM event_pool e
+        JOIN task_action a ON a.id=(
+            SELECT id FROM task_action
+            WHERE event_uid=e.唯一识别
+            ORDER BY id DESC LIMIT 1
+        )
+        WHERE e.当前状态='新发现' AND a.action_type='待复查'
+    """).fetchall()
+    for row in rows:
+        conn.execute("""
+            UPDATE event_pool
+            SET 当前状态='待观察', 上次处理动作='待复查', 上次处理时间=?,
+                更新时间=datetime('now','localtime')
+            WHERE id=?
+        """, (row["created_at"], row["id"]))
+        conn.execute("""
+            INSERT INTO event_state_log
+              (event_id, 变更前状态, 变更后状态, 变更前严重度, 变更后严重度,
+               变更类型, 变更原因, 操作人, 上下文)
+            VALUES (?,?,?,?,?,'历史回填','根据旧版待复查操作恢复待观察状态','系统','{}')
+        """, (row["id"], row["当前状态"], "待观察", row["严重度"], row["严重度"]))
+    conn.execute(
+        "INSERT INTO app_migration (migration_key, details) VALUES (?, ?)",
+        (marker, json.dumps({"changed_events": len(rows)}, ensure_ascii=False)),
+    )
 
 
 def _migrate_shop_scoped_tables(conn: sqlite3.Connection, schema_sql: str) -> None:

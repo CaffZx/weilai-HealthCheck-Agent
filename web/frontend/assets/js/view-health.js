@@ -15,6 +15,7 @@ function renderHealth(){
   const d = state.healthData; if (!d) return;
   document.getElementById('lastHealthCheck').textContent = `最近生成：${d.generated_at||'-'}`;
   const s = d.summary || {};
+  const unassigned = d.unassigned_events || {};
   const status = s.status || 'unknown';
   const cardCls = status==='ok'?'good-card':status==='warn'?'warning-card':'danger-card';
   document.getElementById('healthKpi').innerHTML = `
@@ -22,6 +23,7 @@ function renderHealth(){
     <div class="kpi-card"><span>平均覆盖率</span><b>${((s.avg_coverage||0)*100).toFixed(1)}%</b><small>所有表汇总</small></div>
     <div class="kpi-card warning-card"><span>检查日期</span><b>${(d.check_dates||[])[0]||'-'}</b><small>${(d.check_dates||[]).length} 天</small></div>
     <div class="kpi-card"><span>数据表数</span><b>${Object.keys(d.snapshot||{}).length + Object.keys((d.daily||{})[Object.keys(d.daily||{})[0]]||{}).length}</b><small>daily + snapshot</small></div>
+    <div class="kpi-card ${unassigned.event_count ? 'warning-card' : 'good-card'}"><span>待分配异常</span><b>${unassigned.event_count||0}</b><small>${unassigned.product_count||0} 个产品尚未关联负责人</small></div>
   `;
   let dailyHtml = '';
   Object.entries(d.daily || {}).forEach(([date, tbls]) => {
@@ -43,4 +45,3 @@ function renderHealth(){
   document.getElementById('healthSnapshot').innerHTML = snapHtml || '<div class="loading">无 snapshot 数据</div>';
 }
 document.getElementById('healthReloadBtn').onclick = () => loadHealth();
-

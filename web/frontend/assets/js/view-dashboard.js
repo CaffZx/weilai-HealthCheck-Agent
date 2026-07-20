@@ -68,7 +68,7 @@ function renderDashboard(){
   const rp = d.repeat_products || [];
   document.getElementById('repeatProductBody').innerHTML = rp.length ? rp.map(p => `
     <tr>
-      <td><div class="mini-product"><b>${esc(p.product_name || p.parent_asin)}</b><span>${esc(p.parent_asin)}</span></div></td>
+      <td><div class="mini-product"><b>${esc(p.product_name || p.parent_asin)}</b><span>${esc(p.parent_asin)} · ${esc(p.shop_account || '-')}</span></div></td>
       <td><span class="repeat-num">${p.count}</span></td>
       <td>${esc(p.issue||'-')}</td>
       <td>${p.actions}</td>
@@ -81,4 +81,3 @@ function renderDashboard(){
 }
 document.getElementById('dashReloadBtn').onclick = () => loadDashboard();
 document.getElementById('dashRange').onchange = () => loadDashboard();
-

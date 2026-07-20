@@ -4,7 +4,7 @@ var state = {
   todayData: null, allData: null, reviewData: null, healthData: null,
   historyData: null, dashboardData: null, historyRange: 'all', dashRange: '7',
   selectedEventUid: null, selectedProductKey: null,
-  filters: { q:'', priority:'', status:'', quickMode:'all' },
+  filters: { q:'', priority:'', status:'', sort:'priority', quickMode:'all' },
   view: 'today',
 };
 var LS_KEY = 'hcAgent.viewerId';
@@ -23,7 +23,8 @@ function esc(s){ return String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':
 function fmtDate(iso){ if(!iso) return '-'; return String(iso).slice(0,10); }
 function statusClass(s){
   if (s === '处理中') return 'doing';
-  if (s === '已完成' || s === '已关闭') return 'done';
+  if (s === '已完成' || s === '已解决') return 'done';
+  if (s === '已关闭') return 'closed';
   if (s === '待复查') return 'wait';
   return 'pending';
 }

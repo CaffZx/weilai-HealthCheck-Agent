@@ -618,6 +618,13 @@ CREATE INDEX IF NOT EXISTS idx_task_action_uid ON task_action(event_uid);
 CREATE INDEX IF NOT EXISTS idx_task_action_user ON task_action(user_id);
 CREATE INDEX IF NOT EXISTS idx_task_action_created ON task_action(created_at);
 
+-- 应用级一次性数据迁移标记，避免历史兼容逻辑在每次启动时重复覆盖正式状态。
+CREATE TABLE IF NOT EXISTS app_migration (
+  migration_key TEXT PRIMARY KEY,
+  applied_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  details       TEXT
+);
+
 -- ============================================================
 -- Listing 产品信息（父ASIN 级快照，每日刷）
 -- 来源：erp_listing_product_info (azlisting-mcpserver)

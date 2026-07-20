@@ -56,15 +56,19 @@ SNAPSHOT_TABLES = {
 
 
 def _get_enabled_products() -> list[tuple[str, str]]:
-    """返回 [(parent_asin, shop_id)] 列表，从 erp_config 里取 enabled=1 的产品。"""
+    """返回 [(parent_asin, shop_account)]，以产品和店铺作为完整覆盖率维度。"""
     with sqlite3.connect(store.DB_PATH) as c:
         try:
             rows = c.execute("""
-                SELECT DISTINCT parent_asin, shop_id
-                FROM erp_config
-                WHERE enabled=1 AND parent_asin IS NOT NULL AND shop_id IS NOT NULL
+                SELECT DISTINCT config.parent_asin, owner.shop_account
+                FROM erp_config AS config
+                JOIN asin_owner AS owner
+                  ON owner.asin=config.parent_asin AND owner.shop_id=config.shop_id
+                WHERE config.enabled=1
+                  AND config.parent_asin IS NOT NULL
+                  AND owner.shop_account IS NOT NULL AND owner.shop_account<>''
             """).fetchall()
-            return [(r[0], str(r[1])) for r in rows]
+            return [(r[0], r[1]) for r in rows]
         except sqlite3.OperationalError:
             log.warning("erp_config 表不存在，回退到 fixture 配置")
             from data import fixture_loader
@@ -73,72 +77,91 @@ def _get_enabled_products() -> list[tuple[str, str]]:
 
 
 def _check_daily_coverage(check_date: str, table: str, date_col: str) -> dict:
-    """检查某天在某个表里的产品覆盖情况。
-    注意：daily_* 表里没有 shop_id 列（只有 shop_account），所以按 parent_asin 做覆盖率统计。"""
+    """检查某天在某个表里的产品覆盖情况，按父 ASIN + 店铺统计。"""
     products = _get_enabled_products()
-    expected_asins = {pa for pa, _ in products}
+    expected = set(products)
 
     with sqlite3.connect(store.DB_PATH) as c:
         try:
             rows = c.execute(f"""
-                SELECT DISTINCT parent_asin
+                SELECT DISTINCT parent_asin, shop_account
                 FROM {table}
-                WHERE {date_col} = ? AND parent_asin IS NOT NULL
+                WHERE {date_col} = ? AND parent_asin IS NOT NULL AND shop_account IS NOT NULL
             """, (check_date,)).fetchall()
-            found = {r[0] for r in rows}
+            found = {(r[0], r[1]) for r in rows}
         except sqlite3.OperationalError as e:
             # 若真是表结构问题，返回错误详情供排查
             return {"table": table, "error": f"查询失败: {str(e)[:80]}",
-                    "expected": len(expected_asins), "found": 0, "coverage": 0.0, "missing_count": 0}
+                    "expected": len(expected), "found": 0, "coverage": 0.0, "missing_count": 0}
 
-    missing = sorted(expected_asins - found)
-    coverage = (len(found) / len(expected_asins)) if expected_asins else 1.0
+    missing = sorted(expected - found)
+    coverage = (len(expected & found) / len(expected)) if expected else 1.0
     return {
         "table": table,
         "date": check_date,
-        "expected": len(expected_asins),
-        "found": len(found),
+        "expected": len(expected),
+        "found": len(expected & found),
         "coverage": round(coverage, 4),
         "missing_count": len(missing),
-        "missing_sample": [{"parent_asin": pa} for pa in missing[:20]],
+        "missing_sample": [{"parent_asin": parent_asin, "shop_account": shop_account}
+                           for parent_asin, shop_account in missing[:20]],
     }
 
 
 def _check_snapshot_coverage(table: str) -> dict:
     """检查快照表：每个 enabled 产品在表里是否至少有一条记录。
-    自适应列名：优先 parent_asin，无则回退 asin（product_tags 这类子体级表用 asin）。"""
+    子 ASIN 表通过 sales_child 映射回父 ASIN，再按父 ASIN + 店铺核验。"""
     products = _get_enabled_products()
-    parent_asins = {pa for pa, _ in products}
+    expected = set(products)
 
     with sqlite3.connect(store.DB_PATH) as c:
         try:
             cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
         except sqlite3.OperationalError as e:
             return {"table": table, "error": f"读取表结构失败: {str(e)[:80]}",
-                    "expected": len(parent_asins), "found": 0, "coverage": 0.0}
+                    "expected": len(expected), "found": 0, "coverage": 0.0}
         if not cols:
             return {"table": table, "error": "表不存在",
-                    "expected": len(parent_asins), "found": 0, "coverage": 0.0}
+                    "expected": len(expected), "found": 0, "coverage": 0.0}
         key_col = "parent_asin" if "parent_asin" in cols else ("asin" if "asin" in cols else None)
         if key_col is None:
             return {"table": table, "error": "表无 parent_asin/asin 列",
-                    "expected": len(parent_asins), "found": 0, "coverage": 0.0}
+                    "expected": len(expected), "found": 0, "coverage": 0.0}
+        if "shop_account" not in cols:
+            return {"table": table, "error": "表无 shop_account，无法按店铺核验",
+                    "expected": len(expected), "found": 0, "coverage": 0.0}
         try:
-            rows = c.execute(f"SELECT DISTINCT {key_col} FROM {table} WHERE {key_col} IS NOT NULL").fetchall()
-            found = {r[0] for r in rows}
+            if key_col == "parent_asin":
+                rows = c.execute(f"""
+                    SELECT DISTINCT parent_asin, shop_account
+                    FROM {table}
+                    WHERE parent_asin IS NOT NULL AND shop_account IS NOT NULL
+                """).fetchall()
+            else:
+                rows = c.execute(f"""
+                    SELECT DISTINCT sales_child.parent_asin, source.shop_account
+                    FROM {table} AS source
+                    JOIN sales_child
+                      ON sales_child.asin=source.{key_col}
+                     AND sales_child.shop_account=source.shop_account
+                    WHERE sales_child.parent_asin IS NOT NULL
+                      AND source.shop_account IS NOT NULL
+                """).fetchall()
+            found = {(r[0], r[1]) for r in rows}
         except sqlite3.OperationalError as e:
             return {"table": table, "error": f"查询失败: {str(e)[:80]}",
-                    "expected": len(parent_asins), "found": 0, "coverage": 0.0}
+                    "expected": len(expected), "found": 0, "coverage": 0.0}
 
-    missing = sorted(parent_asins - found)
-    coverage = (len(found) / len(parent_asins)) if parent_asins else 1.0
+    missing = sorted(expected - found)
+    coverage = (len(expected & found) / len(expected)) if expected else 1.0
     return {
         "table": table,
-        "expected": len(parent_asins),
-        "found": len(found),
+        "expected": len(expected),
+        "found": len(expected & found),
         "coverage": round(coverage, 4),
         "missing_count": len(missing),
-        "missing_sample": [{"parent_asin": pa} for pa in missing[:20]],
+        "missing_sample": [{"parent_asin": parent_asin, "shop_account": shop_account}
+                           for parent_asin, shop_account in missing[:20]],
     }
 
 

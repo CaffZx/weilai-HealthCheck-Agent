@@ -46,7 +46,7 @@ DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "local" / "he
     "处理中":       ["已处理待复扫", "待观察", "长期跟进", "误报", "忽略", "人工中断"],
     "待观察":       ["处理中", "已处理待复扫", "已关闭", "长期跟进", "误报", "忽略", "人工中断", "新发现"],
     "长期跟进":     ["处理中", "已处理待复扫", "已关闭", "误报", "忽略", "人工中断", "新发现"],
-    "已处理待复扫": ["已关闭", "新发现"],   # 复扫仍命中 → 回到新发现（复发）
+    "已处理待复扫": ["待观察", "已关闭", "误报", "忽略", "人工中断", "新发现"],
     "已关闭":       ["新发现"],             # 关闭后再次命中即复发
     "误报":         ["新发现"],
     "忽略":         ["新发现"],
@@ -258,35 +258,46 @@ def _严重度序(s: str | None) -> int:
 # -----------------------------------------------------------------------------
 # 状态流转（人工/自动）
 # -----------------------------------------------------------------------------
+def 流转状态_事务(conn: sqlite3.Connection, event_id: int, 下一步状态: str, 变更原因: str,
+              操作人: str = "系统", 变更类型: str = "状态流转",
+              关闭原因: str | None = None, 上下文: dict | None = None) -> tuple[bool, str]:
+    """在调用方事务中流转状态，供工作台把状态、动作和日志原子写入。"""
+    既有 = conn.execute(
+        "SELECT id, 当前状态, 严重度 FROM event_pool WHERE id=?", (event_id,)
+    ).fetchone()
+    if not 既有:
+        return False, "事件不存在"
+
+    旧状态 = 既有["当前状态"]
+    合法, 说明 = 校验状态转换(旧状态, 下一步状态)
+    if not 合法:
+        return False, 说明
+
+    更新参数 = [下一步状态, _now(), event_id]
+    更新SQL = "UPDATE event_pool SET 当前状态=?, 更新时间=?"
+    if 下一步状态 in 关闭态:
+        更新SQL += ", 关闭时间=?, 关闭原因=?"
+        更新参数 = [下一步状态, _now(), _now(), 关闭原因 or 变更原因, event_id]
+    更新SQL += " WHERE id=?"
+    conn.execute(更新SQL, tuple(更新参数))
+    _写状态日志(conn, event_id, 旧状态, 下一步状态, 既有["严重度"], 既有["严重度"],
+             变更类型=变更类型, 变更原因=变更原因, 操作人=操作人, 上下文=上下文)
+    log.info("事件状态流转 id=%s %s → %s (%s)", event_id, 旧状态, 下一步状态, 变更原因)
+    return True, 说明
+
+
 def 流转状态(event_id: int, 下一步状态: str, 变更原因: str,
              操作人: str = "系统", 变更类型: str = "状态流转",
              关闭原因: str | None = None) -> bool:
     """通用状态流转。返回是否成功。"""
     with _conn() as conn:
-        既有 = conn.execute(
-            "SELECT id, 当前状态, 严重度 FROM event_pool WHERE id=?", (event_id,)
-        ).fetchone()
-        if not 既有:
-            log.warning("流转状态失败-事件不存在 id=%s", event_id)
+        成功, 说明 = 流转状态_事务(
+            conn, event_id, 下一步状态, 变更原因, 操作人, 变更类型, 关闭原因,
+        )
+        if not 成功:
+            log.warning("流转状态失败 id=%s %s", event_id, 说明)
             return False
-
-        旧状态 = 既有["当前状态"]
-        合法, 说明 = 校验状态转换(旧状态, 下一步状态)
-        if not 合法:
-            log.warning("流转状态失败-非法转换 id=%s %s", event_id, 说明)
-            return False
-
-        更新参数 = [下一步状态, _now(), event_id]
-        更新SQL = "UPDATE event_pool SET 当前状态=?, 更新时间=?"
-        if 下一步状态 in 关闭态:
-            更新SQL += ", 关闭时间=?, 关闭原因=?"
-            更新参数 = [下一步状态, _now(), _now(), 关闭原因 or 变更原因, event_id]
-        更新SQL += " WHERE id=?"
-        conn.execute(更新SQL, tuple(更新参数))
-        _写状态日志(conn, event_id, 旧状态, 下一步状态, 既有["严重度"], 既有["严重度"],
-                 变更类型=变更类型, 变更原因=变更原因, 操作人=操作人)
         conn.commit()
-        log.info("事件状态流转 id=%s %s → %s (%s)", event_id, 旧状态, 下一步状态, 变更原因)
         return True
 
 

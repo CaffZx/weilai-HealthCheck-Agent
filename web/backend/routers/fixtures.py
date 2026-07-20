@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from data import fixture_loader, local_store
 from .. import batch_cache
-from ..common import ROOT
+from ..common import ROOT, unassigned_event_summary
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -23,7 +23,9 @@ def sync_health():
         return {"status": "no_report", "hint": "尚未执行过 python -m data.check_coverage"}
     try:
         with open(p, encoding="utf-8") as f:
-            return json.load(f)
+            report = json.load(f)
+        report["unassigned_events"] = unassigned_event_summary()
+        return report
     except Exception as e:
         return {"status": "read_error", "error": str(e)}
 

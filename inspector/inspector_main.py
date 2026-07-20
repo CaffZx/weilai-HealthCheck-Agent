@@ -303,6 +303,14 @@ def _detect_with_local_data(
         if isinstance(r, R2.命中异常):
             hits.append(r)
 
+        # 标题：仅在标题字段空/缺失时命中（审核状态、ERP 基准均无数据源，传 None）
+        r = R2.detect_标题异常(
+            标题字段=product_info.get("标题"), 审核状态=None, ERP标题基准=None,
+            r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+
     # ---- 前台详情（pangolinfo）：可判主图/副图/A+ 和无购物车的不可售 ----
     if page:
         r = R2.detect_主图异常(
@@ -382,14 +390,6 @@ def _detect_with_local_data(
             )
             if isinstance(r, R2.命中异常):
                 hits.append(r)
-
-        # 标题：仅在标题字段空/缺失时命中（审核状态、ERP 基准均无数据源，传 None）
-        r = R2.detect_标题异常(
-            标题字段=product_info.get("标题"), 审核状态=None, ERP标题基准=None,
-            r3=r3_cfg,
-        )
-        if isinstance(r, R2.命中异常):
-            hits.append(r)
 
     return hits
 

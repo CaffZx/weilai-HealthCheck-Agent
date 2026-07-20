@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>业务巡检 Agent · 运营工作台</title>
-<link rel="stylesheet" href="/ui/assets/app.css?v=27"/>
+<link rel="stylesheet" href="/ui/assets/app.css?v=35"/>
 </head>
 <body>
 <div class="app">
@@ -34,27 +34,29 @@
       <div class="goal-card compact-goal">
         <div class="goal-line"><div class="goal-num"><b id="doneNum">0</b><span> / <span id="totalNum">0</span> 个产品</span></div><div class="goal-pct" id="goalPct">完成 0%</div></div>
         <div class="progress"><i id="goalBar"></i></div>
-        <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 个产品</span><span>今日完成 <span id="doneTodayNum">0</span> 个产品</span></div>
+        <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 个产品</span><span>异常处理 <b id="doneEventNum">0</b>/<span id="totalEventNum">0</span></span><span>今日完成 <span id="doneTodayNum">0</span> 个产品</span></div>
       </div>
       <div class="overview-block"><div class="queue queue-inline" id="queueList"></div></div>
     </div>
   </section>
   <div class="today-content">
     <section class="product-pane">
-      <div class="product-pane-head"><h2>产品列表</h2><span>按优先级排序</span></div>
+      <div class="product-pane-head"><h2>产品列表</h2><span id="productSortLabel">按优先级排序</span></div>
       <div class="toolbar product-filters">
         <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
         <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
-        <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="未完成">未完成</option><option value="处理中">处理中</option><option value="已完成">已完成</option></select>
+        <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="未完成">未完成</option><option value="处理中">处理中</option><option value="待复查">待复查</option><option value="已完成">已完成</option><option value="已关闭">已关闭</option></select>
+        <select class="filter" id="sortFilter"><option value="priority">按优先级</option><option value="anomalyCount">按异常数量</option></select>
         <button class="btn" id="reloadBtn">刷新</button>
       </div>
+      <section class="anomaly-structure" id="anomalyStructure" aria-label="异常结构"></section>
       <div class="task-list-wrap" id="taskListWrap"><div id="taskBody"><div class="loading">加载中…</div></div></div>
     </section>
     <section class="detail detail-pane">
     <div class="detail-head">
       <div class="detail-kicker"><span>任务详情 · <b id="detailPriority">-</b></span><span id="detailScore">执行分 -</span></div>
       <div class="detail-title" id="detailTitle">请从左侧选择一条任务</div>
-      <div class="detail-meta" id="detailMeta">-</div>
+      <div class="detail-meta-row"><div class="detail-meta" id="detailMeta">-</div><strong class="detail-inspection-time" id="detailInspectionTime">巡检时间：-</strong></div>
     </div>
     <div class="detail-scroll" id="detailScroll">
       <div style="padding:30px;text-align:center;color:#8a93a2;font-size:12px">点击任务行查看详情</div>
@@ -62,7 +64,7 @@
     <div class="detail-actions">
       <button class="btn" id="rejectBtn" disabled>不处理</button>
       <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
-      <button class="btn primary" id="completeBtn" disabled>完成当前异常</button>
+      <button class="btn primary" id="completeBtn" disabled>提交处理并复查</button>
     </div>
     </section>
   </div>
@@ -81,7 +83,7 @@
         <div class="search wide"><input id="allSearch" placeholder="搜索 ASIN / 问题点位"/></div>
         <select id="allPriority"><option value="">全部优先级</option><option>P0</option><option>P1</option><option>P2</option></select>
         <select id="allCategory"><option value="">全部异常大类</option></select>
-        <select id="allStatus"><option value="">全部状态</option><option>未完成</option><option>处理中</option><option>已完成</option></select>
+        <select id="allStatus"><option value="">全部状态</option><option>未完成</option><option>处理中</option><option>待复查</option><option>已完成</option><option>已关闭</option></select>
         <span class="filter-result">共 <b id="allResultCount">0</b> 条</span>
       </div>
       <div class="data-table-scroll">
@@ -104,7 +106,7 @@
     <div class="kpi-grid" id="reviewKpi"></div>
     <div class="page-panel">
       <div class="filter-row">
-        <select id="reviewPeriod"><option value="today">今日到期</option><option value="3d" selected>3天内</option><option value="7d">7天内</option><option value="all">全部记录</option></select>
+        <select id="reviewPeriod"><option value="today">今日到期</option><option value="3d" selected>3天内</option><option value="7d">7天内</option><option value="30d">30天内</option><option value="all">全部记录</option></select>
         <span class="filter-result">共 <b id="reviewResultCount">0</b> 条</span>
       </div>
       <div class="data-table-scroll">
@@ -229,9 +231,9 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/ui/assets/js/common.js?v=9"></script>
-<script src="/ui/assets/js/view-today.js?v=25"></script>
-<script src="/ui/assets/js/view-all.js?v=9"></script>
+<script src="/ui/assets/js/common.js?v=10"></script>
+<script src="/ui/assets/js/view-today.js?v=45"></script>
+<script src="/ui/assets/js/view-all.js?v=10"></script>
 <script src="/ui/assets/js/view-review.js?v=9"></script>
 <script src="/ui/assets/js/view-history.js?v=9"></script>
 <script src="/ui/assets/js/view-dashboard.js?v=8"></script>
