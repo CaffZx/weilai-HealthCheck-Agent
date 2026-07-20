@@ -144,12 +144,22 @@ def _build_failed_data_quality() -> dict:
     }
 
 
-def _build_data_quality(聚合: DM.每日聚合结果, 产品打分, *, failed: bool = False) -> dict:
+def _build_data_quality(聚合: DM.每日聚合结果, 产品打分, *,
+                        快照数据: dict | None = None, failed: bool = False) -> dict:
     """将技术缺失字段转换为任务详情可读的数据状态。"""
     if failed:
         return _build_failed_data_quality()
 
     missing = list(dict.fromkeys(聚合.缺失字段 or []))
+    page = (快照数据 or {}).get("page") or {}
+    promos = (快照数据 or {}).get("price_promo") or []
+    if not page:
+        missing.append("前台商品详情（主图/副图/A+）")
+    else:
+        missing.extend(["后台链接状态与抑制标记", "Buy Box 归属"])
+    if len(promos) < 2:
+        missing.append("子体价格促销快照")
+    missing.append("ERP 促销活动配置与审核状态")
     if isinstance(产品打分, R4.观察类结果):
         missing.extend(产品打分.缺失字段 or [])
     missing = list(dict.fromkeys(missing))
@@ -171,6 +181,11 @@ def _build_data_quality(聚合: DM.每日聚合结果, 产品打分, *, failed: 
         "产品定位": ("产品定位", "无法计算产品重要性权重和执行分", "补充产品定位", "关键"),
         "产品阶段": ("产品阶段", "无法计算阶段权重和执行分", "补充产品阶段", "关键"),
         "淡旺季": ("淡旺季", "无法计算季节权重和执行分", "补充淡旺季", "关键"),
+        "前台商品详情": ("前台商品详情", "无法判断主图、副图和 A+ 内容是否完整", "抓取 Amazon 商品详情", "重要"),
+        "后台链接状态": ("后台链接状态", "无法判断抑制、下架和后台可售状态", "接入 Seller Central 状态数据", "关键"),
+        "Buy Box": ("Buy Box 归属", "无法判断是否获得黄金购物车", "接入 Buy Box 状态数据", "关键"),
+        "子体价格促销快照": ("子体价格促销", "无法比较变体价格或前台促销", "同步至少两个子体的实时价格促销快照", "重要"),
+        "ERP 促销": ("ERP 促销配置", "无法核对 ERP 活动是否在前台生效", "接入 ERP 活动配置与审核状态", "重要"),
     }
     gaps = []
     for raw in missing:
@@ -256,6 +271,8 @@ def _detect_with_local_data(
     hits: list[R2.命中异常] = []
     stock = (快照数据 or {}).get("stock") or {}
     product_info = (快照数据 or {}).get("product_info") or {}
+    page = (快照数据 or {}).get("page") or {}
+    price_promos = (快照数据 or {}).get("price_promo") or []
 
     r = R2.detect_FBA可售库存为0(
         FBA可售库存=stock.get("FBA可售库存"),
@@ -285,6 +302,86 @@ def _detect_with_local_data(
         )
         if isinstance(r, R2.命中异常):
             hits.append(r)
+
+    # ---- 前台详情（pangolinfo）：可判主图/副图/A+ 和无购物车的不可售 ----
+    if page:
+        r = R2.detect_主图异常(
+            主图字段=page.get("main_image_url"), 审核状态=None, 前台展示=None,
+            子体ASIN=父ASIN, 变体重要性="主要色", r2=r2_cfg, r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+        r = R2.detect_图片异常(
+            副图数量=page.get("gallery_count"), 审核状态=None, 前台展示=None,
+            子体ASIN=父ASIN, 变体重要性="主要色", r2=r2_cfg, r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+        r = R2.detect_A加异常(
+            A加内容状态="缺失" if page.get("aplus_image_count") == 0 else "已创建",
+            审核状态=None, 前台展示=None,
+            子体ASIN=父ASIN, 变体重要性="主要色", r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+        if page.get("has_cart") is False:
+            r = R2.detect_链接不可售(
+                前台展示状态="不可展示", 子体ASIN=父ASIN,
+                变体重要性="主要色", r3=r3_cfg,
+            )
+            if isinstance(r, R2.命中异常):
+                hits.append(r)
+        def _money(value):
+            if isinstance(value, dict):
+                value = value.get("value")
+            if value is None:
+                return None
+            import re as _re
+            match = _re.search(r"[\d,]+\.?\d*", str(value).replace(",", ""))
+            return float(match.group()) if match else None
+        r = R2.detect_促销异常(
+            ERP活动配置存在=None,
+            前台促销展示=None,
+            活动审核状态=None,
+            前台售价=_money(page.get("price")),
+            划线价=_money(page.get("strikethrough_price")),
+            r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+
+    # ---- 子体实时价格：仅在至少两条有效价格时比较明确价差 ----
+    variant_types: dict[str, set[str]] = {}
+    for variant in page.get("variant_details") or []:
+        asin = variant.get("asin")
+        variant_type = variant.get("type")
+        if asin and variant_type in ("color", "size"):
+            variant_types.setdefault(asin, set()).add(variant_type)
+    parsed_promos = []
+    for promo in price_promos:
+        price = promo.get("price_usd")
+        asin = promo.get("child_asin")
+        types = variant_types.get(asin, set())
+        if price is not None and len(types) == 1:
+            parsed_promos.append({"asin": asin, "price": float(price),
+                                  "type": next(iter(types))})
+    for variant_type in ("color", "size"):
+        same_type = [item for item in parsed_promos if item["type"] == variant_type]
+        if len(same_type) < 2:
+            continue
+        baseline = min(same_type, key=lambda item: item["price"])
+        for item in same_type:
+            if item is baseline:
+                continue
+            r = R2.detect_变体价差异常(
+                基准价=baseline["price"],
+                对比子体={"ASIN": item["asin"], "到手价": item["price"],
+                          "分类": "颜色" if variant_type == "color" else "尺码",
+                          "变体重要性": "主要色"},
+                r2=r2_cfg, r3=r3_cfg,
+            )
+            if isinstance(r, R2.命中异常):
+                hits.append(r)
 
         # 标题：仅在标题字段空/缺失时命中（审核状态、ERP 基准均无数据源，传 None）
         r = R2.detect_标题异常(
@@ -498,7 +595,7 @@ def 巡检单产品(
         负责人=负责人名, 负责人ID=负责人ID,
         产品打分=产品打分, 异常明细=异常明细,
         headline=headline, human_summary=human_summary, 批次号=批次号,
-        数据状态=_build_data_quality(聚合, 产品打分),
+        数据状态=_build_data_quality(聚合, 产品打分, 快照数据=快照数据),
     )
 
 

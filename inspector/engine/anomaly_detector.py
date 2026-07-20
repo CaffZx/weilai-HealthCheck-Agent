@@ -511,10 +511,13 @@ def detect_促销异常(
     活动审核状态: str | None,
     前台活动类型: str | None = None,
     ERP活动类型: str | None = None,
+    前台售价: float | None = None,
+    划线价: float | None = None,
     r3: dict | None = None,
 ) -> 命中异常 | 观察类结果 | None:
     """§2.3 促销异常（链接级）。"""
-    if ERP活动配置存在 is None and 前台促销展示 is None and 活动审核状态 is None:
+    if (ERP活动配置存在 is None and 前台促销展示 is None and 活动审核状态 is None
+            and 前台售价 is None and 划线价 is None):
         return 观察类结果(问题点位="促销异常", 原因="促销相关字段均缺失",
                      缺失字段=["ERP活动配置存在", "前台促销展示", "活动审核状态"])
 
@@ -530,6 +533,10 @@ def detect_促销异常(
     if 前台活动类型 and ERP活动类型 and 前台活动类型 != ERP活动类型:
         异常原因.append(f"前台活动类型({前台活动类型}) != ERP({ERP活动类型})")
         触发["活动类型不一致"] = True
+    if 划线价 is not None and 前台售价 is not None and round(划线价, 2) == round(前台售价, 2):
+        异常原因.append(f"划线价 ${划线价:.2f} 与前台售价相同，折扣展示未生效")
+        触发["前台售价"] = 前台售价
+        触发["划线价"] = 划线价
 
     if not 异常原因:
         return None

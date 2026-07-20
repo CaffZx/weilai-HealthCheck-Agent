@@ -48,6 +48,14 @@ function formatScore(score){
   return Number.isFinite(value) ? Math.round(value) : '待计算';
 }
 
+function eventSeverity(event){
+  return event?.severity || event?.['该条严重度'] || 'S2';
+}
+
+function severityClass(event){
+  return String(eventSeverity(event)).toLowerCase();
+}
+
 function productStatusForEvents(events){
   if (!events.length) return '未完成';
   if (events.every(event => event.status === '已完成')) return '已完成';
@@ -98,10 +106,11 @@ function anomalyDetailHtml(e){
   const adBtn = 是交易表现
     ? `<a class="btn ghost-blue" style="text-decoration:none;font-weight:700;padding:5px 11px;font-size:11px" href="${buildAdAgentUrl(e)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(e.event_uid)}')" title="打开广告辅助决策 agent（自动标记为处理中）">🎯 广告决策</a>`
     : '';
-  const priCls = String(e.priority || 'P2').toLowerCase();
+  const sev = eventSeverity(e);
+  const sevCls = severityClass(e);
   return `<article class="anomaly-detail" data-event-uid="${esc(e.event_uid)}">
     <div class="anomaly-detail-head">
-      <span class="ab-title"><span class="priority ${priCls}">${esc(e.priority || '-')}</span><b>${esc(e.issue || e.category || '异常')}</b></span>
+      <span class="ab-title"><span class="severity-badge ${sevCls}">${esc(sev)}</span><b>${esc(e.issue || e.category || '异常')}</b></span>
       <span class="ab-meta">执行分 ${formatScore(e.score)} · ${e.days || 0}天</span>
     </div>
     <div class="anomaly-detail-body">
@@ -210,8 +219,8 @@ function selectProduct(key){
     return quality['状态'] && quality['状态'] !== 'COMPLETE';
   });
   const firstQuality = qualityEvents[0]?.['数据状态'];
-  const priorityCounts = ['P0', 'P1', 'P2'].map(priority => ({
-    priority, count: productEvents.filter(item => item.priority === priority).length,
+  const severityCounts = ['S0', 'S1', 'S2'].map(severity => ({
+    severity, count: productEvents.filter(item => eventSeverity(item) === severity).length,
   })).filter(item => item.count);
 
   state.selectedProductKey = key;
@@ -221,7 +230,7 @@ function selectProduct(key){
   const selectedEvent = productEvents.find(event => event.event_uid === state.selectedEventUid) || productEvents[0];
   const adEvent = productEvents.find(event => (event.category || '').includes('交易表现')) || selectedEvent;
 
-  document.getElementById('detailPriority').textContent = selectedEvent.priority || '产品';
+  document.getElementById('detailPriority').textContent = `产品 ${main.priority || 'P2'}`;
   document.getElementById('detailScore').textContent = `产品执行分 ${formatScore(productScore)}`;
   document.getElementById('detailTitle').textContent = main.product_name || main.parent_asin;
   document.getElementById('detailMeta').textContent = `${main.parent_asin} · ${main.parent_sku||'-'} · ${main.shop_account||'-'} · ${main.site||''} · 巡检时间：${main.inspection_time ? main.inspection_time.slice(0, 16) : '未关联'}`;
@@ -242,8 +251,8 @@ function selectProduct(key){
     </div>
     ${firstQuality ? `<div class="data-quality ${['INSUFFICIENT','FAILED','UNKNOWN'].includes(firstQuality['状态']) ? 'critical' : 'partial'}"><b>数据状态：${esc(firstQuality['状态文案'] || '部分数据不足')}</b><span>${qualityEvents.length} 个异常的辅助数据不完整，处理时请注意。</span></div>` : ''}
     <section class="summary-section product-issues-section">
-      <div class="summary-section-head"><span>本产品异常</span><div class="summary-issues-tools"><small>${productEvents.length} 项 · ${priorityCounts.map(item => `${item.priority} ${item.count}`).join(' · ')}</small><a class="btn ghost-blue ad-agent-summary-btn" href="${buildAdAgentUrl(adEvent)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(adEvent.event_uid)}')">点击进入广告决策Agent页面</a></div></div>
-      <div class="summary-issue-grid">${productEvents.map(event => `<button class="summary-issue-card ${event.event_uid === selectedEvent.event_uid ? 'primary-issue' : ''}" type="button" data-event-uid="${esc(event.event_uid)}"><span class="priority ${String(event.priority || 'P2').toLowerCase()}">${esc(event.priority || '-')}</span><b>${esc(event.issue || event.category || '异常')}</b><span>${formatScore(event.score)} 分 · 已持续 ${event.days || 0} 天</span></button>`).join('')}</div>
+      <div class="summary-section-head"><span>本产品异常</span><div class="summary-issues-tools"><small>${productEvents.length} 项 · ${severityCounts.map(item => `${item.severity} ${item.count}`).join(' · ')}</small><a class="btn ghost-blue ad-agent-summary-btn" href="${buildAdAgentUrl(adEvent)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(adEvent.event_uid)}')">点击进入广告决策Agent页面</a></div></div>
+      <div class="summary-issue-grid">${productEvents.map(event => `<button class="summary-issue-card ${severityClass(event)} ${event.event_uid === selectedEvent.event_uid ? 'primary-issue' : ''}" type="button" data-event-uid="${esc(event.event_uid)}"><span class="severity-badge ${severityClass(event)}">${esc(eventSeverity(event))}</span><b>${esc(event.issue || event.category || '异常')}</b><span>${formatScore(event.score)} 分 · 已持续 ${event.days || 0} 天</span></button>`).join('')}</div>
     </section>
     ${anomalyDetailHtml(selectedEvent)}
     <div class="section" style="margin-top:4px"><div class="section-head"><span>执行记录</span><span id="opFormTarget">${esc(selectedEvent.issue || selectedEvent.category || '')}</span></div>

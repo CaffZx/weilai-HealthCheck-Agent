@@ -12,6 +12,10 @@ function allProductKey(event){
   return (event.parent_asin || '') + '__' + (event.shop_account || '');
 }
 
+function allEventSeverity(event){
+  return event?.severity || 'S2';
+}
+
 function groupAllProducts(events){
   const order = {P0: 0, P1: 1, P2: 2};
   const groups = new Map();
@@ -81,7 +85,7 @@ function renderAll(){
       <td><span class="priority ${String(product.priority).toLowerCase()}">${esc(product.priority)}</span></td>
       <td><div class="mini-product"><b>${esc(event.product_name || event.parent_asin)}</b><span>${esc(event.parent_asin)} · ${esc(event.shop_account || '-')}</span></div></td>
       <td><span class="issue-type">${product.events.length} 个异常</span><div class="all-category-list">${esc(product.categories.join('、') || '-')}</div></td>
-      <td><div class="all-issue-list">${product.events.map(item => esc(item.issue || item.category || '-')).join('、')}</div></td>
+      <td><div class="all-issue-list">${product.events.map(item => `${esc(allEventSeverity(item))} ${esc(item.issue || item.category || '-')}`).join('、')}</div></td>
       <td>${product.maxDays} 天</td>
       <td><div class="score">${Math.round(product.score)}<small>/100</small></div></td>
       <td><span class="status ${statusClass(product.status)}">${esc(product.status)}</span></td>
@@ -112,7 +116,7 @@ function openAnomalyDetail(productKey){
     const basis = item.judge_basis || {};
     const reason = item.summary_reason || basis['命中依据'] || basis['判定过程'] || '未记录判定依据';
     return `<div class="all-drawer-anomaly">
-      <div class="all-drawer-anomaly-head"><b><span class="priority ${String(item.priority || 'P2').toLowerCase()}">${esc(item.priority || '-')}</span> ${esc(item.issue || item.category || '异常')}</b><span>${Math.round(item.score || 0)} 分 · ${item.days || 0} 天 · ${esc(item.status)}</span></div>
+      <div class="all-drawer-anomaly-head"><b><span class="severity-badge ${String(allEventSeverity(item)).toLowerCase()}">${esc(allEventSeverity(item))}</span> ${esc(item.issue || item.category || '异常')}</b><span>${Math.round(item.score || 0)} 分 · ${item.days || 0} 天 · ${esc(item.status)}</span></div>
       <div><b>判定依据：</b>${esc(reason)}</div>
       <div class="all-drawer-action"><b>建议动作：</b>${esc(item.recommendation || '查看详情后按异常处理建议执行')}</div>
     </div>`;

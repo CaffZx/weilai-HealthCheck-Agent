@@ -97,11 +97,21 @@
   .ad-agent-summary-btn{height:30px;padding:0 13px;text-decoration:none;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:#2764e7;border-color:#2764e7;font-weight:750;box-shadow:0 3px 8px rgba(39,100,231,.2)}
   .ad-agent-summary-btn:hover{color:#fff;background:#1f56cf;border-color:#1f56cf}
   .summary-issue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
-  .summary-issue-card{min-width:0;text-align:left;padding:11px 12px;border:1px solid #dce4ef;border-radius:9px;background:#fff;color:#26354b;cursor:pointer}
-  .summary-issue-card:hover{border-color:#8db6f4;background:#f7faff}
-  .summary-issue-card.primary-issue{border-color:#7197f4;background:#edf3ff;box-shadow:inset 3px 0 #3f6ff1}
+  .summary-issue-card{min-width:0;text-align:left;padding:11px 12px;border:1px solid #dce4ef;border-radius:9px;background:#fff;color:#26354b;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+  .summary-issue-card.s0{background:#fff1f0;border-color:#f2c4c1}
+  .summary-issue-card.s1{background:#fff8e8;border-color:#efd7a3}
+  .summary-issue-card.s2{background:#f1f5fa;border-color:#d3ddea}
+  .summary-issue-card:hover{filter:saturate(1.05);box-shadow:0 3px 10px rgba(31,42,68,.08)}
+  .summary-issue-card.primary-issue{box-shadow:inset 4px 0 #3f6ff1,0 0 0 2px rgba(63,111,241,.15)}
+  .summary-issue-card.s0.primary-issue{border-color:#df7770}
+  .summary-issue-card.s1.primary-issue{border-color:#d8a33c}
+  .summary-issue-card.s2.primary-issue{border-color:#8298b8}
   .summary-issue-card b{display:block;font-size:14px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .summary-issue-card span{display:block;margin-top:6px;color:#718096;font-size:12px}
+  .severity-badge{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:22px;padding:0 7px;border-radius:6px;font-size:11px;font-weight:800;line-height:1}
+  .severity-badge.s0{background:#ffe3e1;color:#bf302d}
+  .severity-badge.s1{background:#fff0d2;color:#9b6109}
+  .severity-badge.s2{background:#e8eef8;color:#536982}
   .primary-attention{padding-bottom:0}
   .primary-attention h3{margin:0 0 7px;font-size:17px}
   .primary-attention p{margin:0 0 12px;color:#4f5e72;font-size:13px;line-height:1.65}
@@ -140,6 +150,48 @@
     .task-overview-body{grid-template-columns:220px minmax(260px,1fr)}
     .task-overview-body .overview-block:last-of-type{display:none}
     .queue-inline{grid-template-columns:repeat(3,minmax(0,1fr))}
+  }
+  @media(max-width:1100px){
+    .today-workspace{padding-left:12px;padding-right:12px}
+    .today-content{grid-template-columns:minmax(235px,30%) minmax(0,1fr);gap:8px}
+    .detail-pane .detail-head{padding-left:12px;padding-right:12px}
+    .detail-pane .detail-scroll{padding-left:12px;padding-right:12px}
+    .product-summary-hero{grid-template-columns:62px minmax(0,1fr) auto;gap:9px}
+    .product-summary-image{width:62px;height:70px}
+    .product-summary-status{grid-column:3;grid-row:1}
+    .product-summary-facts{grid-column:2 / -1;grid-row:2;justify-self:start}
+  }
+  @media(min-width:761px) and (max-width:1000px){
+    .today-content{grid-template-columns:1fr;grid-template-rows:minmax(210px,34vh) minmax(0,1fr);gap:8px}
+    .product-pane{min-height:0}
+    .detail-pane{min-height:0}
+    .product-pane-head{display:none}
+    .product-filters .search{width:min(300px,45%)}
+  }
+  @media(max-width:760px){
+    .app{grid-template-rows:48px 1fr}
+    .topbar{padding:0 9px;gap:8px}
+    .brand{min-width:auto;font-size:12px;gap:6px}
+    .brand-mark{width:25px;height:25px;font-size:12px}
+    .nav{overflow-x:auto;min-width:0}
+    .nav-item{padding:0 9px;font-size:11px;white-space:nowrap}
+    .fresh,.avatar{display:none}
+    .today-workspace{padding:8px}
+    .task-overview-body{grid-template-columns:1fr;gap:6px}
+    .compact-goal{min-width:0}
+    .task-overview .queue.queue-inline{grid-template-columns:repeat(5,minmax(72px,1fr));overflow-x:auto}
+    .task-overview .queue.queue-inline .queue-item{min-height:52px}
+    .today-content{grid-template-columns:1fr;grid-template-rows:minmax(190px,32vh) minmax(0,1fr);gap:8px}
+    .product-pane{min-height:0}
+    .detail-pane{min-height:0}
+    .product-pane-head{display:none}
+    .product-filters{margin-bottom:5px}
+    .product-filters .search{width:100%}
+    .product-filters .filter{flex:1;min-width:0}
+    .product-filters .btn{margin-left:0}
+    .summary-issue-grid{grid-template-columns:1fr}
+    .product-summary-copy{font-size:11px}
+    .product-summary-status .status{font-size:13px}
   }
   .layout{display:grid;grid-template-columns:244px minmax(620px,1fr) minmax(460px,540px);min-height:0;height:100%}
   .sidebar,.detail{background:var(--panel);min-height:0;overflow:auto}

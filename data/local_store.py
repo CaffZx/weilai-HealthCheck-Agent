@@ -749,7 +749,7 @@ def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
             (parent_asin, shop_account)
         ).fetchone()
         if page:
-            result["page"] = dict(page)
+            result["page"] = json.loads(page["data"] or "{}")
         promos = c.execute("""SELECT child_asin, data, price_usd, snapshot_date, fetched_at
                              FROM child_price_promo
                              WHERE parent_asin=? AND shop_account=?

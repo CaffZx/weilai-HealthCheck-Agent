@@ -15,3 +15,4 @@ data/local/
 *.db-wal
 *.db-shm
 batch_cache.json
+dist/

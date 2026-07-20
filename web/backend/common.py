@@ -172,7 +172,6 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         _shop_id = shop_id_map.get((d.get("父ASIN"), d.get("店铺账号")))
         position = pos_map.get((d.get("父ASIN"), str(_shop_id)), "") or ""
         tier = POSITION_TO_TIER.get(position, "")
-        priority = SEV_TO_PRIORITY.get(sev, "P2")
         days = days_since(d.get("首次命中时间"))
         try:
             judge_basis = _json.loads(d.get("判定依据") or "{}")
@@ -183,6 +182,8 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         inspection = inspection_map.get((d.get("父ASIN"), d.get("店铺账号"))) or {}
         inspection_card = inspection.get("result_json") or {}
         inspection_priority = inspection_card.get("优先级信息") or {}
+        # S 是单条异常严重度，P 是父 ASIN + 店铺的产品执行优先级，二者不能互相替代。
+        priority = inspection_priority.get("执行优先级") or "P2"
         product_score = inspection_priority.get("产品执行分数")
         detail_map = {}
         for detail in inspection_card.get("异常明细") or []:
@@ -234,6 +235,7 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "variant_importance": d.get("变体重要性"),
             "severity": sev,
             "priority": priority,
+            "product_priority": priority,
             "score": d.get("单异常执行分数"),
             "product_score": product_score,
             "position": position,

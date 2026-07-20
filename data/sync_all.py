@@ -31,6 +31,7 @@ load_dotenv()
 from data import local_store as store
 from data import sync_daily
 from data import sync_azlisting
+from data import sync_images
 from data import ad_state_reader
 
 # MCP 并发线程数（每 worker 独立 MCPSession，避免 sid 竞争）
@@ -62,7 +63,7 @@ def _table_counts() -> dict[str, int]:
 
 def run_daily(limit: int, days: int, concurrency: int = DEFAULT_CONCURRENCY) -> None:
     print("\n" + "=" * 70)
-    print(f"【1/3】sync_daily · 每日销售/广告 + 快照 · {days} 天窗口 · {concurrency} 线程并发")
+    print(f"【1/4】sync_daily · 每日销售/广告 + 快照 · {days} 天窗口 · {concurrency} 线程并发")
     print("=" * 70)
     store.init_db()
     products = sync_daily.resolve_products(limit)
@@ -96,7 +97,7 @@ def run_daily(limit: int, days: int, concurrency: int = DEFAULT_CONCURRENCY) -> 
 
 def run_azlisting(limit: int, days: int, concurrency: int = DEFAULT_CONCURRENCY) -> None:
     print("\n" + "=" * 70)
-    print(f"【2/3】sync_azlisting · 自然广告/月目标/库存预警/仓租/变体价促 · {days} 天窗口 · {concurrency} 线程并发")
+    print(f"【2/4】sync_azlisting · 自然广告/月目标/库存预警/仓租/变体价促 · {days} 天窗口 · {concurrency} 线程并发")
     print("=" * 70)
     store.init_db()
     products = sync_azlisting.resolve_products(limit)
@@ -128,7 +129,7 @@ def run_azlisting(limit: int, days: int, concurrency: int = DEFAULT_CONCURRENCY)
 
 def run_override() -> None:
     print("\n" + "=" * 70)
-    print("【3/3】ad_state_reader · 广告目标覆写表（MySQL app_db）")
+    print("【4/4】ad_state_reader · 广告目标覆写表（MySQL app_db）")
     print("=" * 70)
     store.init_db()
     try:
@@ -141,6 +142,17 @@ def run_override() -> None:
         print(f"✗ 覆写表同步异常: {e}")
 
 
+def run_page_details(limit: int) -> None:
+    print("\n" + "=" * 70)
+    print("【3/4】sync_images · 前台详情（主图/副图/A+/可购性）")
+    print("=" * 70)
+    try:
+        stats = sync_images.run(limit=limit, interval=0.8, concurrency=2, skip_existing=False)
+        print(f"前台详情同步: {stats}")
+    except Exception as e:
+        print(f"✗ 前台详情同步异常: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=ALL, help="产品数上限，默认全部")
@@ -148,6 +160,7 @@ def main():
     ap.add_argument("--az-days", type=int, default=30, help="sync_azlisting 每日窗口天数")
     ap.add_argument("--skip-daily", action="store_true")
     ap.add_argument("--skip-azlisting", action="store_true")
+    ap.add_argument("--skip-page-details", action="store_true", help="跳过前台详情抓取")
     ap.add_argument("--skip-override", action="store_true", help="跳过 MySQL 覆写表（未放行时用）")
     args = ap.parse_args()
 
@@ -167,6 +180,9 @@ def main():
             run_azlisting(args.limit, args.az_days)
         except Exception as e:
             print(f"✗ sync_azlisting 整体异常（继续下一步）: {e}")
+
+    if not args.skip_page_details:
+        run_page_details(args.limit)
 
     if not args.skip_override:
         run_override()
