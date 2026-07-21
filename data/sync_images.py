@@ -48,6 +48,15 @@ def _first_image(payload: Any) -> str | None:
     return None
 
 
+def _first_image_for_keys(payload: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    """从优先字段中取主图，避免 detail.image 返回压缩缩略图时直接被采用。"""
+    for key in keys:
+        for nested in _image_strings(payload.get(key)):
+            if nested.startswith(("http://", "https://")):
+                return nested
+    return None
+
+
 def _first_product_result(payload: Any) -> dict | None:
     """从 pangolinfo 的多层返回中取第一条商品详情。"""
     for item in _walk(payload):
@@ -70,8 +79,13 @@ def _page_snapshot(payload: Any) -> dict | None:
     strikethrough = detail.get("strikethroughPrice")
     if isinstance(strikethrough, dict):
         strikethrough = strikethrough.get("value")
+    high_res_image = _first_image_for_keys(
+        detail, ("highResolutionImages", "hiResImage", "mainImageUrl", "main_image_url")
+    )
+    main_image_url = high_res_image or detail.get("image") or _first_image(detail)
     return {
-        "main_image_url": detail.get("image") or _first_image(detail),
+        "main_image_url": main_image_url,
+        "main_image_source": "high_resolution" if high_res_image else "detail_image_or_fallback",
         "gallery_count": len(gallery),
         "aplus_image_count": aplus_count,
         "has_cart": detail.get("has_cart", detail.get("hasCart")),
@@ -143,7 +157,8 @@ def fetch_page_snapshot(parent_asin: str, site_code: str, request_asin: str,
 
 
 def run(limit: int = 10, interval: float = 1.5, offset: int = 0,
-        concurrency: int = 1, skip_existing: bool = True) -> dict[str, int]:
+        concurrency: int = 1, skip_existing: bool = True,
+        user_id: int | None = None) -> dict[str, int]:
     store.init_db()
     configs = {c["fixture_key"]: c for c in fixture_loader.load_configs()}
     shop_map = fixture_loader.load_shop_map()
@@ -159,6 +174,17 @@ def run(limit: int = 10, interval: float = 1.5, offset: int = 0,
             seen_products.add(product_key)
             site_code = shop.get("site_code") or cfg.get("site_code") or "US"
             products.append((parent_asin, account, site_code))
+
+    if user_id is not None:
+        with store._conn() as c:
+            owned = {
+                (row["asin"], row["shop_account"])
+                for row in c.execute("""
+                    SELECT asin, shop_account FROM asin_owner
+                    WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id,-1))=?
+                """, (user_id,))
+            }
+        products = [item for item in products if (item[0], item[1]) in owned]
 
     if skip_existing:
         image_map = store.query_image_urls_by_shop()
@@ -202,7 +228,7 @@ def run(limit: int = 10, interval: float = 1.5, offset: int = 0,
             if image_url:
                 store.update_listing_image_url(
                     parent_asin, account, site_code, image_url,
-                    "pangolinfo_api_sync_Extract.galleryThumbnails",
+                    f"pangolinfo_api_sync_{(page or {}).get('main_image_source', 'fallback')}",
                 )
                 outcome = "saved"
             elif status == "OK":
@@ -228,9 +254,11 @@ if __name__ == "__main__":
     parser.add_argument("--interval", type=float, default=1.5)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument("--user-id", type=int, help="仅同步该负责人的产品")
     parser.add_argument("--no-skip-existing", action="store_true")
     args = parser.parse_args()
     print(json.dumps(run(
         args.limit, args.interval, args.offset, args.concurrency,
         skip_existing=not args.no_skip_existing,
+        user_id=args.user_id,
     ), ensure_ascii=False), flush=True)

@@ -26,6 +26,7 @@
 from __future__ import annotations
 import concurrent.futures as _cf
 import datetime as dt
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -257,6 +258,31 @@ def _lookup_category(问题点位: str) -> tuple[str, str]:
     return _点位大类.get(问题点位, ("", ""))
 
 
+def _inspection_rows(snapshot: object) -> list[dict]:
+    if isinstance(snapshot, list):
+        rows = snapshot
+    elif isinstance(snapshot, dict):
+        rows = snapshot.get("data") or snapshot.get("rows") or []
+    else:
+        return []
+    if isinstance(rows, dict):
+        rows = [rows]
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _active_platform_activity(snapshot: object) -> bool:
+    today = dt.date.today()
+    for row in _inspection_rows(snapshot):
+        try:
+            start = dt.date.fromisoformat(str(row.get("startActivityDate") or ""))
+            end = dt.date.fromisoformat(str(row.get("endActivityDate") or ""))
+        except ValueError:
+            continue
+        if start <= today <= end:
+            return True
+    return False
+
+
 # -----------------------------------------------------------------------------
 # Phase 1: 现象即原因型 — 本地数据可判的检测
 # -----------------------------------------------------------------------------
@@ -273,6 +299,7 @@ def _detect_with_local_data(
     product_info = (快照数据 or {}).get("product_info") or {}
     page = (快照数据 or {}).get("page") or {}
     price_promos = (快照数据 or {}).get("price_promo") or []
+    inspection = (快照数据 or {}).get("inspection") or {}
 
     r = R2.detect_FBA可售库存为0(
         FBA可售库存=stock.get("FBA可售库存"),
@@ -319,6 +346,7 @@ def _detect_with_local_data(
         )
         if isinstance(r, R2.命中异常):
             hits.append(r)
+
         r = R2.detect_图片异常(
             副图数量=page.get("gallery_count"), 审核状态=None, 前台展示=None,
             子体ASIN=父ASIN, 变体重要性="主要色", r2=r2_cfg, r3=r3_cfg,
@@ -353,6 +381,27 @@ def _detect_with_local_data(
             活动审核状态=None,
             前台售价=_money(page.get("price")),
             划线价=_money(page.get("strikethrough_price")),
+            r3=r3_cfg,
+        )
+        if isinstance(r, R2.命中异常):
+            hits.append(r)
+
+    active_activity = _active_platform_activity(inspection.get("platform_activity"))
+    def _has_front_promotion(promo: dict) -> bool:
+        if promo.get("coupon") or promo.get("strikethroughPrice") or promo.get("savingsPercentage"):
+            return True
+        try:
+            raw = json.loads(promo.get("data") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            raw = {}
+        return bool(raw.get("promotions") or raw.get("promotionSummary") or raw.get("discountTypes"))
+
+    has_front_promotion = any(_has_front_promotion(promo) for promo in price_promos)
+    if active_activity:
+        r = R2.detect_促销异常(
+            ERP活动配置存在=True,
+            前台促销展示="已展示" if has_front_promotion else "未展示",
+            活动审核状态=None,
             r3=r3_cfg,
         )
         if isinstance(r, R2.命中异常):
@@ -404,7 +453,7 @@ def _grade_performance_anomalies(
     """用 daily_monitor 聚合结果跑全部 R3 专项判定。"""
     results: list[dict] = []
 
-    def _collect(r, 点位: str):
+    def _collect(r, 点位: str, *, 命中变体: str | None = None):
         """将 severity_grader 结果加入列表。点位优先取结果自带的问题点位。
         广告类点位如缺 目标ACOS/目标每日预算，注入'配置待补'提示条，让运营去辅助决策 agent 设置。"""
         if isinstance(r, R3.严重度判定结果) and r.严重度:
@@ -415,6 +464,7 @@ def _grade_performance_anomalies(
                 "判定过程": r.判定过程,
                 "命中值": r.命中值,
                 "数据快照": getattr(r, "数据快照", []) or [],
+                "命中变体": 命中变体 or "",
             })
         elif isinstance(r, R3.观察类结果) and 点位 in ("ACOS异常", "广告花费异常") \
                 and any(k in (r.缺失字段 or []) for k in ("目标ACOS", "目标每日预算")):
@@ -439,7 +489,8 @@ def _grade_performance_anomalies(
     _collect(R3.判库存积压(**聚合.to_库存积压_kwargs(), 参数=r3_cfg), "库存积压")
     _collect(R3.判放量未执行(**聚合.to_放量未执行_kwargs(), 参数=r3_cfg), "放量未执行")
     _collect(R3.判链接转化率异常(**聚合.to_链接转化率异常_kwargs(), 参数=r3_cfg), "链接转化率异常下降")
-    _collect(R3.判滞销异常(**聚合.to_滞销异常_kwargs(), 参数=r3_cfg), "滞销异常")
+    _collect(R3.判滞销异常(**聚合.to_滞销异常_kwargs(), 参数=r3_cfg), "滞销异常",
+             命中变体=聚合.命中子ASIN)
 
     return results
 
@@ -517,7 +568,7 @@ def 巡检单产品(
             严重度=g["严重度"],
             作用层级=层级,
             变体重要性=None,     # 表现型自身为父体级汇总数据，无变体重要性
-            命中对象=None,
+            命中对象=g.get("命中变体") or None,
         ))
 
     # Phase 4: R4 打分
@@ -550,7 +601,7 @@ def 巡检单产品(
             continue    # 配置提示不是异常，不进事件池
         层级 = R2.查作用层级(g["问题点位"], r2_cfg) or "链接级"
         _upsert_event(g["问题点位"], g["严重度"], 层级,
-                      "表现型", None, None, g.get("判定过程", ""),
+                      "表现型", g.get("命中变体") or None, None, g.get("判定过程", ""),
                       父ASIN, 店铺账号, 站点, 批次号,
                       单异常执行分数=score_map.get((g["问题点位"], g["严重度"])))
 
@@ -636,7 +687,7 @@ def _build_anomaly_details(
             "问题点位": g["问题点位"],
             "严重度": sev,
             "作用层级": "链接级",
-            "命中变体": "",
+            "命中变体": g.get("命中变体") or "",
             "变体重要性": "",
             "命中依据": g.get("判定过程", ""),
             "判定过程": g.get("判定过程", ""),
@@ -696,7 +747,7 @@ def _build_anomaly_details(
             "异常类型": "配置缺失" if _配置缺 else 类型,
             "异常大类": 大类,
             "问题点位": g["问题点位"], "作用层级": "链接级",
-            "命中变体": "", "变体重要性": "",
+            "命中变体": g.get("命中变体") or "", "变体重要性": "",
             "异常状态": "新发现",
             "具体表现": ("目标配置缺失" if _配置缺
                      else (llm_r or r6_r or {}).get("具体表现") or g["问题点位"]),

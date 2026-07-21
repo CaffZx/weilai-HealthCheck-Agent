@@ -25,19 +25,17 @@ function renderReview(){
   `;
   document.getElementById('reviewResultCount').textContent = d.records.length;
 
+  const args = (r, extra = '') => `'${esc(r.parent_asin)}', '${esc(r.shop_account)}', '${esc(r.review_at)}'${extra}`;
   const effectBtn = (r, val, label) => {
     const cls = val==='变好'?'good':val==='变差'?'bad':'watch';
     const active = r.effect === val;
-    return `<button class="effect-btn ${cls} ${active?'active':''}" onclick="setReviewEffect('${esc(r.event_uid)}', '${val}')">${label}</button>`;
-  };
-  const conclBtn = (r, val, label) => {
-    return `<button class="concl-btn" onclick="setReviewConclusion('${esc(r.event_uid)}', '${val}', ${r.effect ? 'null' : "'${val}'"})">${label}</button>`;
+    return `<button class="effect-btn ${cls} ${active?'active':''}" onclick="setProductReviewEffect(${args(r, `, '${val}'`)})">${label}</button>`;
   };
 
   document.getElementById('reviewBody').innerHTML = d.records.length ? d.records.map(r => `
-    <tr data-uid="${esc(r.event_uid)}">
+    <tr data-product="${esc(r.parent_asin)}__${esc(r.shop_account)}">
       <td><div class="mini-product"><b>${esc(r['父ASIN']||'-')}</b><span>${esc(r['店铺账号']||'-')}</span></div></td>
-     <td>${esc(r['问题点位']||'-')}</td>
+      <td><div class="mini-product"><b>${esc(r.issue_summary||'-')}</b><span>覆盖 ${r.event_count || 1} 项异常</span></div></td>
       <td>${r.inspection_time ? esc(r.inspection_time.slice(0, 16)) : '未关联'}</td>
       <td>${esc(r.actual_action||r.action_type||'-')}<div style="color:#8a93a2;font-size:10px;margin-top:3px">${esc(r.notes||'')}</div></td>
       <td>${fmtDate(r.review_at)}</td>
@@ -50,9 +48,9 @@ function renderReview(){
       </td>
       <td>
         <div class="review-concl-btns">
-          <button class="concl-btn" onclick="setReviewConclusion('${esc(r.event_uid)}', '保留动作')" title="不再干预，本次调整已生效">保留</button>
-          <button class="concl-btn" onclick="setReviewConclusion('${esc(r.event_uid)}', '继续观察')" title="样本不足，暂不结论">观察</button>
-          <button class="concl-btn danger" onclick="setReviewConclusion('${esc(r.event_uid)}', '二次调整')" title="效果不佳，重新拉回今日任务池">二次调整</button>
+          <button class="concl-btn" onclick="setProductReviewConclusion(${args(r, `, '保留动作'`)})" title="不再干预，本次调整已生效">保留</button>
+          <button class="concl-btn" onclick="setProductReviewConclusion(${args(r, `, '继续观察'`)})" title="样本不足，暂不结论">观察</button>
+          <button class="concl-btn danger" onclick="setProductReviewConclusion(${args(r, `, '二次调整'`)})" title="效果不佳，重新拉回今日任务池">二次调整</button>
         </div>
       </td>
     </tr>
@@ -60,11 +58,11 @@ function renderReview(){
 }
 
 // 复盘效果标记（变好/变差/待观察）
-async function setReviewEffect(eventUid, effect){
+async function setProductReviewEffect(parentAsin, shopAccount, reviewAt, effect){
   try {
-    await api(`/api/review/${encodeURIComponent(eventUid)}`, {
+    await api('/api/review/product', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ userId: state.viewerId, effect }),
+      body: JSON.stringify({ userId: state.viewerId, parent_asin: parentAsin, shop_account: shopAccount, review_at: reviewAt, effect }),
     });
     toast(`已标记：${effect}`);
     await loadReview();
@@ -72,9 +70,9 @@ async function setReviewEffect(eventUid, effect){
 }
 
 // 复盘结论（保留/继续观察/二次调整）
-async function setReviewConclusion(eventUid, conclusion){
+async function setProductReviewConclusion(parentAsin, shopAccount, reviewAt, conclusion){
   // 结论必须先标效果
-  const rec = state.reviewData?.records.find(r => r.event_uid === eventUid);
+  const rec = state.reviewData?.records.find(r => r.parent_asin === parentAsin && r.shop_account === shopAccount && r.review_at === reviewAt);
   let effect = rec?.effect;
   if (!effect){
     effect = prompt('先记录本次调整效果（变好 / 变差 / 待观察）：');
@@ -85,9 +83,9 @@ async function setReviewConclusion(eventUid, conclusion){
     notes = prompt('二次调整原因（选填）：') || null;
   }
   try {
-    await api(`/api/review/${encodeURIComponent(eventUid)}`, {
+    await api('/api/review/product', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ userId: state.viewerId, effect, conclusion, notes }),
+      body: JSON.stringify({ userId: state.viewerId, parent_asin: parentAsin, shop_account: shopAccount, review_at: reviewAt, effect, conclusion, notes }),
     });
     toast(`已记录：${conclusion}${conclusion === '二次调整' ? '（事件已拉回任务池）' : ''}`);
     // 二次调整会新增待复查 action，可能会改今日任务池，一并刷新

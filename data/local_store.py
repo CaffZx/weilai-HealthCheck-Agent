@@ -578,6 +578,108 @@ def upsert_child_price_promo(child_asin, parent_asin, shop_account, site_code,
                    snapshot_date, _j(row), price_usd))
 
 
+def upsert_listing_inspection_snapshot(parent_asin: str, parent_seller_sku: str | None,
+                                       shop_account: str, source: str, data) -> None:
+    snapshot_date = datetime.date.today().isoformat()
+    with _conn() as c:
+        c.execute("""INSERT INTO listing_inspection_snapshot
+                     (parent_asin, parent_seller_sku, shop_account, snapshot_date, source, data)
+                     VALUES(?,?,?,?,?,?)
+                     ON CONFLICT(parent_asin, shop_account, snapshot_date, source) DO UPDATE SET
+                       parent_seller_sku=excluded.parent_seller_sku,
+                       data=excluded.data,
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, parent_seller_sku, shop_account, snapshot_date, source,
+                   json.dumps(data, ensure_ascii=False)))
+
+
+def upsert_keyword_rank(parent_asin: str, shop_account: str, child_asin: str | None,
+                        keyword: str, site_code: str | None, stat_date: str,
+                        nature_rank, sp_rank=None, is_core: int = 1, row: dict | None = None) -> None:
+    """关键词逐日排名（卡位）。来源 erp_listing_asin_keyword_rank_history。"""
+    with _conn() as c:
+        c.execute("""INSERT INTO keyword_rank_daily
+                     (parent_asin, shop_account, child_asin, keyword, site_code,
+                      stat_date, nature_rank, sp_rank, is_core, data)
+                     VALUES(?,?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(parent_asin, shop_account, keyword, stat_date) DO UPDATE SET
+                       child_asin=excluded.child_asin, site_code=excluded.site_code,
+                       nature_rank=excluded.nature_rank, sp_rank=excluded.sp_rank,
+                       is_core=excluded.is_core, data=excluded.data,
+                       fetched_at=datetime('now','localtime')""",
+                  (parent_asin, shop_account, child_asin, keyword, site_code,
+                   stat_date, nature_rank, sp_rank, is_core,
+                   json.dumps(row, ensure_ascii=False) if row else None))
+
+
+def query_core_keyword_ranks(parent_asin: str, shop_account: str, days: int = 8) -> list[dict]:
+    """取核心词近 N 天逐日自然排名，按日期升序返回 [{stat_date, nature_rank}]。"""
+    with _conn() as c:
+        rows = c.execute("""SELECT stat_date, nature_rank
+                            FROM keyword_rank_daily
+                            WHERE parent_asin=? AND shop_account=? AND is_core=1
+                              AND nature_rank IS NOT NULL
+                              AND stat_date >= date('now','localtime',?)
+                            ORDER BY stat_date ASC""",
+                         (parent_asin, shop_account, f"-{days} day")).fetchall()
+    return [{"stat_date": r["stat_date"], "nature_rank": r["nature_rank"]} for r in rows]
+
+
+def query_listing_inspection_snapshots(parent_asin: str, shop_account: str) -> dict[str, object]:
+    with _conn() as c:
+        rows = c.execute("""SELECT source, data
+                            FROM listing_inspection_snapshot
+                            WHERE parent_asin=? AND shop_account=?
+                            ORDER BY snapshot_date DESC, fetched_at DESC""",
+                         (parent_asin, shop_account)).fetchall()
+    result: dict[str, object] = {}
+    for row in rows:
+        if row["source"] in result:
+            continue
+        try:
+            result[row["source"]] = json.loads(row["data"])
+        except (TypeError, json.JSONDecodeError):
+            result[row["source"]] = None
+    return result
+
+
+def query_previous_listing_inspection_snapshot(parent_asin: str, shop_account: str,
+                                               source: str) -> object | None:
+    with _conn() as c:
+        rows = c.execute("""SELECT data
+                            FROM listing_inspection_snapshot
+                            WHERE parent_asin=? AND shop_account=? AND source=?
+                            ORDER BY snapshot_date DESC, fetched_at DESC
+                            LIMIT 2""", (parent_asin, shop_account, source)).fetchall()
+    if len(rows) < 2:
+        return None
+    try:
+        return json.loads(rows[1]["data"])
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def query_latest_inventory_cost(parent_asin: str, shop_account: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute("""SELECT * FROM inventory_cost
+                            WHERE parent_asin=? AND shop_account=?
+                              AND report_month=(SELECT MAX(report_month) FROM inventory_cost
+                                                WHERE parent_asin=? AND shop_account=?)""",
+                         (parent_asin, shop_account, parent_asin, shop_account)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def query_child_order_averages(parent_asin: str, shop_account: str, days: int = 30) -> dict[str, float]:
+    with _conn() as c:
+        rows = c.execute("""SELECT asin, AVG(COALESCE("totalOrderNum", 0)) AS daily_orders
+                            FROM daily_natural_ad_flow
+                            WHERE parent_asin=? AND shop_account=? AND is_summary=0
+                              AND stat_date >= date('now', ?)
+                            GROUP BY asin""",
+                         (parent_asin, shop_account, f"-{max(days - 1, 0)} days")).fetchall()
+    return {row["asin"]: float(row["daily_orders"] or 0) for row in rows if row["asin"]}
+
+
 def upsert_listing_page_snapshot(parent_asin: str, shop_account: str,
                                  site_code: str | None, row: dict) -> None:
     """保存前台商品详情的规范化快照，供内容/可购性/价格促销巡检使用。"""
@@ -822,7 +924,7 @@ def query_product_names_by_shop() -> dict[tuple[str, str], str]:
 def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
     """获取巡检所需的本地快照；每个数据域缺失时保留 None。"""
     result = {"listing": None, "stock": None, "tags": None, "product_info": None,
-              "page": None, "price_promo": []}
+              "page": None, "price_promo": [], "inspection": {}, "inventory_cost": []}
     with _conn() as c:
         lb = c.execute(
             'SELECT * FROM listing_baseline WHERE parent_asin=? AND shop_account=?',
@@ -857,13 +959,16 @@ def query_product_snapshots(parent_asin: str, shop_account: str) -> dict | None:
         ).fetchone()
         if page:
             result["page"] = json.loads(page["data"] or "{}")
-        promos = c.execute("""SELECT child_asin, data, price_usd, snapshot_date, fetched_at
+        promos = c.execute("""SELECT child_asin, data, price_usd, snapshot_date, fetched_at,
+                                    coupon, strikethroughPrice, savingsPercentage
                              FROM child_price_promo
                              WHERE parent_asin=? AND shop_account=?
                                AND snapshot_date=(SELECT MAX(snapshot_date) FROM child_price_promo
                                                   WHERE parent_asin=? AND shop_account=?)""",
                           (parent_asin, shop_account, parent_asin, shop_account)).fetchall()
         result["price_promo"] = [dict(row) for row in promos]
+    result["inspection"] = query_listing_inspection_snapshots(parent_asin, shop_account)
+    result["inventory_cost"] = query_latest_inventory_cost(parent_asin, shop_account)
     # 全部缺失 → None
     if all(v is None for v in result.values()):
         return None

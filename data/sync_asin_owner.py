@@ -118,14 +118,23 @@ def sync_sys_user() -> int:
             break
         page += 1
 
-    # 落库
+    # 落库（同时把 roles 拆进 user_role，供按角色筛运营团队）
     with sqlite3.connect(store.DB_PATH) as db:
         db.execute("DELETE FROM sys_user")
+        db.execute("DELETE FROM user_role")
         for u in all_users:
             db.execute("""
                 INSERT OR REPLACE INTO sys_user(id, user_name, user_account, user_state, fetched_at)
                 VALUES(?,?,?,?, datetime('now','localtime'))
             """, (u.get("id"), u.get("userName"), u.get("userAccount"), u.get("userState")))
+            for role in (u.get("roles") or []):
+                code = role.get("roleCode")
+                if not code:
+                    continue
+                db.execute("""
+                    INSERT OR REPLACE INTO user_role(user_id, role_code, role_name, fetched_at)
+                    VALUES(?,?,?, datetime('now','localtime'))
+                """, (u.get("id"), code, role.get("roleName")))
         db.commit()
     return len(all_users)
 

@@ -5,7 +5,8 @@
       "name": "healthcheck-dev",
       "runtimeExecutable": "/Users/weilai/work_flod/weilai-HealthCheck-Agent/.venv/bin/python",
       "runtimeArgs": ["-m", "uvicorn", "web.backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
-      "port": 8000
+      "port": 8000,
+      "autoPort": false
     }
   ]
 }

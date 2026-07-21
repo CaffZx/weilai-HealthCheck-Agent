@@ -456,6 +456,23 @@ CREATE TABLE IF NOT EXISTS child_price_promo (
 CREATE INDEX IF NOT EXISTS idx_ppromo_parent ON child_price_promo(parent_asin, snapshot_date);
 
 -- ============================================================
+-- 17.2 巡检扩展快照（新版 azlisting MCP）
+-- 每天按来源保留一份原始返回，供巡检和复盘使用。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS listing_inspection_snapshot (
+  parent_asin        TEXT NOT NULL,
+  parent_seller_sku  TEXT,
+  shop_account       TEXT NOT NULL,
+  snapshot_date      TEXT NOT NULL,
+  source             TEXT NOT NULL,
+  data               TEXT NOT NULL,
+  fetched_at         TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (parent_asin, shop_account, snapshot_date, source)
+);
+CREATE INDEX IF NOT EXISTS idx_inspection_snapshot_latest
+  ON listing_inspection_snapshot(parent_asin, shop_account, source, snapshot_date DESC);
+
+-- ============================================================
 -- 17.1 Listing 前台详情快照（pangolinfo_api_sync_Extract，按需实时抓取）
 -- 用途：链接可购性、主图/副图、A+ 内容、前台价格优惠的真实页面证据。
 -- 注意：该来源不提供后台抑制状态、明确 Buy Box 归属或 ERP 活动配置。
@@ -470,6 +487,29 @@ CREATE TABLE IF NOT EXISTS listing_page_snapshot (
 );
 CREATE INDEX IF NOT EXISTS idx_page_snapshot_fetched
   ON listing_page_snapshot(fetched_at);
+
+-- ============================================================
+-- 17.2 关键词逐日排名（卡位）
+-- 来源：own_keyword_flow（选核心词）+ erp_listing_asin_keyword_rank_history（逐日排名）
+-- 用途：判卡位异常 需要 近3天/近7天/逐日 自然排名位（crawNatureRank，越大越靠后）
+-- 每 (parent_asin, shop_account, keyword, stat_date) 一条；每天刷一次核心词的历史序列
+-- ============================================================
+CREATE TABLE IF NOT EXISTS keyword_rank_daily (
+  parent_asin   TEXT NOT NULL,
+  shop_account  TEXT NOT NULL,
+  child_asin    TEXT,
+  keyword       TEXT NOT NULL,
+  site_code     TEXT,
+  stat_date     TEXT NOT NULL,
+  nature_rank   INTEGER,                -- 自然排名位 crawNatureRank（越大越靠后）
+  sp_rank       INTEGER,                -- 广告排名位 crawSpRank（可空）
+  is_core       INTEGER NOT NULL DEFAULT 1,   -- 是否核心词（周搜索量最大）
+  data          TEXT,
+  fetched_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (parent_asin, shop_account, keyword, stat_date)
+);
+CREATE INDEX IF NOT EXISTS idx_kwrank_lookup
+  ON keyword_rank_daily(parent_asin, shop_account, is_core, stat_date DESC);
 
 -- ============================================================
 -- ERP 决策配置（来源：app_db.t_advert_agent_decision_config）
@@ -558,9 +598,26 @@ CREATE TABLE IF NOT EXISTS sys_user (
 );
 
 -- ============================================================
--- ASIN 级负责人（来源：MCP az_extend_detail）
--- 每 (shop_id, asin, seller_sku) 一条；ID 都是 sys_user.id 外键
--- 优先级链：principal_user_id → editor_id → creator_id
+-- 用户角色（来源：MCP sys_user_query 的 roles 字段）
+-- 用途：按角色筛出运营团队。Amazon 运营 = role_code 'GROUP_FBASaler'（FBA销售）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_role (
+  user_id     INTEGER NOT NULL,
+  role_code   TEXT NOT NULL,
+  role_name   TEXT,
+  fetched_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (user_id, role_code)
+);
+CREATE INDEX IF NOT EXISTS idx_user_role_code ON user_role(role_code);
+
+-- ============================================================
+-- ASIN 级负责人（产品 × 负责人 映射，一产品可多行）
+-- 来源：
+--   · 正向 erp_listing_follow_up_by_principal（按负责人拉，含负责+跟进/助理）→ 一产品可对多人
+--   · 旧版 az_extend_detail（单负责人，principal→editor→creator）
+-- 主键含 principal_user_id：同一 (asin,sku,shop) 允许多个负责人/助理各一行，
+-- 使异常按 EXISTS 同时路由到负责人与助理的工作台（重复派单是预期行为）。
+-- 优先级链（单行内取显示归属）：principal_user_id → editor_id → creator_id
 -- ============================================================
 CREATE TABLE IF NOT EXISTS asin_owner (
   asin                TEXT NOT NULL,
@@ -568,15 +625,45 @@ CREATE TABLE IF NOT EXISTS asin_owner (
   shop_id             INTEGER,
   shop_account        TEXT,
   site_code           TEXT,
-  principal_user_id   INTEGER,             -- ★ 首选：ASIN_PRINCIPAL_USER_ID
-  editor_id           INTEGER,             -- 回退：EDITOR_ID
-  creator_id          INTEGER,             -- 兜底：CREATOR_ID
+  principal_user_id   INTEGER,             -- ★ 首选：负责人/助理 user_id（正向来源即查询人）
+  editor_id           INTEGER,             -- 回退：EDITOR_ID（旧版来源）
+  creator_id          INTEGER,             -- 兜底：CREATOR_ID（旧版来源）
   source_update_time  TEXT,                -- MCP 侧 UPDATE_TIME
   fetched_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  PRIMARY KEY (asin, seller_sku, shop_id)
+  PRIMARY KEY (asin, seller_sku, shop_id, principal_user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_asin_owner_asin ON asin_owner(asin);
 CREATE INDEX IF NOT EXISTS idx_asin_owner_principal ON asin_owner(principal_user_id);
+
+-- ============================================================
+-- 产品指派（运营之间点对点协作）
+-- 负责人(assigner) 把自己名下某产品指派给另一运营(assignee) 协助处理。
+-- 语义：共享 —— assigner 仍可见可做，assignee 获得对该产品的查看+处理权限。
+-- 产品级：一行 = 一个产品(父ASIN+店铺) 指派给一个人；同一产品可派给多人（多行）。
+-- 可撤回：删除该行即撤回。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS task_assignment (
+  parent_asin   TEXT NOT NULL,
+  shop_account  TEXT NOT NULL,
+  assignee_id   INTEGER NOT NULL,             -- 被指派人 sys_user.id
+  assigner_id   INTEGER NOT NULL,             -- 指派人 sys_user.id
+  note          TEXT,                         -- 指派备注（可选）
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (parent_asin, shop_account, assignee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_assignment_assignee ON task_assignment(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_task_assignment_assigner ON task_assignment(assigner_id);
+
+-- 产品访问权限视图：负责人 ∪ 被指派人。
+-- 所有"该用户能否看/做某产品"的判断统一查这里，指派对权限的放开在此一处生效。
+CREATE VIEW IF NOT EXISTS product_access AS
+  SELECT COALESCE(principal_user_id, editor_id, NULLIF(creator_id, -1)) AS user_id,
+         asin AS parent_asin, shop_account
+    FROM asin_owner
+   WHERE COALESCE(principal_user_id, editor_id, NULLIF(creator_id, -1)) IS NOT NULL
+  UNION
+  SELECT assignee_id AS user_id, parent_asin, shop_account
+    FROM task_assignment;
 
 -- ============================================================
 -- 广告目标覆写值（来源：辅助决策 agent 的 MySQL app_db）

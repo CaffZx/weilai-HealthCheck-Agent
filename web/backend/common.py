@@ -24,6 +24,13 @@ MANAGER_MAP_PATH = ROOT / "config" / "manager_map.yaml"
 # ---- 常量 ----
 SEV_TO_PRIORITY = {"S0": "P0", "S1": "P1", "S2": "P2"}
 POSITION_TO_TIER = {"P0_PRODUCT": "T0", "P1_PRODUCT": "T1", "P2_PRODUCT": "T2", "P3_PRODUCT": "T3"}
+TIER_LABELS = {
+    "T0": "战略级产品",
+    "T1": "重点产品",
+    "T2": "常规产品",
+    "T3": "长尾产品",
+}
+TIER_PRODUCT_CODES = {"T0": "P0", "T1": "P1", "T2": "P2", "T3": "P3"}
 TIER_ORDER = {"T0": 0, "T1": 1, "T2": 2, "T3": 3, "": 4}
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
 
@@ -94,6 +101,15 @@ def classify_action(text: str) -> str:
     return "其他"
 
 
+def tier_display(tier: str | None) -> str:
+    """产品定位展示名；定位 P 与异常严重度/执行优先级 P 分开表达。"""
+    if not tier:
+        return "待补充"
+    label = TIER_LABELS.get(tier)
+    code = TIER_PRODUCT_CODES.get(tier)
+    return f"{tier} {label} ({code})" if label and code else tier
+
+
 def format_record_id(row_id: int, created_at: str) -> str:
     """ACT-YYYYMMDD-NNNN，同日内按 id 后 4 位。"""
     try:
@@ -124,13 +140,18 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             SELECT e.*
             FROM event_pool e
             WHERE EXISTS (
-                SELECT 1 FROM asin_owner o
-                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
-                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
+                SELECT 1 FROM product_access pa
+                WHERE pa.parent_asin=e.父ASIN AND pa.shop_account=e.店铺账号
+                  AND pa.user_id = ?
             )
         """, (user_id,)).fetchall()
-        pos_rows = c.execute("SELECT parent_asin, shop_id, product_position FROM erp_config").fetchall()
+        pos_rows = c.execute("""
+            SELECT parent_asin, parent_seller_sku, shop_id, product_position
+            FROM erp_config
+        """).fetchall()
         pos_map = {(r["parent_asin"], str(r["shop_id"])): r["product_position"] for r in pos_rows if r["product_position"]}
+        sku_map = {(r["parent_asin"], str(r["shop_id"])): r["parent_seller_sku"]
+                   for r in pos_rows if r["parent_seller_sku"]}
 
         # parent_asin → shop_id 映射（用于拼 fixture_key = asin__shopId，AI 深度分析用）
         shop_rows = c.execute(
@@ -154,6 +175,7 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
         sev = d.get("严重度") or "S2"
         _shop_id = shop_id_map.get((d.get("父ASIN"), d.get("店铺账号")))
         position = pos_map.get((d.get("父ASIN"), str(_shop_id)), "") or ""
+        parent_sku = d.get("父SKU") or sku_map.get((d.get("父ASIN"), str(_shop_id)))
         tier = POSITION_TO_TIER.get(position, "")
         days = days_since(d.get("首次命中时间"))
         try:
@@ -213,7 +235,7 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "parent_asin": d.get("父ASIN"),
             "product_name": name_map.get((d.get("父ASIN"), d.get("店铺账号"))),
             "image_url": img_map.get((d.get("父ASIN"), d.get("店铺账号"))),
-            "parent_sku": d.get("父SKU"),
+            "parent_sku": parent_sku,
             "shop_id": _shop_id,
             "fixture_key": _fixture_key,
             "has_ai_result": bool(_fixture_key and _fixture_key in ai_ready),
@@ -231,6 +253,8 @@ def fetch_events_for_user(user_id: int, only_open: bool = True) -> list[dict]:
             "product_score": product_score,
             "position": position,
             "tier": tier,
+            "tier_label": TIER_LABELS.get(tier, "待补充"),
+            "tier_display": tier_display(tier),
             "days": days,
             "status": status,
             "internal_status": lifecycle_status,
@@ -283,17 +307,15 @@ def event_display_status(lifecycle_status: str | None) -> str:
 
 
 def product_status_for_events(events: list[dict]) -> str:
-    """父 ASIN + 店铺的唯一状态口径。"""
+    """父 ASIN + 店铺的唯一状态口径：全部异常处理完即产品完成。"""
     statuses = [event.get("status") for event in events]
     if not statuses:
         return "未完成"
     handled = {"已完成", "已关闭"}
     if any(status == "处理中" for status in statuses):
         return "处理中"
-    if all(status == "已完成" for status in statuses):
-        return "已完成"
     if all(status in ("已完成", "已关闭") for status in statuses):
-        return "已关闭"
+        return "已完成"
     if any(status in handled for status in statuses):
         return "处理中"
     if any(status == "待复查" for status in statuses):
@@ -333,6 +355,8 @@ def group_events_by_product(events: list[dict]) -> list[dict]:
             "priority": main.get("priority") or "P2",
             "product_score": next((event.get("product_score") for event in product_events if event.get("product_score") is not None), None),
             "tier": main.get("tier"),
+            "tier_label": main.get("tier_label", TIER_LABELS.get(main.get("tier"), "待补充")),
+            "tier_display": main.get("tier_display", tier_display(main.get("tier"))),
             "product_status": product_status,
             "event_count": len(product_events),
             "status_counts": {status: sum(1 for event in product_events if event.get("status") == status)
@@ -352,6 +376,40 @@ def group_events_by_product(events: list[dict]) -> list[dict]:
     return products
 
 
+def attach_assignments(products: list[dict], viewer_id: int | None) -> list[dict]:
+    """给产品 DTO 附加指派信息（被指派人名字 / 是否派给我 / 是否我派出）。
+    viewer_id 是当前登录人（判断 to_me / by_me 的视角）。"""
+    if not products:
+        return products
+    with sqlite3.connect(local_store.DB_PATH) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute("""
+            SELECT ta.parent_asin, ta.shop_account, ta.assignee_id, ta.assigner_id, ta.note, ta.created_at,
+                   ua.user_name AS assignee_name, ug.user_name AS assigner_name
+            FROM task_assignment ta
+            LEFT JOIN sys_user ua ON ua.id = ta.assignee_id
+            LEFT JOIN sys_user ug ON ug.id = ta.assigner_id
+        """).fetchall()
+    amap: dict[tuple, list[dict]] = {}
+    for r in rows:
+        amap.setdefault((r["parent_asin"], r["shop_account"]), []).append({
+            "assignee_id": r["assignee_id"],
+            "assignee_name": r["assignee_name"] or f"用户{r['assignee_id']}",
+            "assigner_id": r["assigner_id"],
+            "assigner_name": r["assigner_name"] or f"用户{r['assigner_id']}",
+            "note": r["note"],
+            "created_at": r["created_at"],
+        })
+    for p in products:
+        assigns = amap.get((p.get("parent_asin"), p.get("shop_account")), [])
+        p["assignments"] = assigns
+        p["is_assigned"] = bool(assigns)
+        p["assignee_names"] = [a["assignee_name"] for a in assigns]
+        p["assigned_to_me"] = any(a["assignee_id"] == viewer_id for a in assigns)
+        p["assigned_by_me"] = any(a["assigner_id"] == viewer_id for a in assigns)
+    return products
+
+
 def fetch_history_records(target_user_id: int) -> list[dict]:
     """拉出该 target 名下所有处理记录（不含"备注"类）。"""
     with sqlite3.connect(local_store.DB_PATH) as c:
@@ -366,9 +424,9 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             LEFT JOIN inspection_result ir ON ir.id = e.inspection_result_id
             WHERE a.action_type IN ('完成', '不处理')
               AND EXISTS (
-                SELECT 1 FROM asin_owner o
-                WHERE o.asin=e.父ASIN AND o.shop_account=e.店铺账号
-                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
+                SELECT 1 FROM product_access pa
+                WHERE pa.parent_asin=e.父ASIN AND pa.shop_account=e.店铺账号
+                  AND pa.user_id = ?
               )
             ORDER BY a.created_at DESC
         """, (target_user_id,)).fetchall()
@@ -386,9 +444,9 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
                    首次命中时间 as first_seen, 严重度 as severity
             FROM event_pool
             WHERE EXISTS (
-                SELECT 1 FROM asin_owner o
-                WHERE o.asin=event_pool.父ASIN AND o.shop_account=event_pool.店铺账号
-                  AND COALESCE(o.principal_user_id, o.editor_id, NULLIF(o.creator_id,-1)) = ?
+                SELECT 1 FROM product_access pa
+                WHERE pa.parent_asin=event_pool.父ASIN AND pa.shop_account=event_pool.店铺账号
+                  AND pa.user_id = ?
             )
         """, (target_user_id,)).fetchall()
 

@@ -113,6 +113,7 @@ class 每日聚合结果:
     有效销售天数: int = 0                         # 有销售记录的天数
     # 滞销（数据缺口）
     有滞销库存: bool = False
+    命中子ASIN: str | None = None
     命中子ASIN滞销库存: float | None = None       # 数据缺口 → None
     命中子ASIN近30天日均销量: float | None = None # 数据缺口 → None
     父ASIN汇总单月超龄仓租费用: float | None = None  # 数据缺口 → None
@@ -245,6 +246,33 @@ def _safe_div(a: float | None, b: float | None) -> float | None:
     if a is None or b is None or b == 0:
         return None
     return a / b
+
+
+def _as_ratio(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace("%", "")
+    try:
+        return float(text) / 100
+    except ValueError:
+        return None
+
+
+def _business_report_weeks(snapshot: object) -> list[dict]:
+    if isinstance(snapshot, list):
+        rows = snapshot
+    elif isinstance(snapshot, dict):
+        rows = snapshot.get("data") or snapshot.get("rows") or []
+    else:
+        return []
+    if isinstance(rows, dict):
+        rows = [rows]
+    if not isinstance(rows, list) or not rows:
+        return []
+    records = rows[0].get("records") if isinstance(rows[0], dict) else None
+    return [row for row in records or [] if isinstance(row, dict)]
 
 
 def _算滚动均值(rows: list[dict], 字段: str, 天数: int) -> float | None:
@@ -463,26 +491,50 @@ def 聚合单产品(
     else:
         前7天平均自然占比 = None
 
-    # ---- 卡位指标（数据缺口）----
+    # ---- 卡位指标（来源：keyword_rank_daily 核心词逐日自然排名）----
     近3天平均卡位 = None
     近7天平均卡位 = None
     近7天逐日卡位 = []
-    缺失.append("近3天平均卡位")
-    缺失.append("近7天平均卡位")
-    缺失.append("近7天逐日卡位")
+    卡位序列 = store.query_core_keyword_ranks(父ASIN, 店铺账号, days=8)
+    卡位值 = [float(r["nature_rank"]) for r in 卡位序列 if r.get("nature_rank") is not None]
+    if len(卡位值) >= 3:
+        近3天逐日 = 卡位值[-3:]
+        近7天逐日卡位 = 卡位值[-7:]
+        近3天平均卡位 = sum(近3天逐日) / len(近3天逐日)
+        近7天平均卡位 = sum(近7天逐日卡位) / len(近7天逐日卡位)
+    else:
+        缺失.append("近3天平均卡位")
+        缺失.append("近7天平均卡位")
+        缺失.append("近7天逐日卡位")
 
-    # ---- 转化率（从快照读）----
-    if listing:
+    inspection = (快照数据 or {}).get("inspection") or {}
+    business_weeks = _business_report_weeks(inspection.get("business_report"))
+    if business_weeks:
+        current_week = business_weeks[0]
+        previous_week = business_weeks[1] if len(business_weeks) > 1 else {}
+        本周转化率 = _as_ratio(current_week.get("conversionRate"))
+        上周转化率 = _as_ratio(previous_week.get("conversionRate"))
+        类目平均转化率 = _as_ratio(current_week.get("partnerMedianCustomerRate"))
+        本周会话 = current_week.get("conversation")
+        上周会话 = previous_week.get("conversation")
+        本周订单商品总数 = current_week.get("productTotalOrders")
+        上周订单商品总数 = previous_week.get("productTotalOrders")
+    elif listing:
         本周转化率 = listing.get("链接转化率")
         类目平均转化率 = listing.get("类目转化率")
+        上周转化率 = None
+        本周会话 = None
+        上周会话 = None
+        本周订单商品总数 = None
+        上周订单商品总数 = None
     else:
         本周转化率 = None
         类目平均转化率 = None
-    上周转化率 = None  # 无上周快照
-    本周会话 = None     # 数据缺口
-    上周会话 = None
-    本周订单商品总数 = None
-    上周订单商品总数 = None
+        上周转化率 = None
+        本周会话 = None
+        上周会话 = None
+        本周订单商品总数 = None
+        上周订单商品总数 = None
     if 本周会话 is None:
         缺失.append("本周会话")
     if 上周转化率 is None:
@@ -608,8 +660,22 @@ def 聚合单产品(
     if 有效销售天数_算 < 7:
         是否新品观察期 = True
 
-    # ---- 滞销（数据缺口）----
-    # 超龄仓租/滞销库存数据暂无
+    inventory_cost = (快照数据 or {}).get("inventory_cost") or []
+    child_order_averages = store.query_child_order_averages(父ASIN, 店铺账号, days=30)
+    stale_rows = [row for row in inventory_cost if float(row.get("汇总超龄库存数") or 0) > 0]
+    有滞销库存 = bool(stale_rows)
+    命中子ASIN = None
+    命中子ASIN滞销库存 = None
+    命中子ASIN近30天日均销量 = None
+    父ASIN汇总单月超龄仓租费用 = None
+    if stale_rows:
+        target_row = max(stale_rows, key=lambda row: float(row.get("汇总超龄库存数") or 0))
+        命中子ASIN = target_row.get("child_asin")
+        命中子ASIN滞销库存 = float(target_row.get("汇总超龄库存数") or 0)
+        命中子ASIN近30天日均销量 = child_order_averages.get(target_row.get("child_asin"))
+        父ASIN汇总单月超龄仓租费用 = sum(
+            float(row.get("汇总超龄仓租费") or 0) for row in stale_rows
+        )
 
     # ---- 汇总缺失字段 ----
     # 只保留真正为 None 且在计算中无法获取的
@@ -687,10 +753,11 @@ def 聚合单产品(
         是否新品观察期=是否新品观察期,
         有效销售天数=有效销售天数_算,
         # 滞销
-        有滞销库存=False,
-        命中子ASIN滞销库存=None,
-        命中子ASIN近30天日均销量=None,
-        父ASIN汇总单月超龄仓租费用=None,
+        有滞销库存=有滞销库存,
+        命中子ASIN=命中子ASIN,
+        命中子ASIN滞销库存=命中子ASIN滞销库存,
+        命中子ASIN近30天日均销量=命中子ASIN近30天日均销量,
+        父ASIN汇总单月超龄仓租费用=父ASIN汇总单月超龄仓租费用,
         # 元信息
         数据窗口_天数=数据天数,
         数据窗口_起=窗口起,

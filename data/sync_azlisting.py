@@ -258,11 +258,54 @@ def sync_product_info(sa, pa, sku, _c=None) -> tuple[int, str]:
     if not row:
         store.log_sync("erp_listing_product_info", pa, None, "empty")
         return 0, "OK"
+    store.upsert_listing_inspection_snapshot(pa, sku, sa, "product_info", data)
     store.upsert_product_info(
         parent_asin=pa, parent_seller_sku=sku, shop_account=sa, row=row,
     )
     store.log_sync("erp_listing_product_info", pa, None, "ok", rows_count=1)
     return 1, "OK"
+
+
+def _sync_inspection_source(tool: str, source: str, sa: str, pa: str, sku: str,
+                            args: dict, _c=None) -> tuple[int, str]:
+    caller = _c or mcp_call
+    status, data = caller(tool, args)
+    if status != "OK":
+        error = data.get("err") if isinstance(data, dict) else data
+        store.log_sync(tool, pa, None, status.lower(), note=str(error or "")[:500])
+        return 0, status
+    store.upsert_listing_inspection_snapshot(pa, sku, sa, source, data)
+    count = len(data) if isinstance(data, list) else 1
+    store.log_sync(tool, pa, None, "ok", rows_count=count)
+    return count, "OK"
+
+
+def sync_business_report(sa, pa, sku, _c=None) -> tuple[int, str]:
+    return _sync_inspection_source(
+        "erp_listing_business_report", "business_report", sa, pa, sku,
+        {"shopAccount": sa, "parentAsin": pa, "parentSellerSku": sku}, _c,
+    )
+
+
+def sync_platform_activity(sa, pa, sku, _c=None) -> tuple[int, str]:
+    return _sync_inspection_source(
+        "erp_listing_platform_activity", "platform_activity", sa, pa, sku,
+        {"shopAccount": sa, "parentAsin": pa, "parentSellerSku": sku}, _c,
+    )
+
+
+def sync_refund_rate(sa, pa, sku, _c=None) -> tuple[int, str]:
+    return _sync_inspection_source(
+        "erp_listing_refund_rate", "refund_rate", sa, pa, sku,
+        {"shopAccount": sa, "parentAsin": pa, "parentSellerSku": sku}, _c,
+    )
+
+
+def sync_unsalable_product_line(sa, pa, sku, _c=None) -> tuple[int, str]:
+    return _sync_inspection_source(
+        "erp_listing_unsalable_product_line", "unsalable_product_line", sa, pa, sku,
+        {"shopAccount": sa, "parentAsin": pa, "parentSellerSku": sku}, _c,
+    )
 
 
 def sync_monthly_goal(sa, pa, sku, _c=None) -> tuple[int, str]:
@@ -450,6 +493,22 @@ def sync_product(sa, pa, sku, sc, days=30, with_price_promo=True, session: MCPSe
 
     n2b, s2b = sync_product_info(sa, pa, sku, _c=_c)
     print(f"  product_info       : {s2b} · +{n2b} 行  ({tag})")
+    time.sleep(0.2)
+
+    n2c, s2c = sync_business_report(sa, pa, sku, _c=_c)
+    print(f"  business_report    : {s2c} · +{n2c} 行  ({tag})")
+    time.sleep(0.2)
+
+    n2d, s2d = sync_platform_activity(sa, pa, sku, _c=_c)
+    print(f"  platform_activity  : {s2d} · +{n2d} 行  ({tag})")
+    time.sleep(0.2)
+
+    n2e, s2e = sync_refund_rate(sa, pa, sku, _c=_c)
+    print(f"  refund_rate        : {s2e} · +{n2e} 行  ({tag})")
+    time.sleep(0.2)
+
+    n2f, s2f = sync_unsalable_product_line(sa, pa, sku, _c=_c)
+    print(f"  unsalable_line     : {s2f} · +{n2f} 行  ({tag})")
     time.sleep(0.2)
 
     n3, s3 = sync_stock_alert(sa, pa, sku, _c=_c)

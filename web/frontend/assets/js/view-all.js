@@ -44,6 +44,7 @@ function renderAll(){
   const priority = document.getElementById('allPriority').value;
   const category = document.getElementById('allCategory').value;
   const status = document.getElementById('allStatus').value;
+  const assign = document.getElementById('allAssign').value;
   const rows = products.filter(product => {
     const text = product.events.map(event =>
       (event.parent_asin || '') + (event.product_name || '') + (event.issue || '')
@@ -52,6 +53,10 @@ function renderAll(){
     if (priority && product.priority !== priority) return false;
     if (category && !product.events.some(event => event.category === category)) return false;
     if (!productMatchesStatus(product, status)) return false;
+    if (assign === 'to_me' && !product.assigned_to_me) return false;
+    if (assign === 'by_me' && !product.assigned_by_me) return false;
+    if (assign === 'assigned' && !product.is_assigned) return false;
+    if (assign === 'none' && product.is_assigned) return false;
     return true;
   });
   document.getElementById('allResultCount').textContent = rows.length;
@@ -63,7 +68,7 @@ function renderAll(){
       : '';
     return `<tr data-product-key="${esc(product.key)}" style="cursor:pointer">
       <td><span class="priority ${String(product.priority).toLowerCase()}">${esc(product.priority)}</span></td>
-      <td><div class="mini-product"><b>${esc(event.product_name || event.parent_asin)}</b><span>${esc(event.parent_asin)} · ${esc(event.shop_account || '-')}</span></div></td>
+      <td><div class="mini-product"><b>${esc(event.product_name || event.parent_asin)}</b><span>${esc(event.parent_asin)} · ${esc(event.shop_account || '-')}</span>${product.is_assigned ? `<span class="${product.assigned_to_me ? 'assign-badge to-me' : 'assign-badge'}">👤 ${product.assigned_to_me ? '指派给我' : '指派给'} ${esc((product.assignee_names||[]).join('、'))}</span>` : ''}</div></td>
       <td><span class="issue-type">${product.events.length} 个异常</span><div class="all-category-list">${esc([...new Set(product.events.map(item => item.category).filter(Boolean))].join('、') || '-')}</div></td>
       <td><div class="all-issue-list">${product.events.map(item => `${esc(allEventSeverity(item))} ${esc(item.issue || item.category || '-')}`).join('、')}</div></td>
       <td>${product.max_days} 天</td>
@@ -95,7 +100,7 @@ function openAnomalyDetail(productKey){
   const anomalyList = product.events.map(item => {
     const basis = item.judge_basis || {};
     const reason = item.summary_reason || basis['命中依据'] || basis['判定过程'] || '未记录判定依据';
-    const hitAsin = item.scope === '变体级' && item.variant
+    const hitAsin = item.variant
       ? `<div><b>命中 ASIN：</b>${esc(item.variant)}</div>`
       : '';
     return `<div class="all-drawer-anomaly">
@@ -108,7 +113,7 @@ function openAnomalyDetail(productKey){
   document.getElementById('drawerBody').innerHTML = `
     <div class="proof-banner" style="background:${product.product_status === '已完成' ? '#f0f4f8' : '#fff3e0'};border-color:${product.product_status === '已完成' ? '#d5dde5' : '#f5d7a3'}">
       <i style="background:${product.product_status === '已完成' ? '#6f7c8c' : '#d58a1e'}">!</i>
-      <div><b style="color:#273140">${esc(product.product_status)} · ${esc(product.priority)} 产品</b><span>${product.events.length} 个异常 · 最高执行分 ${Math.round(product.product_score ?? 0)}/100 · ${event.tier || '-'} 产品</span></div>
+      <div><b style="color:#273140">${esc(product.product_status)} · ${esc(product.priority)} 产品</b><span>${product.events.length} 个异常 · 最高执行分 ${Math.round(product.product_score ?? 0)}/100 · ${event.tier_display || event.tier || '待补充'}</span></div>
     </div>
     <section class="proof-section">
       <div class="proof-section-head"><b>产品内异常</b><span>${adButton}</span></div>
@@ -128,6 +133,6 @@ function openAnomalyDetail(productKey){
 }
 
 document.getElementById('allReloadBtn').onclick = () => loadAll();
-['allSearch','allPriority','allCategory','allStatus'].forEach(id => {
+['allSearch','allPriority','allCategory','allStatus','allAssign'].forEach(id => {
   document.getElementById(id).addEventListener(id === 'allSearch' ? 'input' : 'change', renderAll);
 });

@@ -353,11 +353,11 @@ ACOS异常:
   当前值: 近3天平均卡位
   连续天数门槛: 3
   说明: "卡位数字变大表示下滑；下滑比例 = (当前 - 基线) / 基线"
-  # ⚠️ 数据源待补（详见 R2_异常字典.yaml.卡位异常.数据源待补）
-  # severity_grader.判卡位异常 传入的 近3天平均卡位/近7天平均卡位 目前必为 None
-  # → 会返回观察类结果 "数据不足"，不进入正式打分（符合 §3.4）
-  # 阈值分档保留，等数据源接入后即可直接生效
-  数据源待补: true
+  # 数据源已接入（2026-07-21）：
+  #   own_keyword_flow 选核心词 → erp_listing_asin_keyword_rank_history 拉逐日排名
+  #   → keyword_rank_daily 表 → daily_monitor 算 近3天/近7天/逐日卡位
+  #   同步脚本：data/sync_keyword_rank.py
+  数据源待补: false
   # 卡位为整数
   分档:
     - 名称: 不预警
