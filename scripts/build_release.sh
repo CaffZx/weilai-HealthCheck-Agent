@@ -5,7 +5,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${1:-${PROJECT_ROOT}/dist}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 RELEASE_DIR="${OUTPUT_DIR}/weilai-HealthCheck-Agent-${STAMP}"
-ARCHIVE="${OUTPUT_DIR}/weilai-HealthCheck-Agent-${STAMP}.tar.gz"
+FORMAT="${FORMAT:-tar.gz}"   # tar.gz | zip
+ARCHIVE="${OUTPUT_DIR}/weilai-HealthCheck-Agent-${STAMP}.${FORMAT}"
 PYTHON="${PYTHON:-python3}"
 
 mkdir -p "${OUTPUT_DIR}"
@@ -62,6 +63,10 @@ Secrets: excluded; copy .env.example to .env and fill in deployment values
 Start: ./start.sh
 EOF
 
-tar -czf "${ARCHIVE}" -C "${OUTPUT_DIR}" "$(basename "${RELEASE_DIR}")"
+if [[ "${FORMAT}" == "zip" ]]; then
+  (cd "${OUTPUT_DIR}" && zip -rq "${ARCHIVE}" "$(basename "${RELEASE_DIR}")")
+else
+  tar -czf "${ARCHIVE}" -C "${OUTPUT_DIR}" "$(basename "${RELEASE_DIR}")"
+fi
 rm -rf "${RELEASE_DIR}"
 printf '%s\n' "${ARCHIVE}"
