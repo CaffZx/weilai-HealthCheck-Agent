@@ -108,8 +108,9 @@ def 生成唯一识别(店铺账号: str, 父ASIN: str, 问题点位: str, 命�
 # DB 工具
 # -----------------------------------------------------------------------------
 def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=30000")   # 批巡多线程写事件池，避免立即 database is locked
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 

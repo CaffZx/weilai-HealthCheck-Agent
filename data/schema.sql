@@ -690,9 +690,10 @@ CREATE TABLE IF NOT EXISTS ad_target (
 CREATE TABLE IF NOT EXISTS task_action (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   event_uid      TEXT NOT NULL,             -- 对应 event_pool.唯一识别
+  maintenance_id INTEGER,                   -- 对应一次产品级维护（历史记录可为空）
   user_id        INTEGER,                   -- 操作人 sys_user.id
   action_type    TEXT NOT NULL,             -- '标记处理中'|'完成'|'不处理'|'待复查'|'备注'
-  result         TEXT,                      -- '已按建议执行'|'部分执行'|'建议不适用'|'转人工复核'
+  result         TEXT,                      -- '已按建议执行'|'部分执行'|'建议不适用'
   actual_action  TEXT,                      -- 实际动作（自由文本）
   review_at      TEXT,                      -- 复查时间（ISO date）
   notes          TEXT,                      -- 运营备注
@@ -704,6 +705,66 @@ CREATE TABLE IF NOT EXISTS task_action (
 CREATE INDEX IF NOT EXISTS idx_task_action_uid ON task_action(event_uid);
 CREATE INDEX IF NOT EXISTS idx_task_action_user ON task_action(user_id);
 CREATE INDEX IF NOT EXISTS idx_task_action_created ON task_action(created_at);
+
+-- ============================================================
+-- 产品级维护与效果观察
+-- 一次产品维护覆盖父ASIN+店铺下的多条异常；异常级 task_action 仍保留审计凭证。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS product_maintenance (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_asin           TEXT NOT NULL,
+  shop_account          TEXT NOT NULL,
+  user_id               INTEGER,
+  result                TEXT,
+  actual_action         TEXT,
+  notes                 TEXT,
+  executed_at           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  observation_at        TEXT NOT NULL,
+  next_inspection_at    TEXT NOT NULL,
+  inspection_time_source TEXT NOT NULL DEFAULT 'follow_review',
+  status                TEXT NOT NULL DEFAULT '观察中',
+  agent_effect          TEXT,
+  agent_summary         TEXT,
+  agent_observed_at     TEXT,
+  agent_payload         TEXT,
+  confirmed_at          TEXT,
+  confirmed_by          INTEGER,
+  confirmation          TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_product_maintenance_product
+  ON product_maintenance(parent_asin, shop_account, executed_at);
+CREATE INDEX IF NOT EXISTS idx_product_maintenance_observe
+  ON product_maintenance(observation_at, status);
+
+CREATE TABLE IF NOT EXISTS product_maintenance_event (
+  maintenance_id        INTEGER NOT NULL REFERENCES product_maintenance(id) ON DELETE CASCADE,
+  event_uid             TEXT NOT NULL,
+  issue                  TEXT,
+  severity               TEXT,
+  variant                TEXT,
+  baseline_result_id    INTEGER,
+  baseline_snapshot     TEXT,
+  PRIMARY KEY (maintenance_id, event_uid)
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_event_uid
+  ON product_maintenance_event(event_uid);
+
+CREATE TABLE IF NOT EXISTS observation_report (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  maintenance_id        INTEGER NOT NULL UNIQUE REFERENCES product_maintenance(id) ON DELETE CASCADE,
+  agent_status          TEXT NOT NULL DEFAULT '待观察',
+  agent_effect          TEXT,
+  confidence            REAL,
+  summary               TEXT,
+  report_json           TEXT NOT NULL DEFAULT '{}',
+  observed_at           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at            TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_observation_report_status
+  ON observation_report(agent_status, observed_at);
 
 -- 应用级一次性数据迁移标记，避免历史兼容逻辑在每次启动时重复覆盖正式状态。
 CREATE TABLE IF NOT EXISTS app_migration (

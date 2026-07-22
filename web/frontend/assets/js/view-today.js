@@ -334,12 +334,14 @@ function selectProduct(key){
       <div class="summary-section-head"><span>本产品异常</span><div class="summary-issues-tools"><small>${productEvents.length} 项 · ${severityCounts.map(item => `${item.severity} ${item.count}`).join(' · ')}</small><a class="btn ghost-blue ad-agent-summary-btn" href="${buildAdAgentUrl(adEvent)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(adEvent.event_uid)}')">点击进入广告决策Agent页面</a></div></div>
       <div class="product-issue-list"><div class="product-issue-list-head"><span>异常</span><span>判断依据</span><span>处理建议</span><span>状态</span></div>${productIssueListHtml(productEvents, selectedEvent.event_uid)}</div>
     </section>
+    ${product.has_active_maintenance ? `<div class="maintenance-review-notice"><span>✓ 本产品已进入调整复盘</span><small>观察节点：${esc(product.observation_at || '-')} · 下次巡检：${esc(product.next_inspection_at || '-')}</small><button type="button" class="btn ghost-blue" onclick="switchView('review')">查看调整复盘</button></div>` : ''}
     ${anomalyDetailHtml(selectedEvent)}
     <div class="section" style="margin-top:4px"><div class="section-head"><span>产品执行记录</span><span id="opFormTarget">${esc(main.parent_asin || '-')} · ${esc(main.shop_account || '-')} · 覆盖本产品维护</span></div>
       <div class="section-body op-form">
-        <div class="op-row"><label>处理结果</label><select id="opResult"><option value="">请选择</option><option>已按建议执行</option><option>部分执行</option><option>建议不适用</option><option>转人工复核</option></select></div>
+        <div class="op-row"><label>处理结果</label><select id="opResult"><option value="">请选择</option><option>已按建议执行</option><option>部分执行</option><option>建议不适用</option></select></div>
         <div class="op-row"><label>实际动作</label><input id="opAction" placeholder="简要描述实际执行了什么"/></div>
-        <div class="op-row"><label>复查时间</label><div class="op-review-control"><select id="opReview"><option value="3" selected>3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option><option value="">不复查</option></select><div class="op-review-custom" id="opReviewCustomWrap" style="display:none"><input id="opReviewCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义复查天数"/><span class="op-review-date" id="opReviewDateHint">-</span></div></div></div>
+        <div class="op-row"><label>复查时间</label><div class="op-review-control"><select id="opReview"><option value="3" selected>3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option></select><div class="op-review-custom" id="opReviewCustomWrap" style="display:none"><input id="opReviewCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义复查天数"/><span class="op-review-date" id="opReviewDateHint">-</span></div></div></div>
+        <div class="op-row"><label>下次巡检</label><div class="op-review-control"><label class="op-follow-review"><input id="opInspectionFollowReview" type="checkbox" checked/> 跟随复查时间</label><select id="opInspection" disabled><option value="3" selected>3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option></select><div class="op-review-custom" id="opInspectionCustomWrap" style="display:none"><input id="opInspectionCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义巡检天数"/><span class="op-review-date" id="opInspectionDateHint">-</span></div></div></div>
         <div class="op-row"><label>备注</label><input id="opNotes" placeholder="补充人工判断或例外原因"/></div>
       </div>
     </div>
@@ -351,8 +353,10 @@ function selectProduct(key){
   const completeProductBtn = document.getElementById('completeProductBtn');
   const aiBtn = document.getElementById('aiBtn');
   const hasOpenEvents = productEvents.some(event => !isEventHandled(event));
-  completeProductBtn.disabled = !hasOpenEvents;
-  completeProductBtn.textContent = hasOpenEvents ? '完成该产品维护' : '该产品已完成维护';
+  completeProductBtn.disabled = !hasOpenEvents && Boolean(product.has_active_maintenance);
+  completeProductBtn.textContent = product.has_active_maintenance
+    ? '已进入调整复盘'
+    : '完成该产品维护并进入调整复盘模块';
   aiBtn.disabled = false;
   setAiBtnText();
   renderDetailAssign(product);
@@ -377,6 +381,61 @@ function renderDetailAssign(product){
     x.onclick = () => revokeAssignment(product, Number(x.dataset.revoke));
   });
 }
+
+function updateProductsAssignments(products, assignee, mode){
+  const selectedKeys = new Set((products || []).map(product => `${product.parent_asin}__${product.shop_account}`));
+  const assigneeId = Number(assignee?.assignee_id);
+  const assigneeName = assignee?.assignee_name || `用户${assigneeId}`;
+  const todayProducts = state.todayData?.products || [];
+  todayProducts.forEach(product => {
+    if (!selectedKeys.has(product.key)) return;
+    const assignments = [...(product.assignments || [])];
+    if (mode === 'assign' && assigneeId) {
+      const index = assignments.findIndex(item => Number(item.assignee_id) === assigneeId);
+      const assignment = {
+        assignee_id: assigneeId,
+        assignee_name: assigneeName,
+        assigner_id: state.viewerId,
+        assigner_name: state.viewerName,
+        note: null,
+        created_at: new Date().toISOString(),
+      };
+      if (index >= 0) assignments[index] = {...assignments[index], ...assignment};
+      else assignments.push(assignment);
+    }
+    if (mode === 'revoke') {
+      product.assignments = assigneeId
+        ? assignments.filter(item => Number(item.assignee_id) !== assigneeId)
+        : [];
+    } else {
+      product.assignments = assignments;
+    }
+    product.is_assigned = product.assignments.length > 0;
+    product.assignee_names = product.assignments.map(item => item.assignee_name);
+    product.assigned_to_me = product.assignments.some(item => Number(item.assignee_id) === Number(state.viewerId));
+    product.assigned_by_me = product.assignments.some(item => Number(item.assigner_id) === Number(state.viewerId));
+  });
+}
+
+function refreshAssignedProductsLocally(products){
+  const keys = new Set((products || []).map(product => `${product.parent_asin}__${product.shop_account}`));
+  keys.forEach(key => {
+    const product = (state.todayData?.products || []).find(item => item.key === key);
+    const card = [...document.querySelectorAll('.product-task-card[data-product-key]')]
+      .find(item => item.dataset.productKey === key);
+    if (product && card) card.innerHTML = productTaskCardHtml(product);
+  });
+  const current = (state.todayData?.products || []).find(item => item.key === state.selectedProductKey);
+  if (current && keys.has(current.key)) renderDetailAssign(current);
+}
+
+function rerenderTaskListLocally(){
+  const listWrap = document.getElementById('taskListWrap');
+  const scrollTop = listWrap?.scrollTop || 0;
+  renderToday();
+  if (listWrap) listWrap.scrollTop = scrollTop;
+}
+
 async function assignSelectedProduct(product){
   const assigneeId = Number(document.getElementById('detailAssignSelect').value);
   if (!assigneeId) { toast('请先选择被指派人'); return; }
@@ -386,19 +445,25 @@ async function assignSelectedProduct(product){
       body: JSON.stringify({ userId: state.viewerId, assignee_id: assigneeId,
         products: [{ parent_asin: product.parent_asin, shop_account: product.shop_account }] }),
     });
+    if (r.assigned_count) {
+      updateProductsAssignments(r.assigned, r, 'assign');
+      refreshAssignedProductsLocally(r.assigned);
+    }
     toast(r.assigned_count ? `已指派给 ${r.assignee_name}` : '未指派（非本人名下产品）');
-    await loadToday();
   } catch(e){ toast('指派失败：' + e.message); }
 }
 async function revokeAssignment(product, assigneeId){
   try {
-    await api('/api/tasks/unassign', {
+    const r = await api('/api/tasks/unassign', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ userId: state.viewerId, assignee_id: assigneeId,
         products: [{ parent_asin: product.parent_asin, shop_account: product.shop_account }] }),
     });
+    if (r.removed_count) {
+      updateProductsAssignments(r.removed, {assignee_id: assigneeId}, 'revoke');
+      refreshAssignedProductsLocally(r.removed);
+    }
     toast('已撤回指派');
-    await loadToday();
   } catch(e){ toast('撤回失败：' + e.message); }
 }
 
@@ -422,6 +487,24 @@ function bindReviewScheduleControls(){
     }
   };
   customDays.oninput = updateDateHint;
+  const inspectionSelect = document.getElementById('opInspection');
+  const inspectionCustom = document.getElementById('opInspectionCustom');
+  const inspectionWrap = document.getElementById('opInspectionCustomWrap');
+  const inspectionHint = document.getElementById('opInspectionDateHint');
+  const followReview = document.getElementById('opInspectionFollowReview');
+  const updateInspectionHint = () => {
+    const days = Number(inspectionCustom?.value);
+    if (inspectionHint) inspectionHint.textContent = Number.isInteger(days) && days > 0 ? formatReviewDateHint(days) : '-';
+  };
+  const toggleInspection = () => {
+    const independent = !followReview.checked;
+    inspectionSelect.disabled = !independent;
+    inspectionWrap.style.display = independent && inspectionSelect.value === 'custom' ? 'flex' : 'none';
+    if (independent && inspectionSelect.value === 'custom') { updateInspectionHint(); inspectionCustom.focus(); }
+  };
+  followReview.onchange = toggleInspection;
+  inspectionSelect.onchange = toggleInspection;
+  inspectionCustom.oninput = updateInspectionHint;
 }
 
 function localDateAfter(days){
@@ -447,6 +530,19 @@ function selectedReviewDate(){
     return localDateAfter(customDays);
   }
   const days = Number(reviewValue);
+  if (!Number.isInteger(days) || days < 1) throw new Error('请选择复查时间');
+  return localDateAfter(days);
+}
+
+function selectedInspectionDate(){
+  if (document.getElementById('opInspectionFollowReview').checked) return selectedReviewDate();
+  const reviewValue = document.getElementById('opInspection').value;
+  if (reviewValue === 'custom') {
+    const customDays = Number(document.getElementById('opInspectionCustom').value);
+    if (!Number.isInteger(customDays) || customDays < 1) throw new Error('请输入大于 0 的下次巡检天数');
+    return localDateAfter(customDays);
+  }
+  const days = Number(reviewValue);
   return Number.isFinite(days) && days > 0 ? localDateAfter(days) : null;
 }
 
@@ -469,6 +565,17 @@ function applyTaskActionLocally(eventUid, result){
   product.handled_event_count = product.events.filter(item => handledStatuses.includes(item.status)).length;
   product.open_event_count = product.events.length - product.handled_event_count;
   product.product_status = result.product_status;
+  if (result.maintenance_created) {
+    product.has_active_maintenance = true;
+    product.maintenance_id = result.maintenance_id;
+    product.observation_at = result.observation_at;
+    product.next_inspection_at = result.next_inspection_at;
+  } else if (result.lifecycle_status === '新发现') {
+    product.has_active_maintenance = false;
+    product.maintenance_id = null;
+    product.observation_at = null;
+    product.next_inspection_at = null;
+  }
 
   if (result.product_status === '已完成' && product.handled_event_count === product.event_count) {
     state.todayData.done_today_products = Math.max(
@@ -482,7 +589,15 @@ function applyTaskActionLocally(eventUid, result){
 function applyProductActionLocally(result){
   const product = state.todayData?.products?.find(item =>
     item.parent_asin === result.parent_asin && item.shop_account === result.shop_account);
-  if (!product || !Array.isArray(result.events)) return false;
+  if (!product) return false;
+  if (result.already_observing) {
+    product.has_active_maintenance = true;
+    product.maintenance_id = result.maintenance_id;
+    product.observation_at = result.observation_at;
+    product.next_inspection_at = result.next_inspection_at;
+    return true;
+  }
+  if (!Array.isArray(result.events)) return false;
   const eventsByUid = new Map(result.events.map(event => [event.event_uid, event]));
   product.events.forEach(event => {
     const refreshed = eventsByUid.get(event.event_uid);
@@ -492,6 +607,10 @@ function applyProductActionLocally(result){
     if (flatEvent && flatEvent !== event) Object.assign(flatEvent, refreshed);
   });
   product.product_status = result.product_status;
+  product.has_active_maintenance = Boolean(result.maintenance_created);
+  product.maintenance_id = result.maintenance_id || null;
+  product.observation_at = result.observation_at || null;
+  product.next_inspection_at = result.next_inspection_at || null;
   const handledStatuses = ['已完成', '已关闭'];
   product.status_counts = ['未完成', '处理中', '待复查', '已完成', '已关闭'].reduce((counts, status) => {
     counts[status] = product.events.filter(event => event.status === status).length;
@@ -591,12 +710,13 @@ async function submitEventAction(eventUid, actionType){
         userId: state.viewerId, action_type: actionType,
         result: isComplete && isSelectedEvent ? document.getElementById('opResult').value : undefined,
         actual_action: isComplete && isSelectedEvent ? document.getElementById('opAction').value : undefined,
-        review_at: isComplete && isSelectedEvent ? selectedReviewDate() : isReopen ? null : localDateAfter(3),
+        review_at: isComplete ? selectedReviewDate() : undefined,
+        next_inspection_at: isComplete ? selectedInspectionDate() : undefined,
         notes,
       })
     });
     const actionMessage = actionType === '完成'
-      ? (result.product_status === '已完成' ? '当前异常已完成；该产品已全部完成' : '当前异常已完成；仍可继续处理其他异常')
+      ? (result.maintenance_created ? `全部异常已完成，已进入调整复盘（${result.observation_at} 开始观察）` : result.product_status === '已完成' ? '当前异常已完成；该产品已全部完成' : '当前异常已完成；仍可继续处理其他异常')
       : actionType === '重新打开' ? '已重新打开当前异常' : actionType === '标记处理中' ? '已标记为处理中' : '已记录不处理原因并关闭当前异常';
     toast(actionMessage);
     if (applyTaskActionLocally(eventUid, result)) {
@@ -635,6 +755,7 @@ document.getElementById('completeProductBtn').onclick = async () => {
         result: document.getElementById('opResult').value,
         actual_action: document.getElementById('opAction').value,
         review_at: reviewAt,
+        next_inspection_at: selectedInspectionDate(),
         notes: document.getElementById('opNotes').value,
       }),
     });
@@ -642,7 +763,10 @@ document.getElementById('completeProductBtn').onclick = async () => {
       await loadToday();
       return;
     }
-    toast(`已完成该产品维护：${result.completed_count} 项异常已进入待复查`);
+    state.reviewData = null;
+    toast(result.already_observing
+      ? `该产品已在调整复盘中（观察节点：${result.observation_at}）`
+      : `已完成该产品维护：${result.completed_count} 项异常已进入调整复盘`);
     const remainsVisible = productMatchesStatus(product, state.filters.status)
       && (state.filters.quickMode !== 'wait' || !['已完成', '已关闭'].includes(product.product_status));
     if (remainsVisible) updateCurrentProductLocally(state.selectedEventUid);
@@ -652,8 +776,11 @@ document.getElementById('completeProductBtn').onclick = async () => {
   } finally {
     const currentProduct = state.todayData?.products?.find(item => item.key === state.selectedProductKey);
     const stillOpen = currentProduct?.events?.some(event => !isEventHandled(event));
-    btn.disabled = !stillOpen;
-    btn.textContent = stillOpen ? '完成该产品维护' : '该产品已完成维护';
+    const observing = Boolean(currentProduct?.has_active_maintenance);
+    btn.disabled = !stillOpen && observing;
+    btn.textContent = observing
+      ? '已进入调整复盘'
+      : '完成该产品维护并进入调整复盘模块';
   }
 };
 
@@ -843,7 +970,10 @@ document.getElementById('assignConfirmBtn').onclick = async () => {
     toast(`已指派 ${r.assigned_count} 个给 ${r.assignee_name}` + (r.skipped?.length ? `，${r.skipped.length} 个跳过` : ''));
     state.assignMode = false; state.assignSelected.clear();
     updateAssignBar();
-    await loadToday();
+    if (r.assigned_count) {
+      updateProductsAssignments(r.assigned, r, 'assign');
+      rerenderTaskListLocally();
+    }
   } catch(e){ toast('指派失败：' + e.message); }
 };
 document.getElementById('assignRevokeBtn').onclick = async () => {
@@ -857,6 +987,9 @@ document.getElementById('assignRevokeBtn').onclick = async () => {
     toast(`已撤回 ${r.removed_count} 条指派`);
     state.assignMode = false; state.assignSelected.clear();
     updateAssignBar();
-    await loadToday();
+    if (r.removed_count) {
+      updateProductsAssignments(r.removed, {}, 'revoke');
+      rerenderTaskListLocally();
+    }
   } catch(e){ toast('撤回失败：' + e.message); }
 };

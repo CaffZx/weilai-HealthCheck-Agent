@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>业务巡检 Agent · 运营工作台</title>
-<link rel="stylesheet" href="/ui/assets/app.css?v=41"/>
+<link rel="stylesheet" href="/ui/assets/app.css?v=43"/>
 </head>
 <body>
 <div class="app">
@@ -71,7 +71,7 @@
     <div class="detail-actions">
       <div class="detail-assign" id="detailAssign"></div>
       <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
-      <button class="btn primary" id="completeProductBtn" disabled>完成该产品维护</button>
+      <button class="btn primary" id="completeProductBtn" disabled>完成该产品维护并进入调整复盘模块</button>
     </div>
     </section>
   </div>
@@ -108,19 +108,18 @@
 <div class="view" id="viewReview">
   <section class="workspace-page">
     <div class="page-head">
-      <div><div class="page-eyebrow">执行闭环</div><h1>调整复盘</h1><p>已执行动作 + 到达复查时间的产品，判断调整是否有效。</p></div>
+      <div><div class="page-eyebrow">效果观察闭环</div><h1>调整复盘</h1><p>Agent 根据执行前基线与观察期数据判断效果，运营只确认后续动作。</p></div>
       <div class="page-actions"><button class="btn" id="reviewReloadBtn">刷新</button></div>
     </div>
     <div class="kpi-grid" id="reviewKpi"></div>
     <div class="page-panel">
       <div class="filter-row">
-        <select id="reviewPeriod"><option value="today">今日到期</option><option value="3d" selected>3天内</option><option value="7d">7天内</option><option value="30d">30天内</option><option value="all">全部记录</option></select>
         <span class="filter-result">共 <b id="reviewResultCount">0</b> 条</span>
       </div>
       <div class="data-table-scroll">
         <table class="data-table">
-          <thead><tr><th>产品</th><th>覆盖异常</th><th>巡检时间</th><th>执行动作</th><th>复查时间</th><th>效果 (点击标记)</th><th>结论 (点击写入)</th></tr></thead>
-          <tbody id="reviewBody"><tr><td colspan="7" class="loading">加载中…</td></tr></tbody>
+          <thead><tr><th>产品</th><th>执行时间</th><th>观察节点</th><th>下次巡检</th><th>当前阶段</th><th>Agent判断</th><th>观察结论</th><th>指标变化</th><th>运营确认</th></tr></thead>
+          <tbody id="reviewBody"><tr><td colspan="9" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -131,7 +130,7 @@
 <div class="view" id="viewHistory">
   <section class="workspace-page">
     <div class="page-head">
-      <div><div class="page-eyebrow">可审计执行凭证</div><h1>处理记录</h1><p>每次「完成并下一条」会生成独立的动作记录。同一产品再次异常时会新建事件，不覆盖历史凭证。</p></div>
+      <div><div class="page-eyebrow">可审计执行凭证</div><h1>处理记录</h1><p>产品维护按 ASIN + 店铺聚合为一条凭证；单异常操作仍保留独立审计记录。</p></div>
       <div class="page-actions"><button class="btn" id="historyReloadBtn">刷新</button></div>
     </div>
     <div class="kpi-grid" id="historyKpi"></div>
@@ -146,7 +145,7 @@
       </div>
       <div class="data-table-scroll">
         <table class="data-table" style="min-width:1200px">
-          <thead><tr><th>动作记录ID</th><th>处理时间</th><th>产品</th><th>对应异常事件</th><th>实际动作</th><th>操作人</th><th>复查</th><th>完整性</th><th>后续新异常</th><th>操作</th></tr></thead>
+          <thead><tr><th>记录ID</th><th>处理时间</th><th>产品</th><th>覆盖异常</th><th>实际动作</th><th>操作人</th><th>复查</th><th>完整性</th><th>后续新异常</th><th>操作</th></tr></thead>
           <tbody id="historyBody"><tr><td colspan="10" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
@@ -240,10 +239,10 @@
 <div class="toast" id="toast"></div>
 
 <script src="/ui/assets/js/common.js?v=10"></script>
-<script src="/ui/assets/js/view-today.js?v=53"></script>
-<script src="/ui/assets/js/view-all.js?v=10"></script>
-<script src="/ui/assets/js/view-review.js?v=10"></script>
-<script src="/ui/assets/js/view-history.js?v=9"></script>
+<script src="/ui/assets/js/view-today.js?v=57"></script>
+<script src="/ui/assets/js/view-all.js?v=11"></script>
+<script src="/ui/assets/js/view-review.js?v=12"></script>
+<script src="/ui/assets/js/view-history.js?v=10"></script>
 <script src="/ui/assets/js/view-dashboard.js?v=8"></script>
 <script src="/ui/assets/js/view-health.js?v=8"></script>
 <script src="/ui/assets/js/boot.js?v=8"></script>

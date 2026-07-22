@@ -316,8 +316,8 @@ def product_status_for_events(events: list[dict]) -> str:
         return "处理中"
     if all(status in ("已完成", "已关闭") for status in statuses):
         return "已完成"
-    if any(status in handled for status in statuses):
-        return "处理中"
+    if any(status == "未完成" for status in statuses):
+        return "未完成"
     if any(status == "待复查" for status in statuses):
         return "待复查"
     return "未完成"
@@ -415,12 +415,17 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
         rows = c.execute("""
-            SELECT a.*, e.父ASIN as parent_asin, e.父SKU as parent_sku, e.店铺账号 as shop_account,
+            SELECT a.*, pm.id AS product_maintenance_id, pm.status AS maintenance_status,
+                   pm.agent_effect AS maintenance_agent_effect,
+                   pm.executed_at AS maintenance_executed_at, pm.observation_at AS maintenance_observation_at,
+                   pm.next_inspection_at AS maintenance_next_inspection_at,
+                   e.父ASIN as parent_asin, e.父SKU as parent_sku, e.店铺账号 as shop_account,
                    e.异常大类 as category, e.问题点位 as issue, e.严重度 as severity,
                    e.单异常执行分数 as score, e.首次命中时间 as first_seen,
                    ir.created_at as inspection_time, ir.batch_no as inspection_batch
             FROM task_action a
             JOIN event_pool e ON e.唯一识别 = a.event_uid
+            LEFT JOIN product_maintenance pm ON pm.id=a.maintenance_id
             LEFT JOIN inspection_result ir ON ir.id = e.inspection_result_id
             WHERE a.action_type IN ('完成', '不处理')
               AND EXISTS (
@@ -477,9 +482,10 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
                 new_event = e
                 break
 
-        if d.get("effect") == "变好":
+        effect = d.get("maintenance_agent_effect") or d.get("effect")
+        if effect == "变好":
             review = "已恢复"
-        elif d.get("effect") == "变差":
+        elif effect == "变差":
             review = "未恢复"
         else:
             review = "待复查" if d.get("review_at") else "无复查"
@@ -509,7 +515,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             "actual_action": d["actual_action"],
             "action_class": classify_action(d["actual_action"]),
             "review_at": d["review_at"],
-            "effect": d["effect"],
+            "effect": effect,
             "review": review,
             "notes": d["notes"],
             "complete": complete,
@@ -522,8 +528,41 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
                 "first_seen": new_event["first_seen"],
                 "severity": new_event["severity"],
             } if new_event else None,
+            "maintenance_id": d.get("product_maintenance_id"),
+            "maintenance_status": d.get("maintenance_status"),
+            "observation_at": d.get("maintenance_observation_at"),
+            "next_inspection_at": d.get("maintenance_next_inspection_at"),
         })
-    return out
+    grouped: dict[int, list[dict]] = {}
+    standalone: list[dict] = []
+    for item in out:
+        maintenance_id = item.get("maintenance_id")
+        if maintenance_id is None:
+            standalone.append(item)
+        else:
+            grouped.setdefault(maintenance_id, []).append(item)
+
+    product_records = []
+    for maintenance_id, items in grouped.items():
+        representative = items[0].copy()
+        representative.update({
+            "record_id": f"PM-{maintenance_id:06d}",
+            "record_scope": "product",
+            "event_count": len(items),
+            "event_uids": [item["event_uid"] for item in items],
+            "issues": list(dict.fromkeys(item.get("issue") or "异常" for item in items)),
+            "event_ids": [item["event_id"] for item in items],
+            "time": representative.get("maintenance_executed_at") or representative["time"],
+            "review_at": representative.get("observation_at") or representative.get("review_at"),
+        })
+        product_records.append(representative)
+    for item in standalone:
+        item["record_scope"] = "event"
+        item["event_count"] = 1
+        item["issues"] = [item.get("issue") or "异常"]
+        item["event_uids"] = [item["event_uid"]]
+        item["event_ids"] = [item["event_id"]]
+    return sorted(product_records + standalone, key=lambda item: item.get("time") or "", reverse=True)
 
 
 def config_by_key(key: str) -> dict | None:

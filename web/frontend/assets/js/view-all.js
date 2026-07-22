@@ -68,7 +68,7 @@ function renderAll(){
       : '';
     return `<tr data-product-key="${esc(product.key)}" style="cursor:pointer">
       <td><span class="priority ${String(product.priority).toLowerCase()}">${esc(product.priority)}</span></td>
-      <td><div class="mini-product"><b>${esc(event.product_name || event.parent_asin)}</b><span>${esc(event.parent_asin)} · ${esc(event.shop_account || '-')}</span>${product.is_assigned ? `<span class="${product.assigned_to_me ? 'assign-badge to-me' : 'assign-badge'}">👤 ${product.assigned_to_me ? '指派给我' : '指派给'} ${esc((product.assignee_names||[]).join('、'))}</span>` : ''}</div></td>
+      <td><div class="mini-product all-mini-product">${productImageHtml(product.image_url || event.image_url, 'all-product-image')}<div class="mini-product-copy"><b>${esc(event.product_name || event.parent_asin)}</b><span>${esc(event.parent_asin)} · ${esc(event.shop_account || '-')}</span>${product.is_assigned ? `<span class="${product.assigned_to_me ? 'assign-badge to-me' : 'assign-badge'}">👤 ${product.assigned_to_me ? '指派给我' : '指派给'} ${esc((product.assignee_names||[]).join('、'))}</span>` : ''}</div></div></td>
       <td><span class="issue-type">${product.events.length} 个异常</span><div class="all-category-list">${esc([...new Set(product.events.map(item => item.category).filter(Boolean))].join('、') || '-')}</div></td>
       <td><div class="all-issue-list">${product.events.map(item => `${esc(allEventSeverity(item))} ${esc(item.issue || item.category || '-')}`).join('、')}</div></td>
       <td>${product.max_days} 天</td>

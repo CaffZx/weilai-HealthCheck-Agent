@@ -32,10 +32,10 @@ function renderHistory(){
   }
   document.getElementById('historyBody').innerHTML = rows.map(r => `
     <tr data-rid="${esc(r.record_id)}">
-      <td><span class="history-id">${esc(r.record_id)}</span></td>
+      <td><span class="history-id">${esc(r.record_id)}</span><br><small>${r.record_scope === 'product' ? '产品维护' : '单异常'}</small></td>
       <td>${esc((r.time||'').slice(0,16))}</td>
       <td><div class="mini-product"><b>${esc(r.product_name || r.parent_asin)}</b><span>${esc(r.parent_asin)} · ${esc(r.shop_account||'-')}</span></div></td>
-      <td><div class="mini-product"><b>${esc(r.issue||'-')}</b><span>${esc(r.event_id)} · ${esc(r.priority)} · 分${Math.round(r.score)}</span></div></td>
+      <td><div class="mini-product"><b>${esc((r.issues || [r.issue || '-']).join('、'))}</b><span>${r.record_scope === 'product' ? `覆盖 ${r.event_count || 0} 项异常` : `${esc(r.event_id)} · ${esc(r.priority)} · 分${Math.round(r.score)}`}</span></div></td>
       <td>${esc(r.actual_action||'-')}${r.action_class?`<br><span style="color:#8a93a2;font-size:10px">类型：${esc(r.action_class)}</span>`:''}</td>
       <td>${esc(r.owner)}</td>
       <td><span class="effect-pill ${r.review==='已恢复'?'good':r.review==='未恢复'?'bad':'watch'}">${esc(r.review)}</span></td>
@@ -56,7 +56,7 @@ async function openHistoryDrawer(recordId){
     const r = await api(withTarget(`/api/history/${recordId}`));
     state._currentRecord = r;
     document.getElementById('drawerTitle').textContent = `处理记录 · ${r.record_id}`;
-    document.getElementById('drawerSubtitle').textContent = `${r.event_id} · ${r.parent_asin} · ${r.shop_account||''}`;
+    document.getElementById('drawerSubtitle').textContent = `${r.record_scope === 'product' ? `覆盖 ${r.event_count || 0} 项异常` : r.event_id} · ${r.parent_asin} · ${r.shop_account||''}`;
     const before = (state.todayData?.events || []).find(e => e.event_uid === r.event_uid);
     const beforeMetrics = r.timeline.find(t => t.before_metrics)?.before_metrics;
     let snapshotHtml = '';
@@ -72,14 +72,14 @@ async function openHistoryDrawer(recordId){
         <div class="proof-section-head"><b>基础信息</b><span>${r.complete === '完整' ? '记录完整' : '存在待补字段'}</span></div>
         <div class="proof-grid">
           <div class="proof-field"><span>动作记录ID</span><b>${esc(r.record_id)}</b></div>
-          <div class="proof-field"><span>异常事件ID</span><b>${esc(r.event_id)}</b></div>
+          <div class="proof-field"><span>${r.record_scope === 'product' ? '覆盖异常' : '异常事件ID'}</span><b>${esc(r.record_scope === 'product' ? (r.issues || []).join('、') : r.event_id)}</b></div>
           <div class="proof-field"><span>产品</span><b>${esc(r.product_name || r.parent_asin)}<br>${esc(r.parent_asin)} · ${esc(r.parent_sku||'-')}</b></div>
           <div class="proof-field"><span>优先级 · 执行分</span><b>${esc(r.priority)} · ${Math.round(r.score)}/100</b></div>
           <div class="proof-field"><span>点击完成时间</span><b>${esc(r.time)}</b></div>
           <div class="proof-field"><span>巡检时间</span><b>${esc(r.inspection_time || '未关联')}</b></div>
           <div class="proof-field"><span>操作人</span><b>${esc(r.owner)}</b></div>
           <div class="proof-field"><span>处理结果</span><b>${esc(r.result||'待补')}</b></div>
-          <div class="proof-field"><span>复查节点</span><b>${esc(r.review_at||'不复查')}</b></div>
+          <div class="proof-field"><span>观察节点</span><b>${esc(r.review_at||'未设置')}</b></div>
           <div class="proof-field"><span>SLA</span><b>${r.on_time ? '✓ 按时' : '⚠ 超时'} · 处理耗时 ${r.handle_days ?? '-'} 天</b></div>
           <div class="proof-field"><span>动作类型</span><b>${esc(r.action_class||'-')}</b></div>
         </div>
@@ -90,7 +90,7 @@ async function openHistoryDrawer(recordId){
         <div style="padding:12px 14px;font-size:12px;line-height:1.7"><b>${esc(r.actual_action||'待补')}</b><br><span style="color:#7b8794">${esc(r.notes||'无补充备注')}</span></div>
       </section>
       <section class="proof-section">
-        <div class="proof-section-head"><b>本次事件处理轨迹</b><span>已处理 ≠ 已恢复</span></div>
+        <div class="proof-section-head"><b>${r.record_scope === 'product' ? '本产品维护轨迹' : '本次异常处理轨迹'}</b><span>已处理 ≠ 已恢复</span></div>
         <div class="timeline">
           <div class="timeline-item"><div class="timeline-time">首次命中</div><div class="timeline-rail"><i class="timeline-dot"></i></div><div class="timeline-content"><b>巡检命中：${esc(r.issue||'-')}</b><span>${esc(r.event_id)} · 进入 ${esc(r.priority)} 任务池 · 执行分 ${Math.round(r.score)}</span></div></div>
           ${r.timeline.map(t => `<div class="timeline-item ${t.action_type==='完成'?'done':t.action_type==='不处理'?'':''}"><div class="timeline-time">${esc((t.created_at||'').slice(5,16))}</div><div class="timeline-rail"><i class="timeline-dot"></i></div><div class="timeline-content"><b>${esc(t.action_type)}${t.result?` · ${esc(t.result)}`:''}</b><span>${esc(t.actual_action||'')}</span>${t.notes?`<br><em>备注：${esc(t.notes)}</em>`:''}</div></div>`).join('')}

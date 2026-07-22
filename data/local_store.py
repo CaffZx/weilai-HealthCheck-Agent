@@ -21,10 +21,17 @@ FREEZE_DAYS = 14  # 归因窗口，超过则冻结不再重取
 
 def _conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(DB_PATH)
+    c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=30000")   # 锁等待 30s，避免批巡 8 线程 + API 并发写时立即 database is locked
+    c.execute("PRAGMA journal_mode=WAL")      # 读写不互斥，进一步降低锁冲突（要求 DB 在本地盘）
     c.execute("PRAGMA foreign_keys=ON")
     return c
+
+
+def connect() -> sqlite3.Connection:
+    """公开连接工厂：带 busy_timeout(30s)/WAL/外键。web 层写路径统一走这里，避免并发 database is locked。"""
+    return _conn()
 
 
 def init_db() -> None:
@@ -32,6 +39,21 @@ def init_db() -> None:
     sql = SCHEMA_PATH.read_text(encoding="utf-8")
     with _conn() as c:
         c.executescript(sql)
+        task_action_columns = {row[1] for row in c.execute("PRAGMA table_info(task_action)")}
+        if "maintenance_id" not in task_action_columns:
+            c.execute("ALTER TABLE task_action ADD COLUMN maintenance_id INTEGER")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_task_action_maintenance ON task_action(maintenance_id)")
+        maintenance_event_columns = {row[1] for row in c.execute("PRAGMA table_info(product_maintenance_event)")}
+        if maintenance_event_columns and "variant" not in maintenance_event_columns:
+            c.execute("ALTER TABLE product_maintenance_event ADD COLUMN variant TEXT")
+        c.execute("""
+            UPDATE product_maintenance_event
+            SET variant=COALESCE((
+                SELECT e.命中变体 FROM event_pool e
+                WHERE e.唯一识别=product_maintenance_event.event_uid
+            ), '')
+            WHERE variant IS NULL
+        """)
         _migrate_shop_scoped_tables(c, sql)
         columns = {row[1] for row in c.execute("PRAGMA table_info(event_pool)")}
         if "inspection_result_id" not in columns:
@@ -233,7 +255,7 @@ def upsert_inspection_result(batch_no: str, parent_asin: str, shop_account: str,
 
 
 def query_latest_inspection_results() -> dict[tuple[str, str], dict]:
-    """读取每个产品/店铺的最新巡检结果。"""
+    """读取每个产品/店铺最新的成功巡检结果，失败结果不能覆盖业务展示。"""
     with _conn() as c:
         rows = c.execute(
             """SELECT r.*
@@ -241,6 +263,7 @@ def query_latest_inspection_results() -> dict[tuple[str, str], dict]:
                JOIN (
                  SELECT parent_asin, shop_account, MAX(id) AS max_id
                  FROM inspection_result
+                 WHERE result_status='SUCCESS'
                  GROUP BY parent_asin, shop_account
                ) latest ON latest.max_id=r.id"""
         ).fetchall()
@@ -270,6 +293,71 @@ def link_inspection_events(batch_no: str, parent_asin: str, shop_account: str) -
             (result["id"], batch_no, parent_asin, shop_account),
         )
         return cur.rowcount
+
+
+def create_product_maintenance(
+    conn: sqlite3.Connection,
+    *, parent_asin: str, shop_account: str, user_id: int | None,
+    result: str | None, actual_action: str | None, notes: str | None,
+    observation_at: str, next_inspection_at: str,
+    events: list[sqlite3.Row],
+) -> int:
+    """在现有产品维护事务中创建产品级观察记录及异常基线。"""
+    def row_value(row: sqlite3.Row, name: str):
+        """从历史/精简查询返回的 Row 中安全读取字段。"""
+        return row[name] if name in row.keys() else None
+
+    conn.execute("""
+        UPDATE product_maintenance
+        SET status='已被新维护替代', updated_at=datetime('now','localtime')
+        WHERE parent_asin=? AND shop_account=?
+          AND status IN ('观察中', '待运营确认')
+    """, (parent_asin, shop_account))
+    cur = conn.execute("""
+        INSERT INTO product_maintenance
+          (parent_asin, shop_account, user_id, result, actual_action, notes,
+           observation_at, next_inspection_at)
+        VALUES (?,?,?,?,?,?,?,?)
+    """, (parent_asin, shop_account, user_id, result, actual_action, notes,
+           observation_at, next_inspection_at))
+    maintenance_id = cur.lastrowid
+    for event in events:
+        baseline_snapshot = None
+        inspection_result_id = row_value(event, "inspection_result_id")
+        issue = row_value(event, "问题点位")
+        severity = row_value(event, "严重度")
+        event_uid = row_value(event, "唯一识别")
+        variant = row_value(event, "命中变体")
+        if inspection_result_id:
+            result_row = conn.execute(
+                "SELECT result_json FROM inspection_result WHERE id=?",
+                (inspection_result_id,),
+            ).fetchone()
+            if result_row:
+                try:
+                    card = json.loads(result_row["result_json"] or "{}")
+                    detail = next((item for item in card.get("异常明细") or []
+                                   if issue is not None
+                                   and severity is not None
+                                   and item.get("问题点位") == issue
+                                   and item.get("该条严重度") == severity
+                                   and (item.get("命中变体") or "") == (variant or "")), None)
+                    baseline_snapshot = json.dumps(
+                        (detail or {}).get("数据快照"), ensure_ascii=False
+                    ) if (detail or {}).get("数据快照") is not None else None
+                except (TypeError, json.JSONDecodeError):
+                    baseline_snapshot = None
+        conn.execute("""
+            INSERT INTO product_maintenance_event
+              (maintenance_id, event_uid, issue, severity, variant, baseline_result_id, baseline_snapshot)
+            VALUES (?,?,?,?,?,?,?)
+        """, (maintenance_id, event_uid, issue, severity, variant,
+               inspection_result_id, baseline_snapshot))
+    conn.execute("""
+        INSERT INTO observation_report (maintenance_id, agent_status)
+        VALUES (?, '待观察')
+    """, (maintenance_id,))
+    return maintenance_id
 
 
 def backfill_inspection_event_links() -> int:

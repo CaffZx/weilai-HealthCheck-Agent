@@ -49,12 +49,30 @@ def _first_image(payload: Any) -> str | None:
 
 
 def _first_image_for_keys(payload: dict[str, Any], keys: tuple[str, ...]) -> str | None:
-    """从优先字段中取主图，避免 detail.image 返回压缩缩略图时直接被采用。"""
+    """从明确的主图字段中取图片 URL。"""
     for key in keys:
         for nested in _image_strings(payload.get(key)):
             if nested.startswith(("http://", "https://")):
                 return nested
     return None
+
+
+def _main_image(detail: dict[str, Any]) -> tuple[str | None, str]:
+    explicit_image = _first_image_for_keys(
+        detail,
+        (
+            "mainImageUrl", "main_image_url", "mainImage", "main_image",
+            "primaryImageUrl", "primary_image_url", "primaryImage",
+            "image", "imageUrl", "image_url", "hiResImage",
+        ),
+    )
+    if explicit_image:
+        return explicit_image, "explicit_main_image"
+    gallery = detail.get("highResolutionImages") or detail.get("images") or []
+    gallery_image = _first_image_for_keys({"gallery": gallery}, ("gallery",))
+    if gallery_image:
+        return gallery_image, "gallery_first_fallback"
+    return None, "missing"
 
 
 def _first_product_result(payload: Any) -> dict | None:
@@ -79,13 +97,10 @@ def _page_snapshot(payload: Any) -> dict | None:
     strikethrough = detail.get("strikethroughPrice")
     if isinstance(strikethrough, dict):
         strikethrough = strikethrough.get("value")
-    high_res_image = _first_image_for_keys(
-        detail, ("highResolutionImages", "hiResImage", "mainImageUrl", "main_image_url")
-    )
-    main_image_url = high_res_image or detail.get("image") or _first_image(detail)
+    main_image_url, main_image_source = _main_image(detail)
     return {
         "main_image_url": main_image_url,
-        "main_image_source": "high_resolution" if high_res_image else "detail_image_or_fallback",
+        "main_image_source": main_image_source,
         "gallery_count": len(gallery),
         "aplus_image_count": aplus_count,
         "has_cart": detail.get("has_cart", detail.get("hasCart")),

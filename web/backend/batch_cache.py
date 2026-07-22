@@ -105,12 +105,28 @@ def run_batch_inspect() -> None:
     batch_no = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     log.info("批量代码巡检开始: %d 个产品 批次=%s", len(keys), batch_no)
 
+    # 批次元数据落库（inspection_batch）：开始写"进行中"，结束更新统计与状态
+    try:
+        with store.connect() as _bc:
+            _bc.execute("""
+                INSERT OR REPLACE INTO inspection_batch
+                  (批次号, 开始时间, 触发类型, 触发人, 巡检范围, 参数版本, 状态)
+                VALUES (?, datetime('now','localtime'), 'daily', 'system', ?, 'code-v1', '进行中')
+            """, (batch_no, json.dumps({"产品数": len(keys)}, ensure_ascii=False)))
+            _bc.commit()
+    except Exception as _e:
+        log.warning("inspection_batch 起始写入失败: %s", _e)
+
     llm_queue: list[tuple[str, dict]] = []
+    命中异常数 = 0
+    失败数 = 0
 
     for i, key in enumerate(keys):
         cfg = dict(configs.get(key, {}))
         shop = smap.get(cfg.get("shop_id", ""), {})
         cfg["shop_account"] = shop.get("account", "")
+        # 观察期不再跳过巡检：已完成的异常在 event_pool 保持"已处理待复扫"(今日池天然隐藏)，
+        # 照常巡检可及时发现观察期内新出现的异常；效果观察仍由 _observe_maintenance 按 next_inspection_at 比对。
         try:
             card = 巡检单产品(key=key, config_row=cfg, 批次号=batch_no)
             store.upsert_inspection_result(
@@ -129,9 +145,11 @@ def run_batch_inspect() -> None:
                 "code_judgment": card,
                 "llm_judgment": None,
             })
+            命中异常数 += len(card.get("异常明细", []))
             if should_llm(card):
                 llm_queue.append((key, cfg))
         except Exception as e:
+            失败数 += 1
             log.warning("代码巡检失败 %s: %s", key, e)
             set_entry(key, {
                 "priority": "P2", "score": 0,
@@ -168,6 +186,17 @@ def run_batch_inspect() -> None:
     ready.set()
     persist()
     log.info("批量代码巡检完成: %d 个产品, %d 个达 LLM 门槛", len(_cache), len(llm_queue))
+    try:
+        with store.connect() as _bc:
+            _bc.execute("""
+                UPDATE inspection_batch
+                SET 结束时间=datetime('now','localtime'), 状态='完成', 统计=?
+                WHERE 批次号=?
+            """, (json.dumps({"扫描父ASIN数": len(keys), "命中异常数": 命中异常数,
+                              "失败数": 失败数, "达LLM门槛数": len(llm_queue)}, ensure_ascii=False), batch_no))
+            _bc.commit()
+    except Exception as _e:
+        log.warning("inspection_batch 收尾写入失败: %s", _e)
 
     if not load_settings().get("startup", {}).get("auto_batch_llm"):
         log.info("startup.auto_batch_llm=false，跳过批量 LLM（用户可对单产品手动 /api/judge）")

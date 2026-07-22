@@ -23,10 +23,16 @@ rsync -a \
   --exclude='data/local/' \
   --exclude='logs/*.log' \
   --exclude='dist/' \
+  --exclude='.DS_Store' \
+  --exclude='.pytest_cache/' \
+  --exclude='.claude/' \
+  --exclude='.ruff_cache/' \
   "${PROJECT_ROOT}/" "${RELEASE_DIR}/"
 
-if [[ -f "${PROJECT_ROOT}/data/local/healthcheck.db" ]]; then
-  "${PYTHON}" - "${PROJECT_ROOT}/data/local/healthcheck.db" "${RELEASE_DIR}/data/local/healthcheck.db" <<'PY'
+# 数据默认不打包（代码包）。需要连数据一起打时：INCLUDE_DATA=1 bash scripts/build_release.sh
+if [[ "${INCLUDE_DATA:-0}" == "1" ]]; then
+  if [[ -f "${PROJECT_ROOT}/data/local/healthcheck.db" ]]; then
+    "${PYTHON}" - "${PROJECT_ROOT}/data/local/healthcheck.db" "${RELEASE_DIR}/data/local/healthcheck.db" <<'PY'
 import sqlite3
 import sys
 
@@ -39,16 +45,19 @@ finally:
     target_conn.close()
     source_conn.close()
 PY
-fi
-
-if [[ -f "${PROJECT_ROOT}/data/local/batch_cache.json" ]]; then
-  cp "${PROJECT_ROOT}/data/local/batch_cache.json" "${RELEASE_DIR}/data/local/batch_cache.json"
+  fi
+  if [[ -f "${PROJECT_ROOT}/data/local/batch_cache.json" ]]; then
+    cp "${PROJECT_ROOT}/data/local/batch_cache.json" "${RELEASE_DIR}/data/local/batch_cache.json"
+  fi
+  DB_NOTE="included as a consistent SQLite backup"
+else
+  DB_NOTE="NOT included (code-only); server runs init_db on startup"
 fi
 
 cat > "${RELEASE_DIR}/PACKAGE_INFO.txt" <<EOF
 Package: weilai-HealthCheck-Agent
 Built: ${STAMP}
-Runtime database: included as a consistent SQLite backup when available
+Runtime database: ${DB_NOTE}
 Secrets: excluded; copy .env.example to .env and fill in deployment values
 Start: ./start.sh
 EOF

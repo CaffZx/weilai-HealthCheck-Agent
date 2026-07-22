@@ -303,7 +303,7 @@ def _detect_with_local_data(
 
     r = R2.detect_FBA可售库存为0(
         FBA可售库存=stock.get("FBA可售库存"),
-        子体ASIN=父ASIN, 变体重要性="主要色",
+        子体ASIN=None, 变体重要性=None,
         r2=r2_cfg, r3=r3_cfg,
     )
     if isinstance(r, R2.命中异常):
@@ -312,7 +312,7 @@ def _detect_with_local_data(
     r = R2.detect_库存不足(
         FBA可售库存=stock.get("FBA可售库存"),
         过去7天日均销量=聚合结果.过去7天日均销量,
-        子体ASIN=父ASIN, 变体重要性="主要色",
+        子体ASIN=None, 变体重要性=None,
         r2=r2_cfg, r3=r3_cfg,
     )
     if isinstance(r, R2.命中异常):
@@ -342,28 +342,28 @@ def _detect_with_local_data(
     if page:
         r = R2.detect_主图异常(
             主图字段=page.get("main_image_url"), 审核状态=None, 前台展示=None,
-            子体ASIN=父ASIN, 变体重要性="主要色", r2=r2_cfg, r3=r3_cfg,
+            子体ASIN=None, 变体重要性=None, r2=r2_cfg, r3=r3_cfg,
         )
         if isinstance(r, R2.命中异常):
             hits.append(r)
 
         r = R2.detect_图片异常(
             副图数量=page.get("gallery_count"), 审核状态=None, 前台展示=None,
-            子体ASIN=父ASIN, 变体重要性="主要色", r2=r2_cfg, r3=r3_cfg,
+            子体ASIN=None, 变体重要性=None, r2=r2_cfg, r3=r3_cfg,
         )
         if isinstance(r, R2.命中异常):
             hits.append(r)
         r = R2.detect_A加异常(
             A加内容状态="缺失" if page.get("aplus_image_count") == 0 else "已创建",
             审核状态=None, 前台展示=None,
-            子体ASIN=父ASIN, 变体重要性="主要色", r3=r3_cfg,
+            子体ASIN=None, 变体重要性=None, r3=r3_cfg,
         )
         if isinstance(r, R2.命中异常):
             hits.append(r)
         if page.get("has_cart") is False:
             r = R2.detect_链接不可售(
-                前台展示状态="不可展示", 子体ASIN=父ASIN,
-                变体重要性="主要色", r3=r3_cfg,
+                前台展示状态="不可展示", 子体ASIN=None,
+                变体重要性=None, r3=r3_cfg,
             )
             if isinstance(r, R2.命中异常):
                 hits.append(r)
@@ -650,6 +650,25 @@ def 巡检单产品(
     )
 
 
+def _llm文案门槛(产品打分, anomaly_data: list[dict]) -> bool:
+    """是否值得为该产品调 LLM 生成文案（门槛同 config/settings.yaml → llm.trigger）。
+    未达门槛的产品走 R6 模板，把每日最大一笔可变成本从"异常产品数"降到"重点产品数"。"""
+    p = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
+    try:
+        with open(p, encoding="utf-8") as f:
+            cfg = ((yaml.safe_load(f) or {}).get("llm") or {}).get("trigger") or {}
+    except Exception:
+        cfg = {}
+    最低分数 = cfg.get("最低分数", 90)
+    最少S0异常数 = cfg.get("最少S0异常数", 1)
+    最少异常数 = cfg.get("最少异常数", 2)
+    score = 产品打分.产品执行分数 if isinstance(产品打分, R4.产品打分结果) else 0
+    s0 = sum(1 for a in anomaly_data if (a.get("严重度") or "") == "S0")
+    if (score or 0) >= 最低分数:
+        return True
+    return s0 >= 最少S0异常数 and len(anomaly_data) >= 最少异常数
+
+
 def _build_anomaly_details(
     现象命中: list[R2.命中异常],
     表现判定: list[dict],
@@ -696,8 +715,11 @@ def _build_anomaly_details(
             "类型": "表现型",
         })
 
-    # ---- 尝试 LLM 批量生成建议 ----
-    llm_results = llm_suggester.suggest_batch(anomaly_data, product_context) if anomaly_data else []
+    # ---- 尝试 LLM 批量生成建议（达门槛才调；未达门槛走 R6 模板）----
+    llm_results = (
+        llm_suggester.suggest_batch(anomaly_data, product_context)
+        if anomaly_data and _llm文案门槛(产品打分, anomaly_data) else []
+    )
 
     # ---- 逐条构建异常明细 ----
     details: list[dict] = []
@@ -827,6 +849,8 @@ def 巡检批量(
             cfg["shop_account"] = shop.get("account", "")
             产品列表.append({"key": key, "config": cfg, "mcp_bundle": None})
 
+    # 观察期不跳过巡检（已完成异常在 event_pool 保持"已处理待复扫"天然隐藏；
+    # 效果观察由 _observe_maintenance 按 next_inspection_at 惰性比对），保证观察期内新异常能被发现。
     r2_cfg = R2.加载R2()
     r3_cfg = R3.加载参数()
     r4_cfg = R4.加载参数()

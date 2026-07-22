@@ -435,12 +435,11 @@ def 聚合单产品(
 
     # ---- 元信息 ----
     数据天数 = len(销售数据)
-    import sys as _sys
-    _sys.stderr.write(f"[DBG] 聚合入口 pa={父ASIN} shop={店铺账号} 数据天数={数据天数}\n"); _sys.stderr.flush()
+    log.debug("聚合入口 pa=%s shop=%s 数据天数=%s", 父ASIN, 店铺账号, 数据天数)
     if 数据天数 == 0:
         _目标ACOS_early = erp_config_reader.读目标ACOS(父ASIN)
         _目标预算_early = erp_config_reader.读目标每日预算(父ASIN)
-        _sys.stderr.write(f"[DBG] 早return pa={父ASIN} 目标ACOS={_目标ACOS_early} 目标预算={_目标预算_early}\n"); _sys.stderr.flush()
+        log.debug("早return pa=%s 目标ACOS=%s 目标预算=%s", 父ASIN, _目标ACOS_early, _目标预算_early)
         return 每日聚合结果(
             父ASIN=父ASIN, 店铺账号=店铺账号, 站点=站点,
             目标ACOS=_目标ACOS_early, 目标每日预算=_目标预算_early,
@@ -465,7 +464,9 @@ def 聚合单产品(
     近7天日均花费 = _算滚动均值(销售数据, "广告花费", 7)
     # 近3天累计点击：暂无点击数据
     近3天累计点击 = None
-    ACOS连续超标天数 = _算连续天数(销售数据, "ACOS", 近7天平均ACOS, 方向="上升")
+    # 连续超标口径 = 连续超过「目标ACOS」的天数（不是超过自身近7天均值——那样天然约半数天在均值上方，门槛形同虚设）
+    _目标ACOS基线 = erp_config_reader.读目标ACOS(父ASIN)
+    ACOS连续超标天数 = _算连续天数(销售数据, "ACOS", _目标ACOS基线, 方向="上升")
 
     # ---- 广告花费指标 ----
     近7天平均花费 = 近7天日均花费  # 语义等价（近7天日均花费也是滚动均值）

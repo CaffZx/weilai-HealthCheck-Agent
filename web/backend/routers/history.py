@@ -82,10 +82,16 @@ def api_history_detail(record_id: str, userId: int = Query(...), targetId: int |
 
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
-        acts = c.execute("""
-            SELECT id, action_type, result, actual_action, review_at, notes, effect, created_at, user_id
-            FROM task_action WHERE event_uid = ? ORDER BY created_at ASC
-        """, (rec["event_uid"],)).fetchall()
+        if rec.get("record_scope") == "product" and rec.get("maintenance_id") is not None:
+            acts = c.execute("""
+                SELECT id, event_uid, action_type, result, actual_action, review_at, notes, effect, created_at, user_id
+                FROM task_action WHERE maintenance_id = ? ORDER BY created_at ASC, id ASC
+            """, (rec["maintenance_id"],)).fetchall()
+        else:
+            acts = c.execute("""
+                SELECT id, event_uid, action_type, result, actual_action, review_at, notes, effect, created_at, user_id
+                FROM task_action WHERE event_uid = ? ORDER BY created_at ASC, id ASC
+            """, (rec["event_uid"],)).fetchall()
     rec["timeline"] = [dict(a) for a in acts]
     return rec
 
