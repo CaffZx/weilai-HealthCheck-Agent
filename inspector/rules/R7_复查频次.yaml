@@ -1,0 +1,53 @@
+version: "2026-07-23"
+default:
+  id: default_transaction_observation
+  name: 交易表现恢复观察
+  days: 3
+
+# 匹配顺序由 data/review_schedule.py 固定：运营覆盖 > 预计到货/上架日 > 本表首个命中规则 > default。
+# 规则只决定默认观察周期；运营可在完成异常时覆盖为自定义天数。
+rules:
+  - id: inventory_supply_follow_up
+    name: 补货与库存承接
+    issues: ["FBA可售库存为0", "库存不足"]
+    days: 30
+    supports_expected_available_date: true
+  - id: availability_follow_up
+    name: 库存状态与前台可售
+    issues: ["链接不可售", "库存不可售", "前台不可买", "库存同步异常"]
+    days: 3
+  - id: parent_structure_follow_up
+    name: 父体结构恢复
+    issues: ["父子体关系异常"]
+    days: 1
+  - id: core_variant_follow_up
+    name: 核心变体恢复
+    issues: ["变体掉线"]
+    variant_importance: ["主要色", "核心子体"]
+    days: 3
+  - id: secondary_variant_follow_up
+    name: 次要变体恢复
+    issues: ["变体掉线"]
+    variant_importance: ["次要色"]
+    days: 7
+  - id: long_tail_variant_follow_up
+    name: 长尾变体恢复
+    issues: ["变体掉线"]
+    variant_importance: ["长尾色"]
+    days: 14
+  - id: content_approval_follow_up
+    name: 页面审核与前台生效
+    issues: ["主图异常", "图片异常", "A+异常", "标题异常", "五点异常"]
+    days: 3
+  - id: compliance_follow_up
+    name: 合规与平台限制
+    issues: ["链接不可售", "平台限制", "合规异常", "Case处理中"]
+    days: 3
+  - id: review_risk_follow_up
+    name: 评价风险观察
+    issues: ["近期集中差评", "评分异常"]
+    days: 7
+  - id: transaction_recovery_follow_up
+    name: 交易表现恢复观察
+    issues: ["Buy Box丢失", "变体价差异常", "促销异常", "销量异常", "目标偏离", "广告花费异常", "自然流量异常"]
+    days: 3

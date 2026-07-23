@@ -419,6 +419,10 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
                    pm.agent_effect AS maintenance_agent_effect,
                    pm.executed_at AS maintenance_executed_at, pm.observation_at AS maintenance_observation_at,
                    pm.next_inspection_at AS maintenance_next_inspection_at,
+                   oc.id AS observation_case_id, oc.status AS observation_status,
+                   oc.agent_effect AS observation_agent_effect,
+                   oc.executed_at AS observation_executed_at, oc.observation_at AS observation_at,
+                   oc.next_inspection_at AS observation_next_inspection_at,
                    e.父ASIN as parent_asin, e.父SKU as parent_sku, e.店铺账号 as shop_account,
                    e.异常大类 as category, e.问题点位 as issue, e.严重度 as severity,
                    e.单异常执行分数 as score, e.首次命中时间 as first_seen,
@@ -426,6 +430,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             FROM task_action a
             JOIN event_pool e ON e.唯一识别 = a.event_uid
             LEFT JOIN product_maintenance pm ON pm.id=a.maintenance_id
+            LEFT JOIN observation_case oc ON oc.completion_action_id=a.id
             LEFT JOIN inspection_result ir ON ir.id = e.inspection_result_id
             WHERE a.action_type IN ('完成', '不处理')
               AND EXISTS (
@@ -482,7 +487,7 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
                 new_event = e
                 break
 
-        effect = d.get("maintenance_agent_effect") or d.get("effect")
+        effect = d.get("observation_agent_effect") or d.get("maintenance_agent_effect") or d.get("effect")
         if effect == "变好":
             review = "已恢复"
         elif effect == "变差":
@@ -530,12 +535,19 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
             } if new_event else None,
             "maintenance_id": d.get("product_maintenance_id"),
             "maintenance_status": d.get("maintenance_status"),
-            "observation_at": d.get("maintenance_observation_at"),
-            "next_inspection_at": d.get("maintenance_next_inspection_at"),
+            "observation_id": d.get("observation_case_id"),
+            "observation_status": d.get("observation_status"),
+            "observation_executed_at": d.get("observation_executed_at"),
+            "observation_at": d.get("observation_at") or d.get("maintenance_observation_at"),
+            "next_inspection_at": d.get("observation_next_inspection_at") or d.get("maintenance_next_inspection_at"),
         })
     grouped: dict[int, list[dict]] = {}
+    observation_records: list[dict] = []
     standalone: list[dict] = []
     for item in out:
+        if item.get("observation_id") is not None:
+            observation_records.append(item)
+            continue
         maintenance_id = item.get("maintenance_id")
         if maintenance_id is None:
             standalone.append(item)
@@ -562,7 +574,19 @@ def fetch_history_records(target_user_id: int) -> list[dict]:
         item["issues"] = [item.get("issue") or "异常"]
         item["event_uids"] = [item["event_uid"]]
         item["event_ids"] = [item["event_id"]]
-    return sorted(product_records + standalone, key=lambda item: item.get("time") or "", reverse=True)
+    for item in observation_records:
+        observation_id = item["observation_id"]
+        item.update({
+            "record_id": f"OC-{observation_id:06d}",
+            "record_scope": "product",
+            "event_count": 1,
+            "event_uids": [item["event_uid"]],
+            "issues": [item.get("issue") or "异常"],
+            "event_ids": [item["event_id"]],
+            "time": item.get("observation_executed_at") or item["time"],
+            "review_at": item.get("observation_at") or item.get("review_at"),
+        })
+    return sorted(product_records + observation_records + standalone, key=lambda item: item.get("time") or "", reverse=True)
 
 
 def config_by_key(key: str) -> dict | None:

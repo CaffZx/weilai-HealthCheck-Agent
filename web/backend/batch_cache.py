@@ -14,6 +14,7 @@ import datetime as dt
 from pathlib import Path
 
 from data import fixture_loader
+from data.observation_service import process_due_observations
 from .common import ROOT, load_settings
 
 log = logging.getLogger(__name__)
@@ -125,8 +126,7 @@ def run_batch_inspect() -> None:
         cfg = dict(configs.get(key, {}))
         shop = smap.get(cfg.get("shop_id", ""), {})
         cfg["shop_account"] = shop.get("account", "")
-        # 观察期不再跳过巡检：已完成的异常在 event_pool 保持"已处理待复扫"(今日池天然隐藏)，
-        # 照常巡检可及时发现观察期内新出现的异常；效果观察仍由 _observe_maintenance 按 next_inspection_at 比对。
+        # 观察期不再跳过巡检：已完成异常天然隐藏，新异常仍能被及时发现。
         try:
             card = 巡检单产品(key=key, config_row=cfg, 批次号=batch_no)
             store.upsert_inspection_result(
@@ -134,6 +134,14 @@ def run_batch_inspect() -> None:
                 cfg.get("site_code"), card, "SUCCESS",
             )
             store.link_inspection_events(batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
+            try:
+                observed_ids = process_due_observations(
+                    cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
+                )
+                if observed_ids:
+                    log.info("Agent 已完成效果观察 parent_asin=%s cases=%s", cfg.get("parent_asin", ""), observed_ids)
+            except Exception as observation_error:
+                log.warning("效果观察失败但不影响本次巡检 key=%s: %s", key, observation_error)
             pri = card.get("优先级信息", {})
             set_entry(key, {
                 "priority": pri.get("执行优先级", "P2"),

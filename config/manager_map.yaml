@@ -3,9 +3,24 @@
 # value = 下属 user_id 列表
 #
 # 主管登录后，工作台里可以切换到"以下属身份"查看该下属的任务池。
+# 空列表仍表示该用户是主管，只是当前尚未配置可查看的下属。
 # 修改后重启服务生效。
 #
 # 查 user_id: python3 -c "import sqlite3;c=sqlite3.connect('data/local/healthcheck.db');[print(r) for r in c.execute(\"SELECT id,user_name FROM sys_user WHERE user_name LIKE '%姓名%'\")]"
 
-268:  # 某某 lichenxi
-  - 404  # 某某 lvrunliu
+107:  # 某某 · 亚马逊运营总监 / 深圳FBA主管
+  - 288   # 某某
+  - 390   # 某某
+  - 1058  # 某某
+  - 1065  # 某某
+  - 1087  # 某某
+
+268:  # 某某 · FBA二组主管
+  - 404   # 某某
+  - 1063  # 某某
+  - 1064  # 某某
+  - 1079  # 某某
+  - 1045  # 某某
+  - 1089  # 某某
+
+903: []  # 某某 · FBA三组主管（暂未提供组员）

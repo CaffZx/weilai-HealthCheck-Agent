@@ -25,6 +25,7 @@ from fastapi import FastAPI
 from . import batch_cache
 from .common import load_settings
 from data import local_store
+from data.observation_service import process_all_due_observations
 from .routers import fixtures, history, judge, knowledge, pages, tasks, users
 
 load_dotenv()
@@ -52,6 +53,7 @@ pages.mount_static(app)
 @app.on_event("startup")
 def _maybe_auto_batch():
     local_store.init_db()
+    threading.Thread(target=_backfill_due_observations, daemon=True).start()
     settings = load_settings().get("startup", {})
     if not settings.get("auto_batch_inspect"):
         log.info("startup.auto_batch_inspect=false，跳过启动批量巡检（如需触发：POST /api/batch/inspect）")
@@ -59,3 +61,12 @@ def _maybe_auto_batch():
         return
     log.info("startup.auto_batch_inspect=true，启动后台批量巡检")
     threading.Thread(target=batch_cache.run_batch_inspect, daemon=True).start()
+
+
+def _backfill_due_observations():
+    try:
+        observed_ids = process_all_due_observations()
+        if observed_ids:
+            log.info("服务启动时已补齐 %d 条效果观察结论", len(observed_ids))
+    except Exception:
+        log.exception("服务启动时补齐效果观察结论失败")

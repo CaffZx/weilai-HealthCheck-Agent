@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from core import llm_judge
 from data import fixture_loader, local_store
+from data.observation_service import process_due_observations
 from .. import batch_cache
 from ..common import config_by_key
 
@@ -87,6 +88,10 @@ def judge(key: str):
                 batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
                 cfg.get("site_code"), code_j, "SUCCESS",
             )
+            try:
+                process_due_observations(cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
+            except Exception as observation_error:
+                log.warning("效果观察失败但不影响单产品巡检 key=%s: %s", key, observation_error)
             batch_cache.update_entry(key, {
                 "priority": (code_j.get("优先级信息") or {}).get("执行优先级", "P2"),
                 "score": (code_j.get("优先级信息") or {}).get("产品执行分数", 0),
@@ -144,6 +149,10 @@ def inspect_single(key: str):
             batch_no, cfg.get("parent_asin", ""), cfg.get("shop_account", ""),
             cfg.get("site_code"), card, "SUCCESS",
         )
+        try:
+            process_due_observations(cfg.get("parent_asin", ""), cfg.get("shop_account", ""))
+        except Exception as observation_error:
+            log.warning("效果观察失败但不影响单产品巡检 key=%s: %s", key, observation_error)
         pri = card.get("优先级信息", {})
         batch_cache.set_entry(key, {
             "priority": pri.get("执行优先级", "P2"),

@@ -36,6 +36,7 @@ import yaml
 
 from data import local_store as store
 from data import fixture_loader
+from data.observation_service import process_due_observations
 
 from inspector.engine import anomaly_detector as R2
 from inspector.engine import severity_grader as R3
@@ -849,8 +850,7 @@ def 巡检批量(
             cfg["shop_account"] = shop.get("account", "")
             产品列表.append({"key": key, "config": cfg, "mcp_bundle": None})
 
-    # 观察期不跳过巡检（已完成异常在 event_pool 保持"已处理待复扫"天然隐藏；
-    # 效果观察由 _observe_maintenance 按 next_inspection_at 惰性比对），保证观察期内新异常能被发现。
+    # 观察期不跳过巡检：已完成异常天然隐藏，巡检可继续发现新异常。
     r2_cfg = R2.加载R2()
     r3_cfg = R3.加载参数()
     r4_cfg = R4.加载参数()
@@ -875,6 +875,10 @@ def 巡检批量(
                 批次号, parent_asin, shop_account, site_code, card, "SUCCESS",
             )
             store.link_inspection_events(批次号, parent_asin, shop_account)
+            try:
+                process_due_observations(parent_asin, shop_account)
+            except Exception as observation_error:
+                log.warning("效果观察失败但不影响本次巡检 key=%s: %s", p["key"], observation_error)
             return card
         except Exception as e:
             log.warning("产品 %s 巡检失败: %s", p["key"], e)

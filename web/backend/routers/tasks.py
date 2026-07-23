@@ -7,6 +7,7 @@ import sqlite3
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from data import local_store
+from data.review_schedule import ScheduleValidationError, resolve_schedule
 from ..common import (
     PRIORITY_ORDER, TIER_ORDER,
     fetch_events_for_user, group_events_by_product, product_status_for_events,
@@ -19,56 +20,101 @@ router = APIRouter(prefix="/api")
 
 
 def _attach_active_maintenance(products: list[dict]) -> None:
-    """把进行中的产品级效果观察附加到任务产品，供工作台提示和避免重复创建。"""
+    """附加异常级观察摘要；产品仍按父 ASIN + 店铺聚合。"""
     if not products:
         return
     keys = {(product["parent_asin"], product["shop_account"]) for product in products}
     with local_store.connect() as c:
         c.row_factory = sqlite3.Row
         rows = c.execute("""
-            SELECT id, parent_asin, shop_account, observation_at, next_inspection_at
-            FROM product_maintenance
+            SELECT id, parent_asin, shop_account, event_uid, observation_at, next_inspection_at, status
+            FROM observation_case
             WHERE status IN ('观察中', '待运营确认')
-            ORDER BY id DESC
+            ORDER BY observation_at ASC, id ASC
         """).fetchall()
-    active = {}
+    active: dict[tuple[str, str], list[dict]] = {}
     for row in rows:
         key = (row["parent_asin"], row["shop_account"])
-        if key in keys and key not in active:
-            active[key] = dict(row)
+        if key in keys:
+            active.setdefault(key, []).append(dict(row))
     for product in products:
-        maintenance = active.get((product["parent_asin"], product["shop_account"]))
-        product["has_active_maintenance"] = maintenance is not None
-        product["maintenance_id"] = maintenance["id"] if maintenance else None
-        product["observation_at"] = maintenance["observation_at"] if maintenance else None
-        product["next_inspection_at"] = maintenance["next_inspection_at"] if maintenance else None
+        raw_cases = active.get((product["parent_asin"], product["shop_account"]), [])
+        # 数据库有唯一约束；此处仍按 event_uid 去重，避免迁移/异常数据短暂影响运营展示。
+        cases_by_event = {case["event_uid"]: case for case in raw_cases}
+        cases = list(cases_by_event.values())
+        first_case = cases[0] if cases else None
+        product["has_active_maintenance"] = bool(cases)
+        product["active_observation_count"] = len(cases)
+        product["observing_event_uids"] = [case["event_uid"] for case in cases]
+        product["maintenance_id"] = first_case["id"] if first_case else None  # 兼容旧前端字段
+        product["observation_at"] = first_case["observation_at"] if first_case else None
+        product["next_inspection_at"] = first_case["next_inspection_at"] if first_case else None
 
 
-def _maintenance_schedule(payload: dict) -> tuple[str, str]:
-    """解析产品级观察时间；逐异常完成时未指定则默认三天后。"""
-    review_at = payload.get("review_at") or (_dt.date.today() + _dt.timedelta(days=3)).isoformat()
-    next_inspection_at = payload.get("next_inspection_at") or review_at
+def _event_requires_action(event: dict, observing_event_uids: set[str]) -> bool:
+    """判断单异常是否仍需运营动作，观察期内的已处理异常除外。"""
+    closed_statuses = {"已关闭", "误报", "忽略", "人工中断"}
+    lifecycle_status = (
+        event.get("internal_status")
+        or event.get("lifecycle_status")
+        or event.get("status")
+    )
+    if lifecycle_status in closed_statuses:
+        return False
+    return not (
+        lifecycle_status == "已处理待复扫"
+        and event.get("event_uid") in observing_event_uids
+    )
+
+
+def _product_requires_action(product: dict) -> bool:
+    """判断产品是否仍应计入当前任务池。
+
+    产品仍按父 ASIN + 店铺聚合，但观察是事件级的：只有正处于有效
+    观察期的“已处理待复扫”事件才能从当前任务中排除。历史遗留的同状态
+    事件没有 observation_case，仍需运营处理，不能被误当成已完成。
+    """
+    observing_event_uids = set(product.get("observing_event_uids") or [])
+    return any(
+        _event_requires_action(event, observing_event_uids)
+        for event in product.get("events") or []
+    )
+
+
+def _maintenance_schedule(event: sqlite3.Row | dict, payload: dict) -> dict:
+    """后端唯一的单异常复查计划计算入口。"""
     try:
-        review_date = _dt.date.fromisoformat(review_at)
-        inspection_date = _dt.date.fromisoformat(next_inspection_at)
-    except (TypeError, ValueError):
-        raise HTTPException(400, "复查时间和下次巡检时间必须是 YYYY-MM-DD 格式")
-    if review_date < _dt.date.today() or inspection_date < _dt.date.today():
-        raise HTTPException(400, "复查时间和下次巡检时间不能早于今天")
-    return review_at, next_inspection_at
+        return resolve_schedule(event, payload)
+    except ScheduleValidationError as error:
+        raise HTTPException(400, str(error)) from error
 
 
-def _link_latest_completion_actions(conn: sqlite3.Connection, maintenance_id: int, events: list[sqlite3.Row]) -> None:
-    """把每条异常本轮最新完成动作归入同一产品维护凭证。"""
-    for event in events:
-        conn.execute("""
-            UPDATE task_action SET maintenance_id=?
-            WHERE id=(
-                SELECT id FROM task_action
-                WHERE event_uid=? AND action_type='完成' AND maintenance_id IS NULL
-                ORDER BY id DESC LIMIT 1
+@router.get("/tasks/{event_uid}/schedule-preview")
+def api_schedule_preview(
+    event_uid: str,
+    userId: int = Query(...),
+    targetId: int | None = Query(None),
+    expected_available_at: str | None = Query(None),
+):
+    """返回单异常按规则计算的默认计划；前端只展示，不自行决定默认日期。"""
+    target = resolve_target_user(userId, targetId)
+    if target is None:
+        raise HTTPException(400, "userId required")
+    with local_store.connect() as c:
+        c.row_factory = sqlite3.Row
+        event = c.execute("""
+            SELECT e.id, e.唯一识别, e.父ASIN, e.店铺账号, e.问题点位, e.严重度,
+                   e.命中变体, e.变体重要性, e.当前状态
+            FROM event_pool e
+            WHERE e.唯一识别=? AND EXISTS (
+              SELECT 1 FROM product_access pa
+              WHERE pa.parent_asin=e.父ASIN AND pa.shop_account=e.店铺账号 AND pa.user_id=?
             )
-        """, (maintenance_id, event["唯一识别"]))
+        """, (event_uid, target)).fetchone()
+    if not event:
+        raise HTTPException(404, "事件不存在或无操作权限")
+    schedule = _maintenance_schedule(event, {"expected_available_at": expected_available_at})
+    return {"ok": True, **schedule}
 
 
 @router.get("/tasks/today")
@@ -86,12 +132,15 @@ def api_tasks_today(
     # 只要异常仍未关闭，就必须进入运营任务池；不能因为最新巡检暂未再次命中
     # 就把未完成产品从今日列表和状态筛选中隐藏。
     all_products = group_events_by_product(all_events)
+    _attach_active_maintenance(all_products)
     products = [product for product in all_products
                 if product_matches_status(product["product_status"], status)]
-    _attach_active_maintenance(products)
-    p0 = sum(1 for product in all_products if product["priority"] == "P0")
-    p1 = sum(1 for product in all_products if product["priority"] == "P1")
-    p2 = sum(1 for product in all_products if product["priority"] == "P2")
+    current_task_products = [
+        product for product in all_products if _product_requires_action(product)
+    ]
+    p0 = sum(1 for product in current_task_products if product["priority"] == "P0")
+    p1 = sum(1 for product in current_task_products if product["priority"] == "P1")
+    p2 = sum(1 for product in current_task_products if product["priority"] == "P2")
 
     with local_store.connect() as c:
         today = _dt.date.today().isoformat()
@@ -116,10 +165,28 @@ def api_tasks_today(
     attach_assignments(products, userId)
     return {
         "target_user_id": target,
-        "total": len(all_products),
+        # total/total_products 保持“当前任务”口径；products 则始终返回完整
+        # 产品集合，供状态筛选、已完成记录和复盘入口继续使用。
+        "total": len(current_task_products),
         "total_events": len(all_events),
-        "total_products": len(all_products),
+        "total_products": len(current_task_products),
         "p0": p0, "p1": p1, "p2": p2,
+        "current_task_count": len(current_task_products),
+        "current_task_p0": p0,
+        "current_task_p1": p1,
+        "current_task_p2": p2,
+        "current_task_event_count": sum(
+            sum(
+                1
+                for event in product["events"]
+                if _event_requires_action(
+                    event, set(product.get("observing_event_uids") or [])
+                )
+            )
+            for product in current_task_products
+        ),
+        "current_task_product_keys": [product["key"] for product in current_task_products],
+        "all_product_count": len(all_products),
         "done_today": done_today_product_count,
         "done_today_products": done_today_product_count,
         "historical_event_count": 0,
@@ -271,15 +338,15 @@ def api_task_action(event_uid: str, payload: dict = Body(...)):
     target = resolve_target_user(payload.get("userId"), payload.get("targetId"))
     if target is None:
         raise HTTPException(400, "userId required")
-    # 单异常操作只维护事件状态；全部异常完成时自动形成一次产品级效果观察。
+    # 单异常完成立即形成独立观察，绝不等待同产品其他异常。
     review_at = None
     next_inspection_at = None
-    maintenance_id = None
+    observation_id = None
     with local_store.connect() as c:
         c.row_factory = sqlite3.Row
         event = c.execute("""
-            SELECT e.id, e.当前状态, e.父ASIN, e.店铺账号, e.问题点位, e.严重度,
-                   e.inspection_result_id
+            SELECT e.id, e.唯一识别, e.当前状态, e.父ASIN, e.店铺账号, e.问题点位, e.严重度,
+                   e.命中变体, e.变体重要性, e.inspection_result_id
             FROM event_pool e
             WHERE e.唯一识别=? AND EXISTS (
               SELECT 1 FROM product_access pa
@@ -290,6 +357,18 @@ def api_task_action(event_uid: str, payload: dict = Body(...)):
         if not event:
             raise HTTPException(404, "事件不存在或无操作权限")
         next_status = transitions[action_type]
+        schedule = None
+        if action_type == "完成":
+            schedule = _maintenance_schedule(event, payload)
+            review_at = schedule["observation_at"]
+            next_inspection_at = schedule["next_inspection_at"]
+            active_case = c.execute("""
+                SELECT id FROM observation_case
+                WHERE event_uid=? AND status IN ('观察中', '待运营确认')
+                LIMIT 1
+            """, (event_uid,)).fetchone()
+            if active_case:
+                raise HTTPException(409, "该异常正在效果观察，请等待 Agent 结论或重新打开异常")
         if event["当前状态"] == next_status:
             raise HTTPException(409, f"该异常已经处于“{next_status}”状态，请勿重复提交")
         operator = str(payload.get("userId") or "运营")
@@ -301,7 +380,7 @@ def api_task_action(event_uid: str, payload: dict = Body(...)):
         )
         if not ok:
             raise HTTPException(409, message)
-        c.execute("""
+        action_cursor = c.execute("""
             INSERT INTO task_action
               (event_uid, user_id, action_type, result, actual_action, review_at, notes, before_metrics, after_metrics, effect)
             VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -319,54 +398,34 @@ def api_task_action(event_uid: str, payload: dict = Body(...)):
                 上次处理人=?, 更新时间=datetime('now','localtime')
             WHERE id=?
         """, (
-            None,
-            None,
+            review_at if action_type == "完成" else None,
+            schedule["source"] if schedule else None,
             action_type, operator, event["id"],
         ))
         if action_type == "重新打开":
             c.execute("""
-                UPDATE product_maintenance
+                UPDATE observation_case
                 SET status='已被重新打开异常替代', updated_at=datetime('now','localtime')
-                WHERE status IN ('观察中', '待运营确认')
-                  AND EXISTS (
-                    SELECT 1 FROM product_maintenance_event me
-                    WHERE me.maintenance_id=product_maintenance.id AND me.event_uid=?
-                  )
+                WHERE event_uid=? AND status IN ('观察中', '待运营确认')
             """, (event_uid,))
         if action_type == "完成":
-            product_events = c.execute("""
-                SELECT id, 唯一识别, 当前状态, 父ASIN, 店铺账号,
-                       问题点位, 严重度, 命中变体, inspection_result_id
-                FROM event_pool
-                WHERE 父ASIN=? AND 店铺账号=?
-                  AND 当前状态 NOT IN ('已关闭', '误报', '忽略')
-                ORDER BY id
-            """, (event["父ASIN"], event["店铺账号"])).fetchall()
-            if product_events and all(item["当前状态"] == "已处理待复扫" for item in product_events):
-                review_at, next_inspection_at = _maintenance_schedule(payload)
-                maintenance_id = local_store.create_product_maintenance(
-                    c, parent_asin=event["父ASIN"], shop_account=event["店铺账号"],
+            try:
+                observation_id = local_store.create_observation_case(
+                    c, event=event, completion_action_id=action_cursor.lastrowid,
                     user_id=payload.get("userId"), result=payload.get("result"),
                     actual_action=payload.get("actual_action"), notes=payload.get("notes"),
-                    observation_at=review_at, next_inspection_at=next_inspection_at,
-                    events=product_events,
+                    observation_at=review_at, next_inspection_at=next_inspection_at, schedule=schedule,
                 )
-                _link_latest_completion_actions(c, maintenance_id, product_events)
-                event_ids = [item["id"] for item in product_events]
-                placeholders = ",".join("?" for _ in event_ids)
-                c.execute(
-                    f"""UPDATE event_pool
-                        SET 下一次复查时间=?, 复查时间来源='manual',
-                            更新时间=datetime('now','localtime')
-                        WHERE id IN ({placeholders})""",
-                    (review_at, *event_ids),
-                )
+            except local_store.ActiveObservationExistsError as error:
+                raise HTTPException(409, "该异常正在效果观察，请等待 Agent 结论或重新打开异常") from error
         c.commit()
     refreshed_events = fetch_events_for_user(target, only_open=False)
     product_key = (event["父ASIN"], event["店铺账号"])
+    refreshed_products = group_events_by_product(refreshed_events)
+    _attach_active_maintenance(refreshed_products)
     product = next(
         (
-            product for product in group_events_by_product(refreshed_events)
+            product for product in refreshed_products
             if (product["parent_asin"], product["shop_account"]) == product_key
         ),
         None,
@@ -380,10 +439,15 @@ def api_task_action(event_uid: str, payload: dict = Body(...)):
             "未完成",
         ),
         "product_status": product["product_status"] if product else "未完成",
-        "maintenance_created": maintenance_id is not None,
-        "maintenance_id": maintenance_id,
+        "maintenance_created": observation_id is not None,
+        "maintenance_id": observation_id,
+        "observation_id": observation_id,
         "observation_at": review_at,
         "next_inspection_at": next_inspection_at,
+        "schedule": schedule,
+        "has_active_maintenance": bool(product and product["has_active_maintenance"]),
+        "active_observation_count": product["active_observation_count"] if product else 0,
+        "observing_event_uids": product["observing_event_uids"] if product else [],
     }
 
 
@@ -400,10 +464,6 @@ def api_product_action(payload: dict = Body(...)):
     if target is None:
         raise HTTPException(400, "userId required")
 
-    if not payload.get("review_at"):
-        raise HTTPException(400, "完成产品维护必须设置复查日期")
-    review_at, next_inspection_at = _maintenance_schedule(payload)
-
     operator = str(payload.get("userId") or "运营")
     reason = payload.get("notes") or payload.get("actual_action") or "完成该产品维护"
     with local_store.connect() as c:
@@ -415,41 +475,31 @@ def api_product_action(payload: dict = Body(...)):
         if not owned:
             raise HTTPException(404, "产品不存在或无操作权限")
         events = c.execute("""
-            SELECT id, 唯一识别, 当前状态, 父ASIN, 店铺账号,
-                   问题点位, 严重度, 命中变体, inspection_result_id
-            FROM event_pool
-            WHERE 父ASIN=? AND 店铺账号=?
-              AND 当前状态 NOT IN ('已关闭', '误报', '忽略')
-            ORDER BY id
+            SELECT e.id, e.唯一识别, e.当前状态, e.父ASIN, e.店铺账号,
+                   e.问题点位, e.严重度, e.命中变体, e.变体重要性, e.inspection_result_id,
+                   (
+                     SELECT oc.id FROM observation_case oc
+                     WHERE oc.event_uid=e.唯一识别
+                       AND oc.status IN ('观察中', '待运营确认')
+                     LIMIT 1
+                   ) AS active_observation_id
+            FROM event_pool e
+            WHERE e.父ASIN=? AND e.店铺账号=?
+              AND e.当前状态 NOT IN ('已关闭', '误报', '忽略')
+            ORDER BY e.id
         """, (parent_asin, shop_account)).fetchall()
         if not events:
             raise HTTPException(409, "该产品没有待处理异常")
-        all_completed = all(event["当前状态"] == "已处理待复扫" for event in events)
-        active_maintenance = c.execute("""
-            SELECT id, observation_at, next_inspection_at
-            FROM product_maintenance
-            WHERE parent_asin=? AND shop_account=?
-              AND status IN ('观察中', '待运营确认')
-            ORDER BY id DESC LIMIT 1
-        """, (parent_asin, shop_account)).fetchone()
-        if all_completed and active_maintenance:
-            return {
-                "ok": True,
-                "already_observing": True,
-                "parent_asin": parent_asin,
-                "shop_account": shop_account,
-                "maintenance_id": active_maintenance["id"],
-                "observation_at": active_maintenance["observation_at"],
-                "next_inspection_at": active_maintenance["next_inspection_at"],
-                "product_status": "已完成",
-                "events": [],
-            }
-
         completed = []
-        action_ids = []
+        observation_ids = []
+        schedules = []
         for event in events:
-            if event["当前状态"] == "已处理待复扫":
+            # 已在效果观察的异常只能等待 Agent 结论，不能创建第二个观察周期。
+            if event["active_observation_id"] or event["当前状态"] == "已处理待复扫":
                 continue
+            schedule = _maintenance_schedule(event, payload)
+            review_at = schedule["observation_at"]
+            next_inspection_at = schedule["next_inspection_at"]
             ok, message = 流转状态_事务(
                 c, event["id"], "已处理待复扫", reason, operator,
                 "运营产品维护", None,
@@ -468,28 +518,37 @@ def api_product_action(payload: dict = Body(...)):
                 json.dumps(payload["after_metrics"], ensure_ascii=False) if payload.get("after_metrics") else None,
                 payload.get("effect"),
             ))
-            action_ids.append(action_cursor.lastrowid)
+            try:
+                observation_ids.append(local_store.create_observation_case(
+                    c, event=event, completion_action_id=action_cursor.lastrowid,
+                    user_id=payload.get("userId"), result=payload.get("result"),
+                    actual_action=payload.get("actual_action"), notes=payload.get("notes"),
+                    observation_at=review_at, next_inspection_at=next_inspection_at, schedule=schedule,
+                ))
+            except local_store.ActiveObservationExistsError as error:
+                raise HTTPException(409, f"异常 {event['唯一识别']} 已在效果观察") from error
             c.execute("""
                 UPDATE event_pool
                 SET 下一次复查时间=?, 复查时间来源=?, 上次处理动作='完成产品维护',
                     上次处理时间=datetime('now','localtime'), 上次处理人=?, 更新时间=datetime('now','localtime')
                 WHERE id=?
-            """, (review_at, "manual" if review_at else None, operator, event["id"]))
+            """, (review_at, schedule["source"], operator, event["id"]))
             completed.append(event["唯一识别"])
-        maintenance_id = local_store.create_product_maintenance(
-            c, parent_asin=parent_asin, shop_account=shop_account,
-            user_id=payload.get("userId"), result=payload.get("result"),
-            actual_action=payload.get("actual_action"), notes=payload.get("notes"),
-            observation_at=review_at, next_inspection_at=next_inspection_at,
-            events=events,
-        )
-        _link_latest_completion_actions(c, maintenance_id, events)
-        c.execute("UPDATE product_maintenance SET updated_at=datetime('now','localtime') WHERE id=?", (maintenance_id,))
+            schedules.append({"event_uid": event["唯一识别"], **schedule})
+        active_cases = c.execute("""
+            SELECT id, observation_at, next_inspection_at
+            FROM observation_case
+            WHERE parent_asin=? AND shop_account=?
+              AND status IN ('观察中', '待运营确认')
+            ORDER BY observation_at ASC, id ASC
+        """, (parent_asin, shop_account)).fetchall()
         c.commit()
 
     refreshed_events = fetch_events_for_user(target, only_open=False)
+    refreshed_products = group_events_by_product(refreshed_events)
+    _attach_active_maintenance(refreshed_products)
     product = next(
-        (item for item in group_events_by_product(refreshed_events)
+        (item for item in refreshed_products
          if item["parent_asin"] == parent_asin and item["shop_account"] == shop_account),
         None,
     )
@@ -499,10 +558,17 @@ def api_product_action(payload: dict = Body(...)):
         "shop_account": shop_account,
         "completed_event_uids": completed,
         "completed_count": len(completed),
-        "maintenance_created": True,
-        "maintenance_id": maintenance_id,
-        "observation_at": review_at,
-        "next_inspection_at": next_inspection_at,
+        "maintenance_created": bool(observation_ids),
+        "maintenance_id": active_cases[0]["id"] if active_cases else None,
+        "observation_ids": observation_ids,
+        "active_observation_ids": [case["id"] for case in active_cases],
+        "active_observation_count": len(active_cases),
+        "has_active_maintenance": bool(active_cases),
+        "observing_event_uids": product["observing_event_uids"] if product else [],
+        "already_observing": bool(active_cases) and not observation_ids,
+        "observation_at": active_cases[0]["observation_at"] if active_cases else None,
+        "next_inspection_at": active_cases[0]["next_inspection_at"] if active_cases else None,
+        "schedules": schedules,
         "product_status": product["product_status"] if product else "未完成",
         "events": product["events"] if product else [],
     }
@@ -650,100 +716,68 @@ def _compare_observation_metrics(issue: str, comparable: list[tuple[str, float, 
     return effect, f"{label} {old:g} → {new:g}，变化 {new - old:+g}", min(0.9, 0.6 + 0.1 * len(judgments))
 
 
-def _observe_maintenance(conn: sqlite3.Connection, maintenance: sqlite3.Row) -> dict:
-    """用执行前/观察期快照生成可解释的自动观察结果。"""
+def _observe_case(conn: sqlite3.Connection, case: sqlite3.Row) -> dict:
+    """对一条已完成异常做基线与观察期的可解释比对。"""
     latest_result = conn.execute("""
-        SELECT id, result_json, result_status, created_at
+        SELECT id, result_json, created_at
         FROM inspection_result
-        WHERE parent_asin=? AND shop_account=? AND created_at >= ?
+        WHERE parent_asin=? AND shop_account=? AND created_at >= ? AND created_at >= ?
           AND result_status='SUCCESS'
         ORDER BY id DESC LIMIT 1
-    """, (maintenance["parent_asin"], maintenance["shop_account"],
-           maintenance["next_inspection_at"])).fetchone()
+    """, (case["parent_asin"], case["shop_account"], case["observation_at"], case["next_inspection_at"])).fetchone()
     latest_card = {}
-    latest_inspection_at = latest_result["created_at"] if latest_result else None
     if latest_result:
         try:
             latest_card = json.loads(latest_result["result_json"] or "{}")
         except (TypeError, json.JSONDecodeError):
             latest_card = {}
-    event_rows = conn.execute("""
-        SELECT me.*
-        FROM product_maintenance_event me
-        WHERE me.maintenance_id=?
-        ORDER BY me.severity, me.issue
-    """, (maintenance["id"],)).fetchall()
-    details, known = [], 0
-    for event in event_rows:
-        baseline = _parse_snapshot(event["baseline_snapshot"])
-        current = {}
-        latest_issue = None
-        if latest_card:
-            latest_issue = next((item for item in latest_card.get("异常明细") or []
-                                 if item.get("问题点位") == event["issue"]
-                                 and (item.get("命中变体") or "") == (event["variant"] or "")), None)
-            detail = latest_issue or {}
-            current = {item.get("label"): item.get("value") for item in (detail.get("数据快照") or [])}
-            current = _parse_snapshot(json.dumps([{"label": k, "value": v} for k, v in current.items()], ensure_ascii=False))
-        comparable = [(label, old, current.get(label)) for label, old in baseline.items()
-                      if current.get(label) is not None]
-        issue = event["issue"] or "异常"
-        if latest_result and latest_card and latest_issue is None:
-            effect, reason, confidence = "变好", "下次巡检未再次命中该异常", 0.9
-            known += 1
-        elif not comparable:
-            effect, reason, confidence = "数据不足", (
-                "等待下次巡检数据" if not latest_result
-                else "缺少执行前或观察期的可比指标"
-            ), 0.0
-        else:
-            known += 1
-            effect, reason, confidence = _compare_observation_metrics(issue, comparable)
-        details.append({"event_uid": event["event_uid"], "issue": issue, "severity": event["severity"],
-                        "effect": effect, "reason": reason, "baseline": baseline,
-                        "current": current, "confidence": confidence})
-    if not details or known == 0:
-        effect = "数据不足"
-        summary = "当前缺少足够的执行前/观察期可比数据，Agent 暂不判断效果。"
-    elif any(item["effect"] == "数据不足" for item in details):
-        effect = "数据不足"
-        summary = "部分异常缺少可比指标，Agent 暂不对产品整体效果下结论，建议继续观察。"
-    elif any(item["effect"] == "变差" for item in details):
-        effect = "变差"; summary = "至少一项核心指标向异常方向变化，建议重新检查处理动作。"
-    elif any(item["effect"] == "变好" for item in details):
-        effect = "变好"; summary = "至少一项核心指标向改善方向变化，建议运营确认是否保留当前动作。"
+    baseline = _parse_snapshot(case["baseline_snapshot"])
+    latest_issue = None
+    if latest_card:
+        latest_issue = next((item for item in latest_card.get("异常明细") or []
+                             if item.get("问题点位") == case["issue"]
+                             and (item.get("命中变体") or "") == (case["variant"] or "")), None)
+    current = _parse_snapshot(json.dumps(
+        (latest_issue or {}).get("数据快照") or [], ensure_ascii=False
+    ))
+    comparable = [(label, old, current.get(label)) for label, old in baseline.items()
+                  if current.get(label) is not None]
+    if latest_result and latest_card and latest_issue is None:
+        effect, reason, confidence = "变好", "下次巡检未再次命中该异常", 0.9
+    elif not comparable:
+        effect, reason, confidence = "数据不足", (
+            "等待下次巡检数据" if not latest_result else "缺少执行前或观察期的可比指标"
+        ), 0.0
     else:
-        effect = "无明显变化"; summary = "观察期内指标变化不明显，建议延长观察或补充数据。"
+        effect, reason, confidence = _compare_observation_metrics(case["issue"] or "异常", comparable)
+    detail = {
+        "event_uid": case["event_uid"], "issue": case["issue"] or "异常",
+        "severity": case["severity"] or "S2", "effect": effect, "reason": reason,
+        "baseline": baseline, "current": current, "confidence": confidence,
+    }
     report = {
-        "effect": effect,
-        "summary": summary,
-        "details": details,
-        "latest_inspection_at": latest_inspection_at,
-        "confidence": min((item["confidence"] for item in details), default=0.0),
+        "effect": effect, "summary": reason, "details": [detail],
+        "latest_inspection_at": latest_result["created_at"] if latest_result else None,
+        "confidence": confidence,
     }
     conn.execute("""
-        INSERT INTO observation_report (maintenance_id, agent_status, agent_effect, confidence, summary, report_json)
-        VALUES (?, '待运营确认', ?, ?, ?, ?)
-        ON CONFLICT(maintenance_id) DO UPDATE SET
-          agent_status='待运营确认', agent_effect=excluded.agent_effect,
-          confidence=excluded.confidence, summary=excluded.summary,
-          report_json=excluded.report_json, observed_at=datetime('now','localtime'),
-          updated_at=datetime('now','localtime')
-    """, (maintenance["id"], effect,
-           min((item["confidence"] for item in details), default=0.0), summary,
-           json.dumps(report, ensure_ascii=False)))
-    conn.execute("""
-        UPDATE product_maintenance
+        UPDATE observation_case
         SET status='待运营确认', agent_effect=?, agent_summary=?,
             agent_observed_at=datetime('now','localtime'), agent_payload=?,
             updated_at=datetime('now','localtime')
         WHERE id=?
-    """, (effect, summary, json.dumps(report, ensure_ascii=False), maintenance["id"]))
+    """, (effect, reason, json.dumps(report, ensure_ascii=False), case["id"]))
     return report
 
 
 @router.get("/review/observations")
-def api_review_observations(userId: int = Query(...), targetId: int | None = Query(None)):
+def api_review_observations(
+    userId: int = Query(...), targetId: int | None = Query(None),
+    q: str | None = Query(None), shop: str | None = Query(None),
+    phase: str | None = Query(None), effect: str | None = Query(None),
+    severity: str | None = Query(None), review_from: str | None = Query(None),
+    review_to: str | None = Query(None),
+):
     target = resolve_target_user(userId, targetId)
     if target is None:
         raise HTTPException(400, "userId required")
@@ -751,26 +785,34 @@ def api_review_observations(userId: int = Query(...), targetId: int | None = Que
     with local_store.connect() as c:
         c.row_factory = sqlite3.Row
         rows = c.execute("""
-            SELECT pm.*, orp.agent_status, orp.agent_effect, orp.confidence, orp.summary, orp.report_json
-            FROM product_maintenance pm
-            JOIN observation_report orp ON orp.maintenance_id=pm.id
-            WHERE EXISTS (SELECT 1 FROM product_access pa WHERE pa.parent_asin=pm.parent_asin AND pa.shop_account=pm.shop_account AND pa.user_id=?)
-              AND pm.status IN ('观察中', '待运营确认')
-            ORDER BY CASE pm.status WHEN '待运营确认' THEN 0 ELSE 1 END,
-                     pm.observation_at ASC, pm.id ASC
+            SELECT oc.*
+            FROM observation_case oc
+            WHERE EXISTS (SELECT 1 FROM product_access pa WHERE pa.parent_asin=oc.parent_asin AND pa.shop_account=oc.shop_account AND pa.user_id=?)
+              AND oc.status IN ('观察中', '待运营确认')
+            ORDER BY CASE oc.status WHEN '待运营确认' THEN 0 ELSE 1 END,
+                     oc.observation_at ASC, oc.id ASC
         """, (target,)).fetchall()
+        name_map = local_store.query_product_names_by_shop()
+        image_map = local_store.query_image_urls_by_shop()
         out = []
         for row in rows:
             item = dict(row)
-            item["maintenance_id"] = row["id"]
+            item["observation_id"] = row["id"]
+            item["maintenance_id"] = row["id"]  # 兼容旧前端客户端
             days_until = (_dt.date.fromisoformat(row["observation_at"]) - _dt.date.today()).days
+            inspection_days_until = (_dt.date.fromisoformat(row["next_inspection_at"]) - _dt.date.today()).days
             item["days_until_observation"] = max(days_until, 0)
-            if days_until > 0:
+            if days_until > 0 or inspection_days_until > 0:
+                summary = (
+                    f"观察期进行中，预计 {row['observation_at']} 进入效果判断。"
+                    if days_until > 0
+                    else f"已到观察节点，等待计划于 {row['next_inspection_at']} 的巡检后由 Agent 判断效果。"
+                )
                 item.update({
                     "observation_phase": "观察中",
                     "agent_status": "待观察",
                     "agent_effect": None,
-                    "summary": f"观察期进行中，预计 {row['observation_at']} 进入效果判断。",
+                    "summary": summary,
                     "report_json": "{}",
                     "can_confirm": False,
                     "allowed_confirmations": [],
@@ -779,10 +821,10 @@ def api_review_observations(userId: int = Query(...), targetId: int | None = Que
                 latest_result = c.execute("""
                     SELECT id, created_at
                     FROM inspection_result
-                    WHERE parent_asin=? AND shop_account=? AND created_at >= ?
+                    WHERE parent_asin=? AND shop_account=? AND created_at >= ? AND created_at >= ?
                       AND result_status='SUCCESS'
                     ORDER BY id DESC LIMIT 1
-                """, (row["parent_asin"], row["shop_account"], row["next_inspection_at"])).fetchone()
+                """, (row["parent_asin"], row["shop_account"], row["observation_at"], row["next_inspection_at"])).fetchone()
                 if not latest_result:
                     item.update({
                         "observation_phase": "等待巡检",
@@ -794,7 +836,7 @@ def api_review_observations(userId: int = Query(...), targetId: int | None = Que
                         "allowed_confirmations": [],
                     })
                 else:
-                    report = _observe_maintenance(c, row)
+                    report = _observe_case(c, row)
                     item.update(report)
                     item["observation_phase"] = "待运营确认"
                     item["agent_status"] = "待运营确认"
@@ -805,11 +847,31 @@ def api_review_observations(userId: int = Query(...), targetId: int | None = Que
                         ["继续观察"] if report["effect"] == "数据不足"
                         else ["保留当前动作", "继续观察", "重新处理"]
                     )
+            item["product_name"] = name_map.get((row["parent_asin"], row["shop_account"]))
+            item["image_url"] = image_map.get((row["parent_asin"], row["shop_account"]))
+            haystack = " ".join(str(item.get(key) or "") for key in (
+                "parent_asin", "shop_account", "product_name", "issue",
+            )).lower()
+            if q and q.lower() not in haystack:
+                continue
+            if shop and item["shop_account"] != shop:
+                continue
+            if phase and item["observation_phase"] != phase:
+                continue
+            if effect and item.get("agent_effect") != effect:
+                continue
+            if severity and item.get("severity") != severity:
+                continue
+            if review_from and item["observation_at"] < review_from:
+                continue
+            if review_to and item["observation_at"] > review_to:
+                continue
             out.append(item)
         c.commit()
     return {
         "target_user_id": target,
         "total": len(out),
+        "product_count": len({(item["parent_asin"], item["shop_account"]) for item in out}),
         "observing_count": sum(item["observation_phase"] == "观察中" for item in out),
         "waiting_inspection_count": sum(item["observation_phase"] == "等待巡检" for item in out),
         "confirmation_count": sum(item["observation_phase"] == "待运营确认" for item in out),
@@ -828,77 +890,70 @@ def api_confirm_observation(maintenance_id: int, payload: dict = Body(...)):
     with local_store.connect() as c:
         c.row_factory = sqlite3.Row
         row = c.execute("""
-            SELECT pm.* FROM product_maintenance pm
-            WHERE pm.id=? AND pm.status='待运营确认'
-              AND EXISTS (SELECT 1 FROM product_access pa WHERE pa.parent_asin=pm.parent_asin AND pa.shop_account=pm.shop_account AND pa.user_id=?)
-              AND NOT EXISTS (
-                SELECT 1 FROM product_maintenance newer
-                WHERE newer.parent_asin=pm.parent_asin AND newer.shop_account=pm.shop_account
-                  AND newer.id>pm.id AND newer.status IN ('观察中', '待运营确认')
-              )
+            SELECT oc.* FROM observation_case oc
+            WHERE oc.id=? AND oc.status='待运营确认'
+              AND EXISTS (SELECT 1 FROM product_access pa WHERE pa.parent_asin=oc.parent_asin AND pa.shop_account=oc.shop_account AND pa.user_id=?)
         """, (maintenance_id, target)).fetchone()
         if not row:
             raise HTTPException(404, "观察任务不存在或无操作权限")
         today = _dt.date.today().isoformat()
-        report = c.execute("""
-            SELECT agent_status, agent_effect
-            FROM observation_report
-            WHERE maintenance_id=?
-        """, (maintenance_id,)).fetchone()
         if row["observation_at"] > today:
-            raise HTTPException(409, f"该产品仍在观察期，{row['observation_at']} 后才能确认")
-        if row["status"] != "待运营确认" or not report or report["agent_status"] != "待运营确认":
+            raise HTTPException(409, f"该异常仍在观察期，{row['observation_at']} 后才能确认")
+        if row["status"] != "待运营确认" or not row["agent_effect"]:
             raise HTTPException(409, "Agent 尚未完成效果判断，暂不能确认")
-        if report["agent_effect"] == "数据不足" and confirmation != "继续观察":
+        if row["agent_effect"] == "数据不足" and confirmation != "继续观察":
             raise HTTPException(409, "当前数据不足，只能选择继续观察")
+        event = c.execute("""
+            SELECT id, 唯一识别, 父ASIN, 店铺账号, 问题点位, 严重度, 命中变体, 变体重要性, 当前状态
+            FROM event_pool WHERE 唯一识别=?
+        """, (row["event_uid"],)).fetchone()
+        if not event:
+            raise HTTPException(404, "关联异常不存在")
         c.execute("""
             UPDATE task_action SET effect=?
-            WHERE maintenance_id=? AND action_type='完成'
-        """, (report["agent_effect"], maintenance_id))
+            WHERE id=? AND action_type='完成'
+        """, (row["agent_effect"], row["completion_action_id"]))
         state = {"保留当前动作": "已确认改善", "继续观察": "观察中", "重新处理": "已确认需重新处理"}[confirmation]
         if confirmation == "继续观察":
-            next_observation = (_dt.date.today() + _dt.timedelta(days=3)).isoformat()
+            schedule = _maintenance_schedule(event, {})
             c.execute("""
-                UPDATE product_maintenance
+                UPDATE observation_case
                 SET status='观察中', observation_at=?, next_inspection_at=?,
                     inspection_time_source='follow_review', confirmed_at=datetime('now','localtime'),
-                    confirmed_by=?, confirmation=?, updated_at=datetime('now','localtime')
+                    confirmed_by=?, confirmation=?, agent_effect=NULL, agent_summary=NULL,
+                    agent_observed_at=NULL, agent_payload=NULL, schedule_rule_id=?, schedule_rule_version=?,
+                    follow_up_type=?, schedule_source=?, default_observation_at=?,
+                    default_next_inspection_at=?, expected_available_at=NULL, updated_at=datetime('now','localtime')
                 WHERE id=?
-            """, (next_observation, next_observation, payload.get("userId"), confirmation, maintenance_id))
+            """, (schedule["observation_at"], schedule["next_inspection_at"], payload.get("userId"), confirmation,
+                  schedule["rule_id"], schedule["rule_version"], schedule["follow_up_type"], schedule["source"],
+                  schedule["default_observation_at"], schedule["default_next_inspection_at"], maintenance_id))
             c.execute("""
-                UPDATE observation_report
-                SET agent_status='待观察', agent_effect=NULL, confidence=NULL,
-                    summary=NULL, report_json='{}', updated_at=datetime('now','localtime')
-                WHERE maintenance_id=?
-            """, (maintenance_id,))
+                UPDATE event_pool SET 下一次复查时间=?, 复查时间来源=?, 更新时间=datetime('now','localtime')
+                WHERE id=?
+            """, (schedule["observation_at"], schedule["source"], event["id"]))
         else:
-            c.execute("UPDATE product_maintenance SET status=?, confirmed_at=datetime('now','localtime'), confirmed_by=?, confirmation=?, updated_at=datetime('now','localtime') WHERE id=?",
+            c.execute("UPDATE observation_case SET status=?, confirmed_at=datetime('now','localtime'), confirmed_by=?, confirmation=?, updated_at=datetime('now','localtime') WHERE id=?",
                       (state, payload.get("userId"), confirmation, maintenance_id))
-        event_rows = c.execute("""
-            SELECT e.id, e.当前状态 FROM product_maintenance_event me
-            JOIN event_pool e ON e.唯一识别=me.event_uid
-            WHERE me.maintenance_id=?
-        """, (maintenance_id,)).fetchall()
         if confirmation == "重新处理":
             target_status = "新发现"
         elif confirmation == "保留当前动作":
             target_status = "已关闭"
         else:
-            target_status = "待观察"
-        for event in event_rows:
-            if event["当前状态"] == target_status:
-                continue
+            # 继续使用同一观察记录，事件仍应维持“已处理待复扫”，不能重新进入可完成队列。
+            target_status = "已处理待复扫"
+        if event["当前状态"] != target_status:
             ok, message = 流转状态_事务(
                 c, event["id"], target_status,
                 f"运营确认 Agent 观察结果：{confirmation}",
                 str(payload.get("userId") or "运营"), "Agent效果观察确认",
                 "复查确认恢复" if target_status == "已关闭" else None,
-                {"maintenance_id": maintenance_id, "confirmation": confirmation},
+                {"observation_id": maintenance_id, "confirmation": confirmation},
             )
             if not ok:
                 raise HTTPException(409, message)
         if confirmation == "重新处理":
-            c.execute("UPDATE event_pool SET 下一次复查时间=NULL, 更新时间=datetime('now','localtime') WHERE id IN (SELECT e.id FROM product_maintenance_event me JOIN event_pool e ON e.唯一识别=me.event_uid WHERE me.maintenance_id=?)", (maintenance_id,))
+            c.execute("UPDATE event_pool SET 下一次复查时间=NULL, 更新时间=datetime('now','localtime') WHERE id=?", (event["id"],))
         c.commit()
     return {"ok": True, "maintenance_id": maintenance_id, "status": state, "confirmation": confirmation}
 

@@ -722,6 +722,14 @@ CREATE TABLE IF NOT EXISTS product_maintenance (
   observation_at        TEXT NOT NULL,
   next_inspection_at    TEXT NOT NULL,
   inspection_time_source TEXT NOT NULL DEFAULT 'follow_review',
+  schedule_rule_id      TEXT,
+  schedule_rule_version TEXT,
+  follow_up_type        TEXT,
+  schedule_source       TEXT NOT NULL DEFAULT 'legacy',
+  default_observation_at TEXT,
+  default_next_inspection_at TEXT,
+  expected_available_at TEXT,
+  schedule_override_reason TEXT,
   status                TEXT NOT NULL DEFAULT '观察中',
   agent_effect          TEXT,
   agent_summary         TEXT,
@@ -765,6 +773,47 @@ CREATE TABLE IF NOT EXISTS observation_report (
 );
 CREATE INDEX IF NOT EXISTS idx_observation_report_status
   ON observation_report(agent_status, observed_at);
+
+-- ============================================================
+-- 异常级效果观察
+-- 产品仍按 父ASIN + 店铺 聚合展示；每次完成一条异常都会建立独立观察周期。
+-- completion_action_id 是本轮操作幂等键；应用启动后另建部分唯一索引，
+-- 确保同一 event_uid 同时只能有一条有效观察（观察中/待运营确认）。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS observation_case (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_asin           TEXT NOT NULL,
+  shop_account          TEXT NOT NULL,
+  event_uid             TEXT NOT NULL,
+  completion_action_id  INTEGER UNIQUE REFERENCES task_action(id),
+  user_id               INTEGER,
+  issue                 TEXT,
+  severity              TEXT,
+  variant               TEXT,
+  result                TEXT,
+  actual_action         TEXT,
+  notes                 TEXT,
+  baseline_result_id    INTEGER,
+  baseline_snapshot     TEXT,
+  executed_at           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  observation_at        TEXT NOT NULL,
+  next_inspection_at    TEXT NOT NULL,
+  inspection_time_source TEXT NOT NULL DEFAULT 'follow_review',
+  status                TEXT NOT NULL DEFAULT '观察中',
+  agent_effect          TEXT,
+  agent_summary         TEXT,
+  agent_observed_at     TEXT,
+  agent_payload         TEXT,
+  confirmed_at          TEXT,
+  confirmed_by          INTEGER,
+  confirmation          TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_observation_case_product
+  ON observation_case(parent_asin, shop_account, status, observation_at);
+CREATE INDEX IF NOT EXISTS idx_observation_case_event
+  ON observation_case(event_uid, status, id DESC);
 
 -- 应用级一次性数据迁移标记，避免历史兼容逻辑在每次启动时重复覆盖正式状态。
 CREATE TABLE IF NOT EXISTS app_migration (

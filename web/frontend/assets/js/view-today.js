@@ -22,6 +22,50 @@ function productMatchesStatus(product, requestedStatus){
   return !requestedStatus || product.product_status === requestedStatus;
 }
 
+function productRequiresAction(product){
+  const observing = new Set(product?.observing_event_uids || []);
+  const closedStatuses = new Set(['已关闭', '误报', '忽略', '人工中断']);
+  return (product?.events || []).some(event => {
+    const lifecycleStatus = event.internal_status || event.lifecycle_status || event.status;
+    if (closedStatuses.has(lifecycleStatus)) return false;
+    return !(lifecycleStatus === '已处理待复扫' && observing.has(event.event_uid));
+  });
+}
+
+function refreshCurrentTaskStatsLocally(){
+  const data = state.todayData;
+  if (!data) return {total: 0, p0: 0, p1: 0, p2: 0, keys: []};
+  const currentProducts = (data.products || []).filter(productRequiresAction);
+  const priorityCount = priority => currentProducts.filter(product => product.priority === priority).length;
+  data.current_task_count = currentProducts.length;
+  data.current_task_p0 = priorityCount('P0');
+  data.current_task_p1 = priorityCount('P1');
+  data.current_task_p2 = priorityCount('P2');
+  data.current_task_product_keys = currentProducts.map(product => product.key);
+  return {
+    total: data.current_task_count,
+    p0: data.current_task_p0,
+    p1: data.current_task_p1,
+    p2: data.current_task_p2,
+    keys: data.current_task_product_keys,
+  };
+}
+
+function populateIssueFilter(products){
+  const filter = document.getElementById('issueFilter');
+  if (!filter) return;
+  const issueTypes = [...new Set(products.flatMap(product =>
+    (product.events || []).map(event => event.issue || event.category).filter(Boolean)
+  ))].sort((left, right) => String(left).localeCompare(String(right), 'zh-CN'));
+  if (state.filters.issue && !issueTypes.includes(state.filters.issue)) {
+    state.filters.issue = '';
+  }
+  filter.innerHTML = '<option value="">全部异常类型</option>' + issueTypes
+    .map(issue => `<option value="${esc(issue)}">${esc(issue)}</option>`)
+    .join('');
+  filter.value = state.filters.issue;
+}
+
 function sortProducts(products, sortMode){
   const priorityOrder = {P0: 0, P1: 1, P2: 2};
   return [...products].sort((left, right) => {
@@ -182,18 +226,27 @@ function anomalyDetailHtml(e){
 function renderToday(){
   const d = state.todayData; if (!d) return;
   const products = d.products || [];
-  const total = d.total_products ?? products.length;
-  const done = products.filter(product => product.product_status === '已完成').length;
+  populateIssueFilter(products);
+  const currentTask = {
+    total: Number(d.current_task_count ?? d.total_products ?? products.filter(productRequiresAction).length),
+    p0: Number(d.current_task_p0 ?? d.p0 ?? 0),
+    p1: Number(d.current_task_p1 ?? d.p1 ?? 0),
+    p2: Number(d.current_task_p2 ?? d.p2 ?? 0),
+    keys: d.current_task_product_keys || products.filter(productRequiresAction).map(product => product.key),
+  };
+  const total = currentTask.total;
+  const done = Number(d.done_today_products || 0);
   const handledEvents = products.reduce((sum, product) => sum + Number(product.handled_event_count || 0), 0);
   const totalEvents = products.reduce((sum, product) => sum + Number(product.event_count || 0), 0);
-  const open = Math.max(0, total - products.filter(product => ['已完成', '已关闭'].includes(product.product_status)).length);
+  const open = total;
+  const progressTotal = total + done;
   document.getElementById('doneNum').textContent = done;
   document.getElementById('totalNum').textContent = total;
   document.getElementById('remainNum').textContent = open;
   document.getElementById('doneTodayNum').textContent = d.done_today_products ?? 0;
   document.getElementById('doneEventNum').textContent = handledEvents;
   document.getElementById('totalEventNum').textContent = totalEvents;
-  const pct = total ? Math.round(done/total*100) : 0;
+  const pct = progressTotal ? Math.round(done / progressTotal * 100) : 0;
   document.getElementById('goalPct').textContent = `完成 ${pct}%`;
   document.getElementById('goalBar').style.width = pct + '%';
 
@@ -203,11 +256,11 @@ function renderToday(){
     ? `<div class="task-history-notice">另有 ${historicalEventCount} 条历史异常（${historicalProductCount} 个产品）未出现在最新巡检结果中，已保留在“全部异常”供确认，不计入本页完成进度。</div>`
     : '';
 
-  const waitCnt = products.filter(product => !['已完成', '已关闭'].includes(product.product_status)).length;
+  const waitCnt = total;
   // 产品只归入其最高优先级的一个任务池，避免同一产品因包含多个异常而重复计数。
-  const productP0 = products.filter(product => product.priority === 'P0').length;
-  const productP1 = products.filter(product => product.priority === 'P1').length;
-  const productP2 = products.filter(product => product.priority === 'P2').length;
+  const productP0 = currentTask.p0;
+  const productP1 = currentTask.p1;
+  const productP2 = currentTask.p2;
   document.getElementById('queueList').innerHTML = `
     <div class="queue-item ${state.filters.quickMode==='P0'?'active':''}" data-queue="P0"><i class="qdot red"></i><div class="qname">必须立即处理<small>P0 · ${productP0} 个产品</small></div><div class="qcount">${productP0}</div></div>
     <div class="queue-item ${state.filters.quickMode==='P1'?'active':''}" data-queue="P1"><i class="qdot amber"></i><div class="qname">今日重点处理<small>P1 · ${productP1} 个产品</small></div><div class="qcount">${productP1}</div></div>
@@ -229,16 +282,18 @@ function renderToday(){
     };
   });
 
-  const q = state.filters.q.toLowerCase(), pf = state.filters.priority, sf = state.filters.status, qm = state.filters.quickMode, af = state.filters.assign;
+  const currentTaskKeys = new Set(currentTask.keys);
+  const q = state.filters.q.toLowerCase(), pf = state.filters.priority, issueFilter = state.filters.issue, sf = state.filters.status, qm = state.filters.quickMode, af = state.filters.assign;
   const filteredProducts = sortProducts(products.filter(product => {
     const productSearchText = product.events.map(event =>
       `${event.parent_asin || ''}${event.product_name || ''}${event.parent_sku || ''}`
     ).join('').toLowerCase();
     if (q && !productSearchText.includes(q)) return false;
     if (pf && product.priority !== pf) return false;
+    if (issueFilter && !product.events.some(event => (event.issue || event.category) === issueFilter)) return false;
     if (!productMatchesStatus(product, sf)) return false;
-    if (['P0', 'P1', 'P2'].includes(qm) && product.priority !== qm) return false;
-    if (qm === 'wait' && ['已完成', '已关闭'].includes(product.product_status)) return false;
+    if (['P0', 'P1', 'P2'].includes(qm) && (product.priority !== qm || !currentTaskKeys.has(product.key))) return false;
+    if (qm === 'wait' && (!currentTaskKeys.has(product.key) || ['已完成', '已关闭'].includes(product.product_status))) return false;
     if (af === 'to_me' && !product.assigned_to_me) return false;
     if (af === 'by_me' && !product.assigned_by_me) return false;
     if (af === 'assigned' && !product.is_assigned) return false;
@@ -297,11 +352,6 @@ function selectProduct(key){
   const productScore = productEvents.find(item => item.product_score != null)?.product_score;
   const productStatus = product?.product_status || '未完成';
   const imageUrl = productEvents.find(item => item.image_url)?.image_url || '';
-  const qualityEvents = productEvents.filter(item => {
-    const quality = item['数据状态'] || {};
-    return quality['状态'] && quality['状态'] !== 'COMPLETE';
-  });
-  const firstQuality = qualityEvents[0]?.['数据状态'];
   const severityCounts = ['S0', 'S1', 'S2'].map(severity => ({
     severity, count: productEvents.filter(item => eventSeverity(item) === severity).length,
   })).filter(item => item.count);
@@ -329,18 +379,18 @@ function selectProduct(key){
       </div>
     </div>`;
   detailScroll.innerHTML = `
-    ${firstQuality ? `<div class="data-quality ${['INSUFFICIENT','FAILED','UNKNOWN'].includes(firstQuality['状态']) ? 'critical' : 'partial'}"><b>数据状态：${esc(firstQuality['状态文案'] || '部分数据不足')}</b><span>${qualityEvents.length} 个异常的辅助数据不完整，处理时请注意。</span></div>` : ''}
     <section class="summary-section product-issues-section">
       <div class="summary-section-head"><span>本产品异常</span><div class="summary-issues-tools"><small>${productEvents.length} 项 · ${severityCounts.map(item => `${item.severity} ${item.count}`).join(' · ')}</small><a class="btn ghost-blue ad-agent-summary-btn" href="${buildAdAgentUrl(adEvent)}" target="_blank" rel="noopener" onclick="markDoingAndOpen('${esc(adEvent.event_uid)}')">点击进入广告决策Agent页面</a></div></div>
       <div class="product-issue-list"><div class="product-issue-list-head"><span>异常</span><span>判断依据</span><span>处理建议</span><span>状态</span></div>${productIssueListHtml(productEvents, selectedEvent.event_uid)}</div>
     </section>
-    ${product.has_active_maintenance ? `<div class="maintenance-review-notice"><span>✓ 本产品已进入调整复盘</span><small>观察节点：${esc(product.observation_at || '-')} · 下次巡检：${esc(product.next_inspection_at || '-')}</small><button type="button" class="btn ghost-blue" onclick="switchView('review')">查看调整复盘</button></div>` : ''}
+    ${product.has_active_maintenance ? `<div class="maintenance-review-notice"><span>✓ ${Number(product.active_observation_count || 1)} 条异常正在效果观察</span><small>最近观察节点：${esc(product.observation_at || '-')} · 对应异常将由 Agent 独立判断</small><button type="button" class="btn ghost-blue" onclick="switchView('review')">查看效果观察</button></div>` : ''}
     ${anomalyDetailHtml(selectedEvent)}
     <div class="section" style="margin-top:4px"><div class="section-head"><span>产品执行记录</span><span id="opFormTarget">${esc(main.parent_asin || '-')} · ${esc(main.shop_account || '-')} · 覆盖本产品维护</span></div>
       <div class="section-body op-form">
         <div class="op-row"><label>处理结果</label><select id="opResult"><option value="">请选择</option><option>已按建议执行</option><option>部分执行</option><option>建议不适用</option></select></div>
         <div class="op-row"><label>实际动作</label><input id="opAction" placeholder="简要描述实际执行了什么"/></div>
-        <div class="op-row"><label>复查时间</label><div class="op-review-control"><select id="opReview"><option value="3" selected>3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option></select><div class="op-review-custom" id="opReviewCustomWrap" style="display:none"><input id="opReviewCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义复查天数"/><span class="op-review-date" id="opReviewDateHint">-</span></div></div></div>
+        <div class="op-row"><label>复查时间</label><div class="op-review-control"><select id="opReview"><option value="default" selected>按规则计算中…</option><option value="3">3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option></select><div class="op-review-custom" id="opReviewCustomWrap" style="display:none"><input id="opReviewCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义复查天数"/><span class="op-review-date" id="opReviewDateHint">-</span></div><small class="op-schedule-hint" id="opScheduleHint">正在读取默认观察计划…</small></div></div>
+        <div class="op-row" id="opExpectedDateRow" style="display:none"><label>预计到货/上架</label><div class="op-review-control"><input id="opExpectedAvailableAt" type="date" aria-label="预计到货或上架日期"/><small class="op-schedule-hint">未填时按 30 天后安排观察</small></div></div>
         <div class="op-row"><label>下次巡检</label><div class="op-review-control"><label class="op-follow-review"><input id="opInspectionFollowReview" type="checkbox" checked/> 跟随复查时间</label><select id="opInspection" disabled><option value="3" selected>3天后</option><option value="7">7天后</option><option value="14">14天后</option><option value="30">30天后</option><option value="custom">运营自定义</option></select><div class="op-review-custom" id="opInspectionCustomWrap" style="display:none"><input id="opInspectionCustom" type="number" min="1" step="1" inputmode="numeric" placeholder="多少天后" aria-label="运营自定义巡检天数"/><span class="op-review-date" id="opInspectionDateHint">-</span></div></div></div>
         <div class="op-row"><label>备注</label><input id="opNotes" placeholder="补充人工判断或例外原因"/></div>
       </div>
@@ -350,13 +400,14 @@ function selectProduct(key){
   document.querySelectorAll('.product-task-card').forEach(card => card.classList.toggle('selected', card.dataset.productKey === key));
   bindAnomalyBlockEvents();
   bindReviewScheduleControls();
+  loadSchedulePreview(selectedEvent.event_uid);
   const completeProductBtn = document.getElementById('completeProductBtn');
   const aiBtn = document.getElementById('aiBtn');
   const hasOpenEvents = productEvents.some(event => !isEventHandled(event));
-  completeProductBtn.disabled = !hasOpenEvents && Boolean(product.has_active_maintenance);
-  completeProductBtn.textContent = product.has_active_maintenance
-    ? '已进入调整复盘'
-    : '完成该产品维护并进入调整复盘模块';
+  completeProductBtn.disabled = !hasOpenEvents;
+  completeProductBtn.textContent = hasOpenEvents
+    ? '批量完成全部未完成异常'
+    : '当前产品没有待完成异常';
   aiBtn.disabled = false;
   setAiBtnText();
   renderDetailAssign(product);
@@ -505,6 +556,39 @@ function bindReviewScheduleControls(){
   followReview.onchange = toggleInspection;
   inspectionSelect.onchange = toggleInspection;
   inspectionCustom.oninput = updateInspectionHint;
+
+  const expectedAvailableAt = document.getElementById('opExpectedAvailableAt');
+  expectedAvailableAt?.addEventListener('change', () => loadSchedulePreview(state.selectedEventUid, expectedAvailableAt.value));
+}
+
+async function loadSchedulePreview(eventUid, expectedAvailableAt = ''){
+  if (!eventUid || !state.viewerId) return;
+  const requestUid = eventUid;
+  state.schedulePreview = null;
+  state.schedulePreviewEventUid = requestUid;
+  try {
+    const extra = expectedAvailableAt ? `&expected_available_at=${encodeURIComponent(expectedAvailableAt)}` : '';
+    const schedule = await api(withTarget(`/api/tasks/${encodeURIComponent(eventUid)}/schedule-preview`) + extra);
+    if (state.selectedEventUid !== requestUid) return;
+    state.schedulePreview = schedule;
+    const option = document.querySelector('#opReview option[value="default"]');
+    const hint = document.getElementById('opScheduleHint');
+    const expectedRow = document.getElementById('opExpectedDateRow');
+    if (option) option.textContent = `按规则：${schedule.rule_name} · ${schedule.days}天后`;
+    if (hint) hint.textContent = `${schedule.source === 'expected_arrival' ? '按预计到货/上架日' : `默认规则：${schedule.rule_name}`} · ${formatIsoMonthDay(schedule.observation_at)}`;
+    if (expectedRow) expectedRow.style.display = schedule.supports_expected_available_date ? '' : 'none';
+  } catch (error) {
+    if (state.selectedEventUid !== requestUid) return;
+    const option = document.querySelector('#opReview option[value="default"]');
+    const hint = document.getElementById('opScheduleHint');
+    if (option) option.textContent = '按规则计算不可用';
+    if (hint) hint.textContent = `读取默认计划失败：${error.message}`;
+  }
+}
+
+function formatIsoMonthDay(iso){
+  const parts = String(iso || '').slice(0, 10).split('-');
+  return parts.length === 3 ? `${Number(parts[1])}月${Number(parts[2])}日` : '-';
 }
 
 function localDateAfter(days){
@@ -524,6 +608,7 @@ function formatReviewDateHint(days){
 
 function selectedReviewDate(){
   const reviewValue = document.getElementById('opReview').value;
+  if (reviewValue === 'default') return null;
   if (reviewValue === 'custom') {
     const customDays = Number(document.getElementById('opReviewCustom').value);
     if (!Number.isInteger(customDays) || customDays < 1) throw new Error('请输入大于 0 的复查天数');
@@ -535,7 +620,7 @@ function selectedReviewDate(){
 }
 
 function selectedInspectionDate(){
-  if (document.getElementById('opInspectionFollowReview').checked) return selectedReviewDate();
+  if (document.getElementById('opInspectionFollowReview').checked) return null;
   const reviewValue = document.getElementById('opInspection').value;
   if (reviewValue === 'custom') {
     const customDays = Number(document.getElementById('opInspectionCustom').value);
@@ -543,7 +628,8 @@ function selectedInspectionDate(){
     return localDateAfter(customDays);
   }
   const days = Number(reviewValue);
-  return Number.isFinite(days) && days > 0 ? localDateAfter(days) : null;
+  if (!Number.isFinite(days) || days < 1) throw new Error('请选择下次巡检时间');
+  return localDateAfter(days);
 }
 
 function applyTaskActionLocally(eventUid, result){
@@ -565,16 +651,21 @@ function applyTaskActionLocally(eventUid, result){
   product.handled_event_count = product.events.filter(item => handledStatuses.includes(item.status)).length;
   product.open_event_count = product.events.length - product.handled_event_count;
   product.product_status = result.product_status;
-  if (result.maintenance_created) {
-    product.has_active_maintenance = true;
-    product.maintenance_id = result.maintenance_id;
-    product.observation_at = result.observation_at;
-    product.next_inspection_at = result.next_inspection_at;
+  if (Object.prototype.hasOwnProperty.call(result, 'active_observation_count')) {
+    product.has_active_maintenance = Boolean(result.has_active_maintenance);
+    product.maintenance_id = result.maintenance_id || null;
+    product.observation_at = result.observation_at || null;
+    product.next_inspection_at = result.next_inspection_at || null;
+    product.active_observation_count = Number(result.active_observation_count || 0);
+    product.observing_event_uids = result.observing_event_uids || [];
   } else if (result.lifecycle_status === '新发现') {
-    product.has_active_maintenance = false;
-    product.maintenance_id = null;
-    product.observation_at = null;
-    product.next_inspection_at = null;
+    product.active_observation_count = Math.max(0, Number(product.active_observation_count || 0) - 1);
+    product.has_active_maintenance = product.active_observation_count > 0;
+    if (!product.has_active_maintenance) {
+      product.maintenance_id = null;
+      product.observation_at = null;
+      product.next_inspection_at = null;
+    }
   }
 
   if (result.product_status === '已完成' && product.handled_event_count === product.event_count) {
@@ -590,13 +681,6 @@ function applyProductActionLocally(result){
   const product = state.todayData?.products?.find(item =>
     item.parent_asin === result.parent_asin && item.shop_account === result.shop_account);
   if (!product) return false;
-  if (result.already_observing) {
-    product.has_active_maintenance = true;
-    product.maintenance_id = result.maintenance_id;
-    product.observation_at = result.observation_at;
-    product.next_inspection_at = result.next_inspection_at;
-    return true;
-  }
   if (!Array.isArray(result.events)) return false;
   const eventsByUid = new Map(result.events.map(event => [event.event_uid, event]));
   product.events.forEach(event => {
@@ -607,7 +691,9 @@ function applyProductActionLocally(result){
     if (flatEvent && flatEvent !== event) Object.assign(flatEvent, refreshed);
   });
   product.product_status = result.product_status;
-  product.has_active_maintenance = Boolean(result.maintenance_created);
+  product.has_active_maintenance = Boolean(result.has_active_maintenance);
+  product.active_observation_count = Number(result.active_observation_count || 0);
+  product.observing_event_uids = result.observing_event_uids || [];
   product.maintenance_id = result.maintenance_id || null;
   product.observation_at = result.observation_at || null;
   product.next_inspection_at = result.next_inspection_at || null;
@@ -629,9 +715,11 @@ function applyProductActionLocally(result){
 
 function updateTodaySummaryLocally(){
   const products = state.todayData?.products || [];
-  const total = Number(state.todayData?.total_products ?? products.length);
-  const done = products.filter(product => product.product_status === '已完成').length;
-  const open = total - products.filter(product => ['已完成', '已关闭'].includes(product.product_status)).length;
+  const currentTask = refreshCurrentTaskStatsLocally();
+  const total = currentTask.total;
+  const done = Number(state.todayData?.done_today_products || 0);
+  const open = total;
+  const progressTotal = total + done;
   const handledEvents = products.reduce((sum, product) => sum + Number(product.handled_event_count || 0), 0);
   const totalEvents = products.reduce((sum, product) => sum + Number(product.event_count || 0), 0);
   document.getElementById('doneNum').textContent = done;
@@ -639,11 +727,15 @@ function updateTodaySummaryLocally(){
   document.getElementById('remainNum').textContent = Math.max(0, open);
   document.getElementById('doneEventNum').textContent = handledEvents;
   document.getElementById('totalEventNum').textContent = totalEvents;
-  document.getElementById('goalPct').textContent = `完成 ${total ? Math.round(done / total * 100) : 0}%`;
-  document.getElementById('goalBar').style.width = `${total ? Math.round(done / total * 100) : 0}%`;
-  const waitCount = products.filter(product => !['已完成', '已关闭'].includes(product.product_status)).length;
+  document.getElementById('goalPct').textContent = `完成 ${progressTotal ? Math.round(done / progressTotal * 100) : 0}%`;
+  document.getElementById('goalBar').style.width = `${progressTotal ? Math.round(done / progressTotal * 100) : 0}%`;
+  const waitCount = total;
   const waitQueue = document.querySelector('.queue-item[data-queue="wait"] .qcount');
   if (waitQueue) waitQueue.textContent = waitCount;
+  [['P0', currentTask.p0], ['P1', currentTask.p1], ['P2', currentTask.p2]].forEach(([priority, count]) => {
+    const queue = document.querySelector(`.queue-item[data-queue="${priority}"] .qcount`);
+    if (queue) queue.textContent = count;
+  });
 }
 
 function updateCurrentProductLocally(eventUid){
@@ -712,11 +804,12 @@ async function submitEventAction(eventUid, actionType){
         actual_action: isComplete && isSelectedEvent ? document.getElementById('opAction').value : undefined,
         review_at: isComplete ? selectedReviewDate() : undefined,
         next_inspection_at: isComplete ? selectedInspectionDate() : undefined,
+        expected_available_at: isComplete && isSelectedEvent ? document.getElementById('opExpectedAvailableAt')?.value || undefined : undefined,
         notes,
       })
     });
     const actionMessage = actionType === '完成'
-      ? (result.maintenance_created ? `全部异常已完成，已进入调整复盘（${result.observation_at} 开始观察）` : result.product_status === '已完成' ? '当前异常已完成；该产品已全部完成' : '当前异常已完成；仍可继续处理其他异常')
+      ? `当前异常已完成，已创建独立效果观察（${result.observation_at}）`
       : actionType === '重新打开' ? '已重新打开当前异常' : actionType === '标记处理中' ? '已标记为处理中' : '已记录不处理原因并关闭当前异常';
     toast(actionMessage);
     if (applyTaskActionLocally(eventUid, result)) {
@@ -737,14 +830,17 @@ async function submitEventAction(eventUid, actionType){
   }
 }
 
-document.getElementById('completeProductBtn').onclick = async () => {
+async function submitProductMaintenance(){
   const product = state.todayData?.products?.find(item => item.key === state.selectedProductKey);
-  if (!product) return;
+  if (!product) { toast('请先选择需要维护的产品'); return; }
   const btn = document.getElementById('completeProductBtn');
-  if (btn.disabled) return;
+  const hasOpenEvents = product.events?.some(event => !isEventHandled(event));
+  if (!hasOpenEvents) { toast('当前产品没有待完成异常'); return; }
+  if (btn.dataset.submitting === 'true') return;
+  btn.dataset.submitting = 'true';
   btn.disabled = true;
+  btn.textContent = '正在提交产品维护…';
   try {
-    const reviewAt = selectedReviewDate();
     const result = await api('/api/products/action', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -754,8 +850,9 @@ document.getElementById('completeProductBtn').onclick = async () => {
         shop_account: product.shop_account,
         result: document.getElementById('opResult').value,
         actual_action: document.getElementById('opAction').value,
-        review_at: reviewAt,
+        review_at: selectedReviewDate(),
         next_inspection_at: selectedInspectionDate(),
+        expected_available_at: document.getElementById('opExpectedAvailableAt')?.value || undefined,
         notes: document.getElementById('opNotes').value,
       }),
     });
@@ -764,25 +861,25 @@ document.getElementById('completeProductBtn').onclick = async () => {
       return;
     }
     state.reviewData = null;
-    toast(result.already_observing
-      ? `该产品已在调整复盘中（观察节点：${result.observation_at}）`
-      : `已完成该产品维护：${result.completed_count} 项异常已进入调整复盘`);
+    toast(`已批量完成 ${result.completed_count} 项异常，并分别创建效果观察`);
     const remainsVisible = productMatchesStatus(product, state.filters.status)
       && (state.filters.quickMode !== 'wait' || !['已完成', '已关闭'].includes(product.product_status));
     if (remainsVisible) updateCurrentProductLocally(state.selectedEventUid);
     else renderToday();
   } catch (error) {
-    toast(`提交失败：${error.message}`);
+    toast(`产品维护提交失败：${error.message}`);
   } finally {
+    delete btn.dataset.submitting;
     const currentProduct = state.todayData?.products?.find(item => item.key === state.selectedProductKey);
     const stillOpen = currentProduct?.events?.some(event => !isEventHandled(event));
-    const observing = Boolean(currentProduct?.has_active_maintenance);
-    btn.disabled = !stillOpen && observing;
-    btn.textContent = observing
-      ? '已进入调整复盘'
-      : '完成该产品维护并进入调整复盘模块';
+    btn.disabled = !stillOpen;
+    btn.textContent = stillOpen
+      ? '批量完成全部未完成异常'
+      : '当前产品没有待完成异常';
   }
-};
+}
+
+document.getElementById('completeProductBtn').addEventListener('click', submitProductMaintenance);
 
 document.getElementById('aiBtn').onclick = async () => {
   const uid = state.selectedEventUid;
@@ -901,6 +998,11 @@ async function markDoingAndOpen(eventUid){
 document.getElementById('searchInput').oninput = e => { state.filters.q = e.target.value; renderToday(); };
 document.getElementById('priorityFilter').onchange = e => {
   state.filters.priority = e.target.value === 'all' ? '' : e.target.value;
+  state.filters.quickMode = 'all';
+  renderToday();
+};
+document.getElementById('issueFilter').onchange = e => {
+  state.filters.issue = e.target.value;
   state.filters.quickMode = 'all';
   renderToday();
 };

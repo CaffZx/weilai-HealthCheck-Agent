@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>业务巡检 Agent · 运营工作台</title>
-<link rel="stylesheet" href="/ui/assets/app.css?v=43"/>
+<link rel="stylesheet" href="/ui/assets/app.css?v=46"/>
 </head>
 <body>
 <div class="app">
@@ -46,6 +46,7 @@
       <div class="toolbar product-filters">
         <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
         <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
+        <select class="filter" id="issueFilter"><option value="">全部异常类型</option></select>
         <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="未完成">未完成</option><option value="处理中">处理中</option><option value="待复查">待复查</option><option value="已完成">已完成</option><option value="已关闭">已关闭</option></select>
         <select class="filter" id="assignFilter"><option value="">全部指派</option><option value="to_me">派给我的</option><option value="by_me">我派出的</option><option value="assigned">已指派</option><option value="none">未指派</option></select>
         <select class="filter" id="sortFilter"><option value="priority">按优先级</option><option value="anomalyCount">按异常数量</option></select>
@@ -71,7 +72,7 @@
     <div class="detail-actions">
       <div class="detail-assign" id="detailAssign"></div>
       <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
-      <button class="btn primary" id="completeProductBtn" disabled>完成该产品维护并进入调整复盘模块</button>
+      <button class="btn primary" id="completeProductBtn" type="button" disabled>批量完成全部未完成异常</button>
     </div>
     </section>
   </div>
@@ -114,12 +115,20 @@
     <div class="kpi-grid" id="reviewKpi"></div>
     <div class="page-panel">
       <div class="filter-row">
-        <span class="filter-result">共 <b id="reviewResultCount">0</b> 条</span>
+        <input id="reviewSearch" class="search" placeholder="搜索 ASIN / 商品 / 异常" />
+        <select id="reviewShop"><option value="">全部店铺</option></select>
+        <select id="reviewPhase"><option value="">全部阶段</option><option>观察中</option><option>等待巡检</option><option>待运营确认</option></select>
+        <select id="reviewEffect"><option value="">全部判断</option><option>变好</option><option>变差</option><option>数据不足</option></select>
+        <select id="reviewSeverity"><option value="">全部严重度</option><option>S0</option><option>S1</option><option>S2</option></select>
+        <input id="reviewFrom" type="date" aria-label="观察节点起始日期" />
+        <input id="reviewTo" type="date" aria-label="观察节点结束日期" />
+        <span class="filter-result" id="reviewResultCount">0 个产品 · 0 条异常</span>
       </div>
       <div class="data-table-scroll">
-        <table class="data-table">
-          <thead><tr><th>产品</th><th>执行时间</th><th>观察节点</th><th>下次巡检</th><th>当前阶段</th><th>Agent判断</th><th>观察结论</th><th>指标变化</th><th>运营确认</th></tr></thead>
-          <tbody id="reviewBody"><tr><td colspan="9" class="loading">加载中…</td></tr></tbody>
+        <table class="data-table review-table">
+          <colgroup><col><col><col><col><col><col><col><col><col><col></colgroup>
+          <thead><tr><th>产品信息</th><th>异常信息</th><th>执行时间</th><th>观察节点</th><th>下次巡检</th><th>当前阶段</th><th>Agent判断</th><th>观察结论</th><th>指标变化</th><th>运营确认</th></tr></thead>
+          <tbody id="reviewBody"><tr><td colspan="10" class="loading">加载中…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -238,10 +247,10 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/ui/assets/js/common.js?v=10"></script>
-<script src="/ui/assets/js/view-today.js?v=57"></script>
+<script src="/ui/assets/js/common.js?v=11"></script>
+<script src="/ui/assets/js/view-today.js?v=63"></script>
 <script src="/ui/assets/js/view-all.js?v=11"></script>
-<script src="/ui/assets/js/view-review.js?v=12"></script>
+<script src="/ui/assets/js/view-review.js?v=16"></script>
 <script src="/ui/assets/js/view-history.js?v=10"></script>
 <script src="/ui/assets/js/view-dashboard.js?v=8"></script>
 <script src="/ui/assets/js/view-health.js?v=8"></script>

@@ -19,6 +19,10 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 FREEZE_DAYS = 14  # 归因窗口，超过则冻结不再重取
 
 
+class ActiveObservationExistsError(RuntimeError):
+    """同一异常已有尚未结束的效果观察。"""
+
+
 def _conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(DB_PATH, timeout=30)
@@ -43,6 +47,20 @@ def init_db() -> None:
         if "maintenance_id" not in task_action_columns:
             c.execute("ALTER TABLE task_action ADD COLUMN maintenance_id INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_task_action_maintenance ON task_action(maintenance_id)")
+        observation_columns = {row[1] for row in c.execute("PRAGMA table_info(observation_case)")}
+        for name, definition in {
+            "schedule_rule_id": "TEXT",
+            "schedule_rule_version": "TEXT",
+            "follow_up_type": "TEXT",
+            "schedule_source": "TEXT NOT NULL DEFAULT 'legacy'",
+            "default_observation_at": "TEXT",
+            "default_next_inspection_at": "TEXT",
+            "expected_available_at": "TEXT",
+            "schedule_override_reason": "TEXT",
+        }.items():
+            if name not in observation_columns:
+                c.execute(f"ALTER TABLE observation_case ADD COLUMN {name} {definition}")
+        _migrate_observation_cases(c)
         maintenance_event_columns = {row[1] for row in c.execute("PRAGMA table_info(product_maintenance_event)")}
         if maintenance_event_columns and "variant" not in maintenance_event_columns:
             c.execute("ALTER TABLE product_maintenance_event ADD COLUMN variant TEXT")
@@ -62,6 +80,48 @@ def init_db() -> None:
         _migrate_task_action_statuses(c)
         _repair_event_history_integrity(c)
         _repair_pending_review_statuses(c)
+        _repair_active_observation_duplicates(c)
+        # 先收敛历史重复数据，再加业务唯一约束；否则老库会在启动时建索引失败。
+        c.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_observation_case_one_active_event
+            ON observation_case(event_uid)
+            WHERE status IN ('观察中', '待运营确认')
+        """)
+
+
+def _migrate_observation_cases(conn: sqlite3.Connection) -> None:
+    """将旧产品级观察拆成异常级历史记录，只执行一次。"""
+    marker = "observation_case_from_product_maintenance_v1"
+    if conn.execute("SELECT 1 FROM app_migration WHERE migration_key=?", (marker,)).fetchone():
+        return
+    conn.execute("""
+        INSERT OR IGNORE INTO observation_case (
+          parent_asin, shop_account, event_uid, completion_action_id, user_id,
+          issue, severity, variant, result, actual_action, notes,
+          baseline_result_id, baseline_snapshot, executed_at, observation_at,
+          next_inspection_at, inspection_time_source, status, agent_effect,
+          agent_summary, agent_observed_at, agent_payload, confirmed_at,
+          confirmed_by, confirmation, created_at, updated_at
+        )
+        SELECT pm.parent_asin, pm.shop_account, me.event_uid,
+               (SELECT a.id FROM task_action a
+                WHERE a.maintenance_id=pm.id AND a.event_uid=me.event_uid
+                  AND a.action_type='完成'
+                ORDER BY a.id DESC LIMIT 1),
+               pm.user_id, me.issue, me.severity, me.variant,
+               pm.result, pm.actual_action, pm.notes,
+               me.baseline_result_id, me.baseline_snapshot, pm.executed_at,
+               pm.observation_at, pm.next_inspection_at, pm.inspection_time_source,
+               pm.status, pm.agent_effect, pm.agent_summary, pm.agent_observed_at,
+               pm.agent_payload, pm.confirmed_at, pm.confirmed_by, pm.confirmation,
+               pm.created_at, pm.updated_at
+        FROM product_maintenance pm
+        JOIN product_maintenance_event me ON me.maintenance_id=pm.id
+    """)
+    conn.execute(
+        "INSERT INTO app_migration (migration_key, details) VALUES (?, ?)",
+        (marker, json.dumps({"source": "product_maintenance"}, ensure_ascii=False)),
+    )
 
 
 def _migrate_task_action_statuses(conn: sqlite3.Connection) -> None:
@@ -166,6 +226,41 @@ def _repair_pending_review_statuses(conn: sqlite3.Connection) -> None:
         "INSERT INTO app_migration (migration_key, details) VALUES (?, ?)",
         (marker, json.dumps({"changed_events": len(rows)}, ensure_ascii=False)),
     )
+
+
+def _repair_active_observation_duplicates(conn: sqlite3.Connection) -> int:
+    """历史数据中每个异常只保留一条有效观察，其他记录保留为可追溯历史。"""
+    rows = conn.execute("""
+        SELECT id, event_uid, confirmation, updated_at
+        FROM observation_case
+        WHERE status IN ('观察中', '待运营确认')
+        ORDER BY event_uid, id
+    """).fetchall()
+    grouped: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        grouped.setdefault(row["event_uid"], []).append(row)
+
+    replaced = 0
+    for event_uid, cases in grouped.items():
+        if len(cases) < 2:
+            continue
+        # “继续观察”表示运营已确认原观察周期应延续，优先于后续误建的观察记录。
+        keep = max(
+            cases,
+            key=lambda case: (
+                case["confirmation"] == "继续观察",
+                case["updated_at"] or "",
+                case["id"],
+            ),
+        )
+        duplicate_ids = [case["id"] for case in cases if case["id"] != keep["id"]]
+        conn.executemany("""
+            UPDATE observation_case
+            SET status='已被重复观察替代', updated_at=datetime('now','localtime')
+            WHERE id=?
+        """, [(case_id,) for case_id in duplicate_ids])
+        replaced += len(duplicate_ids)
+    return replaced
 
 
 def _migrate_shop_scoped_tables(conn: sqlite3.Connection, schema_sql: str) -> None:
@@ -358,6 +453,75 @@ def create_product_maintenance(
         VALUES (?, '待观察')
     """, (maintenance_id,))
     return maintenance_id
+
+
+def create_observation_case(
+    conn: sqlite3.Connection,
+    *, event: sqlite3.Row, completion_action_id: int, user_id: int | None,
+    result: str | None, actual_action: str | None, notes: str | None,
+    observation_at: str, next_inspection_at: str, schedule: dict | None = None,
+) -> int:
+    """为一次单异常完成建立可独立复盘的观察周期。"""
+    def value(name: str):
+        return event[name] if name in event.keys() else None
+
+    baseline_snapshot = None
+    result_id = value("inspection_result_id")
+    if result_id:
+        row = conn.execute(
+            "SELECT result_json FROM inspection_result WHERE id=?", (result_id,)
+        ).fetchone()
+        if row:
+            try:
+                card = json.loads(row["result_json"] or "{}")
+                issue = next(
+                    (item for item in card.get("异常明细") or []
+                     if item.get("问题点位") == value("问题点位")
+                     and (item.get("命中变体") or "") == (value("命中变体") or "")),
+                    None,
+                )
+                if issue and issue.get("数据快照") is not None:
+                    baseline_snapshot = json.dumps(issue["数据快照"], ensure_ascii=False)
+            except (TypeError, json.JSONDecodeError):
+                baseline_snapshot = None
+    event_uid = value("唯一识别")
+    active = conn.execute("""
+        SELECT id FROM observation_case
+        WHERE event_uid=? AND status IN ('观察中', '待运营确认')
+        LIMIT 1
+    """, (event_uid,)).fetchone()
+    if active:
+        raise ActiveObservationExistsError(f"异常 {event_uid} 已有进行中的效果观察（#{active['id']}）")
+    schedule = schedule or {}
+    try:
+        cursor = conn.execute("""
+            INSERT INTO observation_case (
+              parent_asin, shop_account, event_uid, completion_action_id, user_id,
+              issue, severity, variant, result, actual_action, notes,
+              baseline_result_id, baseline_snapshot, observation_at, next_inspection_at,
+              schedule_rule_id, schedule_rule_version, follow_up_type, schedule_source,
+              default_observation_at, default_next_inspection_at, expected_available_at,
+              schedule_override_reason
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            value("父ASIN"), value("店铺账号"), event_uid, completion_action_id, user_id,
+            value("问题点位"), value("严重度"), value("命中变体"), result, actual_action, notes,
+            result_id, baseline_snapshot, observation_at, next_inspection_at,
+            schedule.get("rule_id"), schedule.get("rule_version"), schedule.get("follow_up_type"),
+            schedule.get("source", "legacy"), schedule.get("default_observation_at"),
+            schedule.get("default_next_inspection_at"), schedule.get("expected_available_at"),
+            schedule.get("override_reason"),
+        ))
+    except sqlite3.IntegrityError as error:
+        active = conn.execute("""
+            SELECT id FROM observation_case
+            WHERE event_uid=? AND status IN ('观察中', '待运营确认')
+            LIMIT 1
+        """, (event_uid,)).fetchone()
+        if active:
+            raise ActiveObservationExistsError(f"异常 {event_uid} 已有进行中的效果观察") from error
+        raise
+    return cursor.lastrowid
 
 
 def backfill_inspection_event_links() -> int:

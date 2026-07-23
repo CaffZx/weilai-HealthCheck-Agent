@@ -46,7 +46,8 @@ def api_reports(userId: int = Query(..., description="登录人 user_id")):
         me = c.execute("SELECT id, user_name FROM sys_user WHERE id=?", (userId,)).fetchone()
         if not me:
             return {"self": None, "role": "unknown", "reports": []}
-        report_ids = load_manager_map().get(userId, [])
+        manager_map = load_manager_map()
+        report_ids = manager_map.get(userId, [])
         reports = []
         if report_ids:
             qs = ",".join("?" * len(report_ids))
@@ -54,6 +55,6 @@ def api_reports(userId: int = Query(..., description="登录人 user_id")):
             reports = [dict(r) for r in rrows]
         return {
             "self": dict(me),
-            "role": "manager" if report_ids else "operator",
+            "role": "manager" if userId in manager_map else "operator",
             "reports": reports,
         }

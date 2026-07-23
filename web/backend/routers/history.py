@@ -82,7 +82,14 @@ def api_history_detail(record_id: str, userId: int = Query(...), targetId: int |
 
     with sqlite3.connect(local_store.DB_PATH) as c:
         c.row_factory = sqlite3.Row
-        if rec.get("record_scope") == "product" and rec.get("maintenance_id") is not None:
+        if rec.get("observation_id") is not None:
+            acts = c.execute("""
+                SELECT id, event_uid, action_type, result, actual_action, review_at, notes, effect, created_at, user_id
+                FROM task_action WHERE id=(
+                  SELECT completion_action_id FROM observation_case WHERE id=?
+                )
+            """, (rec["observation_id"],)).fetchall()
+        elif rec.get("record_scope") == "product" and rec.get("maintenance_id") is not None:
             acts = c.execute("""
                 SELECT id, event_uid, action_type, result, actual_action, review_at, notes, effect, created_at, user_id
                 FROM task_action WHERE maintenance_id = ? ORDER BY created_at ASC, id ASC

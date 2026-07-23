@@ -4,7 +4,8 @@ var state = {
   todayData: null, allData: null, reviewData: null, healthData: null,
   historyData: null, dashboardData: null, historyRange: 'all', dashRange: '7',
   selectedEventUid: null, selectedProductKey: null,
-  filters: { q:'', priority:'', status:'', sort:'priority', quickMode:'all', assign:'' },
+  schedulePreview: null, schedulePreviewEventUid: null,
+  filters: { q:'', priority:'', issue:'', status:'', sort:'priority', quickMode:'all', assign:'' },
   assignMode: false, assignSelected: new Set(),
   view: 'today',
 };
