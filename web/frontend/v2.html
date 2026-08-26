@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>业务巡检 Agent · V2 工作台</title>
+  <link rel="stylesheet" href="/ui/assets/app.css?v=57"/>
+  <link rel="stylesheet" href="/ui/assets/workspace-v2.css?v=3"/>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">巡</div><span>业务巡检 Agent</span></div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="overview">巡检概览</button>
+      <button class="nav-item" data-view="batches">批次任务</button>
+      <button class="nav-item" data-view="runs">运行记录</button>
+      <button class="nav-item" data-view="signals">异常记录</button>
+      <button class="nav-item" data-view="health">数据健康</button>
+    </nav>
+    <div class="top-spacer"></div>
+    <div class="fresh"><i class="dot" id="healthDot"></i><span id="freshInfo">正在连接 MySQL V2…</span></div>
+    <div class="stage-pill" id="stagePill">读取中</div>
+    <button class="avatar refresh-avatar" id="globalRefresh" title="刷新">↻</button>
+  </header>
+
+  <main class="v2-main">
+    <section class="view active" id="viewOverview">
+      <div class="workspace-page">
+        <div class="page-head">
+          <div><div class="page-eyebrow">MYSQL V2 RUNTIME</div><h1>巡检概览</h1><p>查看巡检批次、运行结果、信号生命周期与系统健康，不读取任何 SQLite 数据。</p></div>
+          <div class="page-actions"><button class="btn primary" data-action="refresh">刷新数据</button></div>
+        </div>
+        <div class="rollout-notice" id="rolloutNotice"></div>
+        <div class="kpi-grid v2-kpis" id="overviewKpis"></div>
+        <div class="overview-grid">
+          <section class="page-panel">
+            <div class="panel-title"><div><b>最近批次</b><span>按开始时间倒序</span></div><button class="btn" data-goto="batches">查看全部</button></div>
+            <div class="data-table-scroll compact-table"><table class="data-table"><thead><tr><th>批次</th><th>触发类型</th><th>状态</th><th>任务进度</th><th>开始时间</th></tr></thead><tbody id="overviewBatchBody"></tbody></table></div>
+          </section>
+          <section class="page-panel">
+            <div class="panel-title"><div><b>运行健康</b><span>数据库、队列、调度与投递状态</span></div></div>
+            <div class="health-summary" id="overviewHealth"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="viewBatches">
+      <div class="workspace-page">
+        <div class="page-head"><div><div class="page-eyebrow">SCHEDULER & QUEUE</div><h1>批次任务</h1><p>追踪 Batch 到 Job 的执行进度、经营单元身份和失败原因。</p></div></div>
+        <div class="page-panel">
+          <div class="filter-row"><select id="batchStatus"><option value="">全部批次状态</option><option>RUNNING</option><option>SUCCEEDED</option><option>PARTIAL_SUCCESS</option><option>FAILED</option></select><button class="btn" data-action="load-batches">筛选</button><span class="filter-result" id="batchCount"></span></div>
+          <div class="data-table-scroll"><table class="data-table"><thead><tr><th>批次 ID</th><th>业务日期</th><th>触发类型</th><th>状态</th><th>总数</th><th>待处理</th><th>运行中</th><th>成功</th><th>失败</th><th>开始时间</th></tr></thead><tbody id="batchBody"></tbody></table></div>
+          <div class="pager" id="batchPager"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="viewRuns">
+      <div class="workspace-page">
+        <div class="page-head"><div><div class="page-eyebrow">INSPECTION RUN</div><h1>运行记录</h1><p>查看每次巡检的信号数量、数据缺口与可追溯事实状态。</p></div></div>
+        <div class="page-panel">
+          <div class="filter-row"><select id="runStatus"><option value="">全部运行状态</option><option>COMPLETED</option><option>COMPLETED_WITH_GAPS</option><option>FAILED</option></select><button class="btn" data-action="load-runs">筛选</button><span class="filter-result" id="runCount"></span></div>
+          <div class="data-table-scroll"><table class="data-table"><thead><tr><th>Run ID</th><th>经营单元</th><th>触发类型</th><th>状态</th><th>信号</th><th>数据缺口</th><th>开始时间</th><th>完成时间</th><th>操作</th></tr></thead><tbody id="runBody"></tbody></table></div>
+          <div class="pager" id="runPager"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="viewSignals">
+      <div class="workspace-page">
+        <div class="page-head"><div><div class="page-eyebrow">ANOMALY & DATA GAP</div><h1>异常记录</h1><p>默认展示最新一次实际检出的业务异常与数据缺口；历史扫描状态可在生命周期中追踪。</p></div></div>
+        <div class="page-panel">
+          <div class="filter-row signal-filter-row"><input id="signalBatchId" class="filter-input mono" placeholder="批次 ID"/><input id="signalParentAsin" class="filter-input" placeholder="父 ASIN"/><select id="signalType"><option value="">全部记录类型</option><option value="ANOMALY">业务异常</option><option value="DATA_QUALITY">数据缺口</option></select><select id="signalSeverity"><option value="">全部严重度</option><option>S0</option><option>S1</option><option>S2</option><option>DATA_INSUFFICIENT</option></select><select id="signalState"><option value="">全部生命周期</option><option>NEW</option><option>IN_PROGRESS</option><option>OBSERVING</option><option>AWAITING_RESCAN</option><option>RESOLVED</option><option>FALSE_POSITIVE</option><option>IGNORED</option></select><button class="btn" data-action="load-signals">筛选</button><button class="btn" data-action="clear-signals">清空</button><span class="filter-result" id="signalCount"></span></div>
+          <div class="data-table-scroll"><table class="data-table"><thead><tr><th>严重度</th><th>问题</th><th>父 ASIN / 店铺 / 站点</th><th>生命周期</th><th>行动时点</th><th>复发</th><th>最近发现</th><th>诊断摘要</th><th>操作</th></tr></thead><tbody id="signalBody"></tbody></table></div>
+          <div class="pager" id="signalPager"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="viewHealth">
+      <div class="workspace-page">
+        <div class="page-head"><div><div class="page-eyebrow">OBSERVABILITY</div><h1>数据健康</h1><p>运行数据库、队列、Outbox、反馈和 Scheduler 租约的实时只读快照。</p></div></div>
+        <div class="kpi-grid v2-kpis" id="healthKpis"></div>
+        <div class="page-panel"><div class="panel-title"><div><b>当前告警</b><span>CRITICAL 立即处理，DEGRADED 持续 15 分钟需告警</span></div></div><div class="alert-list" id="healthAlerts"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer-mask" id="detailDrawer"><aside class="drawer"><div class="drawer-head"><div><span class="page-eyebrow" id="drawerEyebrow">DETAIL</span><h2 id="drawerTitle">详情</h2><p id="drawerSubtitle"></p></div><button class="drawer-close" id="drawerClose">×</button></div><div class="drawer-body" id="drawerBody"></div></aside></div>
+<div class="toast" id="toast"></div>
+<script src="/ui/assets/workspace-v2.js?v=4"></script>
+</body>
+</html>

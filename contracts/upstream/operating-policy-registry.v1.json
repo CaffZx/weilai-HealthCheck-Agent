@@ -1,0 +1,187 @@
+{
+  "registry_version": "amazon_ops.operating_policy.v1",
+  "status": "ACTIVE",
+  "authority": "OPERATING_DECISION",
+  "modes": [
+    {
+      "code": "NEW_PRODUCT_VALIDATION",
+      "name": "新品验证",
+      "variants": [
+        "PROBE_VALIDATION",
+        "STANDARD_VALIDATION",
+        "PRIORITY_VALIDATION"
+      ]
+    },
+    {
+      "code": "IMMEDIATE_EXIT",
+      "name": "立即退出",
+      "variants": []
+    },
+    {
+      "code": "CONTROLLED_CLEARANCE",
+      "name": "控制清货",
+      "variants": [
+        "VALUE_PRESERVING",
+        "BALANCED_EXIT",
+        "ACCELERATED_EXIT"
+      ]
+    },
+    {
+      "code": "TIME_BOXED_REPAIR",
+      "name": "限时修复",
+      "variants": [
+        "LIGHT_CORRECTION",
+        "FOCUSED_REPAIR",
+        "LAST_CHANCE_REPAIR"
+      ]
+    },
+    {
+      "code": "STABLE_OPERATION",
+      "name": "稳定经营",
+      "variants": [
+        "LOW_TOUCH_MAINTAIN",
+        "STANDARD_MAINTAIN"
+      ]
+    },
+    {
+      "code": "ACTIVE_ADVANCE",
+      "name": "积极推进",
+      "variants": [
+        "CONTROLLED_SCALE",
+        "PRIORITY_SCALE"
+      ]
+    },
+    {
+      "code": "PROFIT_HARVEST",
+      "name": "获取利润",
+      "variants": [
+        "EFFICIENCY_YIELD",
+        "MARGIN_YIELD",
+        "CAPITAL_YIELD"
+      ]
+    }
+  ],
+  "replenishment_policies": [
+    "CONTINUE",
+    "PAUSE",
+    "STOP"
+  ],
+  "child_inventory_dispositions": [
+    "KEEP_ACTIVE",
+    "HOLD_AND_OBSERVE",
+    "CONTROLLED_CLEARANCE",
+    "IMMEDIATE_EXIT"
+  ],
+  "seasonal_operating_postures": [
+    "PRE_SEASON_BUILD",
+    "IN_SEASON_EXECUTE",
+    "POST_SEASON_EXIT",
+    "OFF_SEASON_HOLD",
+    "NON_SEASONAL",
+    "UNDETERMINED"
+  ],
+  "new_product_validation_stages": [
+    "ASIN_READY",
+    "LAUNCH_READY",
+    "TRAFFIC_VALIDATION",
+    "CONVERSION_VALIDATION",
+    "UNIT_ECONOMICS_VALIDATION",
+    "DECISION_READY"
+  ],
+  "new_product_child_roles": [
+    "VALIDATION_CORE",
+    "VALIDATION_SUPPORT",
+    "VALIDATION_EXPLORATORY",
+    "NO_REPLENISH_PENDING"
+  ],
+  "scale_child_roles": [
+    "SCALE_CORE",
+    "SCALE_TEST",
+    "KEEP_ACTIVE",
+    "HOLD_AND_OBSERVE",
+    "CONTROLLED_CLEARANCE"
+  ],
+  "exit_routes": [
+    "LIQUIDATE",
+    "REMOVE",
+    "RETURN",
+    "DISPOSE",
+    "TRANSFER_CHANNEL"
+  ],
+  "human_gates": [
+    "H0",
+    "H1",
+    "H2",
+    "H3"
+  ],
+  "approval_paths": [
+    "AUTO_LIFECYCLE",
+    "PREAUTHORIZED",
+    "BATCH_APPROVAL",
+    "INDIVIDUAL_APPROVAL"
+  ],
+  "action_timing_statuses": [
+    "OVERDUE",
+    "DUE_TODAY",
+    "DUE_SOON",
+    "SCHEDULED",
+    "MONITOR_ONLY"
+  ],
+  "execution_readiness_statuses": [
+    "READY_AUTO",
+    "READY_HUMAN",
+    "BLOCKED_DATA",
+    "BLOCKED_DEPENDENCY",
+    "MONITORING"
+  ],
+  "constraint_flags": [
+    "NEGATIVE_CASH_RECOVERY",
+    "STOCKOUT_RISK",
+    "CLEARANCE_DEADLINE",
+    "SEASONAL_WINDOW_CLOSING",
+    "REPAIR_WINDOW_ENDING",
+    "GROWTH_STOP_LOSS",
+    "PROTECTION_FLOOR_BREACHED",
+    "CORE_CHILD_AT_RISK",
+    "DATA_UNTRUSTED",
+    "HUMAN_APPROVAL_REQUIRED"
+  ],
+  "execution_statuses": [
+    "PLANNED",
+    "APPROVED",
+    "EXECUTING",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED"
+  ],
+  "outcome_statuses": [
+    "NOT_DUE",
+    "READY_FOR_REVIEW",
+    "SUCCESS",
+    "PARTIAL_SUCCESS",
+    "FAILED",
+    "INCONCLUSIVE",
+    "ADVERSE_EFFECT"
+  ],
+  "decision_gates": [
+    "G0_EVIDENCE_TRUST",
+    "G1_DECISION_SCOPE",
+    "G2_CASH_FEASIBILITY",
+    "G3_REPLENISHMENT_ELIGIBILITY",
+    "G4_DEMAND_VALIDATION",
+    "G5_REPAIRABILITY",
+    "G6_INCREMENTAL_OPPORTUNITY",
+    "G7_PROFIT_HARVEST_FIT",
+    "G8_STABLE_OPERATION"
+  ],
+  "governance": {
+    "one_active_parent_mode_per_operating_unit": true,
+    "child_asin_never_owns_parent_mode": true,
+    "stop_replenishment_requires_clearance_or_exit": true,
+    "negative_best_feasible_cash_recovery_requires_exit": true,
+    "routine_queue_uses_composite_score": false,
+    "cases_accumulate_automatically": true,
+    "agents_may_change_canonical_rules": false,
+    "advertising_agent_rollout_status": "FROZEN"
+  }
+}

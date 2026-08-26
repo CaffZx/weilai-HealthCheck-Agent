@@ -1,0 +1,1030 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/operating-unit-initialization.v2.schema.json",
+  "title": "OperatingUnitInitialization",
+  "description": "直接切换后的经营单元初始化。v2 使用正式模式注册表语义并取消旧经营优先级准备状态。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "initialization_id",
+    "operating_unit_ref",
+    "initialization_type",
+    "initialization_status",
+    "cutover_at",
+    "legacy_label_policy",
+    "evidence_bundle",
+    "agent_recommendation",
+    "queue_readiness",
+    "producer_versions"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.initialization.v2"
+    },
+    "initialization_id": {
+      "type": "string",
+      "pattern": "^oi_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "initialization_type": {
+      "enum": [
+        "EXISTING_OPERATING_UNIT",
+        "NEW_ASIN_LIFECYCLE"
+      ]
+    },
+    "initialization_status": {
+      "enum": [
+        "PENDING_EVIDENCE",
+        "RECOMMENDATION_READY",
+        "PENDING_BATCH_APPROVAL",
+        "PENDING_INDIVIDUAL_APPROVAL",
+        "APPROVED",
+        "BLOCKED"
+      ]
+    },
+    "cutover_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "legacy_label_policy": {
+      "const": "READ_ONLY_EXCLUDED_FROM_REASONING"
+    },
+    "evidence_bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operating_fact_ref",
+        "product_profile_ref",
+        "market_reference_view_ref",
+        "market_context_ref",
+        "cost_evidence_ref",
+        "inspection_signal_refs",
+        "data_gaps",
+        "as_of"
+      ],
+      "properties": {
+        "operating_fact_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product_profile_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "market_reference_view_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "market_context_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cost_evidence_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspection_signal_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_gaps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          }
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "agent_recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recommended_mode_code",
+        "recommended_mode_variant_code",
+        "replenishment_policy",
+        "seasonal_operating_posture",
+        "child_inventory_dispositions",
+        "decision_gate_results",
+        "rationale_evidence_refs",
+        "alternative_mode_codes",
+        "confidence",
+        "risk_level",
+        "approval_path",
+        "batch_group_key",
+        "blocking_gap_codes"
+      ],
+      "properties": {
+        "recommended_mode_code": {
+          "enum": [
+            "NEW_PRODUCT_VALIDATION",
+            "IMMEDIATE_EXIT",
+            "CONTROLLED_CLEARANCE",
+            "TIME_BOXED_REPAIR",
+            "STABLE_OPERATION",
+            "ACTIVE_ADVANCE",
+            "PROFIT_HARVEST"
+          ]
+        },
+        "recommended_mode_variant_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "PROBE_VALIDATION",
+            "STANDARD_VALIDATION",
+            "PRIORITY_VALIDATION",
+            "VALUE_PRESERVING",
+            "BALANCED_EXIT",
+            "ACCELERATED_EXIT",
+            "LIGHT_CORRECTION",
+            "FOCUSED_REPAIR",
+            "LAST_CHANCE_REPAIR",
+            "LOW_TOUCH_MAINTAIN",
+            "STANDARD_MAINTAIN",
+            "CONTROLLED_SCALE",
+            "PRIORITY_SCALE",
+            "EFFICIENCY_YIELD",
+            "MARGIN_YIELD",
+            "CAPITAL_YIELD"
+          ]
+        },
+        "replenishment_policy": {
+          "enum": [
+            "CONTINUE",
+            "PAUSE",
+            "STOP"
+          ]
+        },
+        "seasonal_operating_posture": {
+          "enum": [
+            "PRE_SEASON_BUILD",
+            "IN_SEASON_EXECUTE",
+            "POST_SEASON_EXIT",
+            "OFF_SEASON_HOLD",
+            "NON_SEASONAL",
+            "UNDETERMINED"
+          ]
+        },
+        "child_inventory_dispositions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "child_asin",
+              "disposition",
+              "replenishment_policy",
+              "evidence_refs",
+              "observe_until"
+            ],
+            "properties": {
+              "child_asin": {
+                "type": "string",
+                "minLength": 1
+              },
+              "disposition": {
+                "enum": [
+                  "KEEP_ACTIVE",
+                  "HOLD_AND_OBSERVE",
+                  "CONTROLLED_CLEARANCE",
+                  "IMMEDIATE_EXIT"
+                ]
+              },
+              "replenishment_policy": {
+                "enum": [
+                  "CONTINUE",
+                  "PAUSE",
+                  "STOP"
+                ]
+              },
+              "evidence_refs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "observe_until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "decision_gate_results": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/g0GateResult"
+            },
+            {
+              "$ref": "#/$defs/g1GateResult"
+            },
+            {
+              "$ref": "#/$defs/g2GateResult"
+            },
+            {
+              "$ref": "#/$defs/g3GateResult"
+            },
+            {
+              "$ref": "#/$defs/g4GateResult"
+            },
+            {
+              "$ref": "#/$defs/g5GateResult"
+            },
+            {
+              "$ref": "#/$defs/g6GateResult"
+            },
+            {
+              "$ref": "#/$defs/g7GateResult"
+            },
+            {
+              "$ref": "#/$defs/g8GateResult"
+            }
+          ],
+          "items": false
+        },
+        "rationale_evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "alternative_mode_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "NEW_PRODUCT_VALIDATION",
+              "IMMEDIATE_EXIT",
+              "CONTROLLED_CLEARANCE",
+              "TIME_BOXED_REPAIR",
+              "STABLE_OPERATION",
+              "ACTIVE_ADVANCE",
+              "PROFIT_HARVEST"
+            ]
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "risk_level": {
+          "enum": [
+            "H1",
+            "H2",
+            "H3"
+          ]
+        },
+        "approval_path": {
+          "enum": [
+            "AUTO_LIFECYCLE",
+            "BATCH_APPROVAL",
+            "INDIVIDUAL_APPROVAL"
+          ]
+        },
+        "batch_group_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocking_gap_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          }
+        }
+      }
+    },
+    "human_decision": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "decided_by",
+        "decided_at",
+        "approved_mode_code",
+        "approved_mode_variant_code",
+        "modification_reason"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "APPROVE",
+            "MODIFY_AND_APPROVE",
+            "REJECT",
+            "DEFER"
+          ]
+        },
+        "decided_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "approved_mode_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approved_mode_variant_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modification_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "approved_operating_plan_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "queue_readiness": {
+      "enum": [
+        "BLOCKED_DEPENDENCY",
+        "READY"
+      ]
+    },
+    "producer_versions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "gateResultBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate_code",
+        "status",
+        "evidence_refs",
+        "rationale"
+      ],
+      "properties": {
+        "gate_code": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE",
+            "BLOCKED"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
+    },
+    "g0GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G0_EVIDENCE_TRUST"
+            }
+          }
+        }
+      ]
+    },
+    "g1GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G1_DECISION_SCOPE"
+            }
+          }
+        }
+      ]
+    },
+    "g2GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G2_CASH_FEASIBILITY"
+            }
+          }
+        }
+      ]
+    },
+    "g3GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G3_REPLENISHMENT_ELIGIBILITY"
+            }
+          }
+        }
+      ]
+    },
+    "g4GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G4_DEMAND_VALIDATION"
+            }
+          }
+        }
+      ]
+    },
+    "g5GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G5_REPAIRABILITY"
+            }
+          }
+        }
+      ]
+    },
+    "g6GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G6_INCREMENTAL_OPPORTUNITY"
+            }
+          }
+        }
+      ]
+    },
+    "g7GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G7_PROFIT_HARVEST_FIT"
+            }
+          }
+        }
+      ]
+    },
+    "g8GateResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/gateResultBase"
+        },
+        {
+          "properties": {
+            "gate_code": {
+              "const": "G8_STABLE_OPERATION"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "NEW_PRODUCT_VALIDATION"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "enum": [
+                  "PROBE_VALIDATION",
+                  "STANDARD_VALIDATION",
+                  "PRIORITY_VALIDATION"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "replenishment_policy": {
+                "const": "STOP"
+              }
+            },
+            "required": [
+              "replenishment_policy"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "enum": [
+                  "CONTROLLED_CLEARANCE",
+                  "IMMEDIATE_EXIT"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "IMMEDIATE_EXIT"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "const": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "CONTROLLED_CLEARANCE"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "enum": [
+                  "VALUE_PRESERVING",
+                  "BALANCED_EXIT",
+                  "ACCELERATED_EXIT"
+                ]
+              },
+              "replenishment_policy": {
+                "const": "STOP"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "TIME_BOXED_REPAIR"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "enum": [
+                  "LIGHT_CORRECTION",
+                  "FOCUSED_REPAIR",
+                  "LAST_CHANCE_REPAIR"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "STABLE_OPERATION"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "enum": [
+                  "LOW_TOUCH_MAINTAIN",
+                  "STANDARD_MAINTAIN"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "ACTIVE_ADVANCE"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "enum": [
+                  "CONTROLLED_SCALE",
+                  "PRIORITY_SCALE"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "PROFIT_HARVEST"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_variant_code": {
+                "enum": [
+                  "EFFICIENCY_YIELD",
+                  "MARGIN_YIELD",
+                  "CAPITAL_YIELD"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_type": {
+            "const": "NEW_ASIN_LIFECYCLE"
+          }
+        },
+        "required": [
+          "initialization_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "NEW_PRODUCT_VALIDATION"
+              },
+              "approval_path": {
+                "const": "AUTO_LIFECYCLE"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_type": {
+            "const": "EXISTING_OPERATING_UNIT"
+          },
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "not": {
+                  "const": "IMMEDIATE_EXIT"
+                }
+              },
+              "risk_level": {
+                "enum": [
+                  "H1",
+                  "H2"
+                ]
+              }
+            },
+            "required": [
+              "recommended_mode_code",
+              "risk_level"
+            ]
+          }
+        },
+        "required": [
+          "initialization_type",
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "BATCH_APPROVAL"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_type": {
+            "const": "EXISTING_OPERATING_UNIT"
+          },
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "not": {
+                  "const": "IMMEDIATE_EXIT"
+                }
+              },
+              "risk_level": {
+                "const": "H3"
+              }
+            },
+            "required": [
+              "recommended_mode_code",
+              "risk_level"
+            ]
+          }
+        },
+        "required": [
+          "initialization_type",
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "INDIVIDUAL_APPROVAL"
+              },
+              "batch_group_key": {
+                "const": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "IMMEDIATE_EXIT"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "INDIVIDUAL_APPROVAL"
+              },
+              "risk_level": {
+                "const": "H3"
+              },
+              "replenishment_policy": {
+                "const": "STOP"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "BATCH_APPROVAL"
+              }
+            },
+            "required": [
+              "approval_path"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "batch_group_key": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_status": {
+            "const": "APPROVED"
+          }
+        },
+        "required": [
+          "initialization_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "approved_operating_plan_ref"
+        ],
+        "properties": {
+          "approved_operating_plan_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "queue_readiness": {
+            "const": "READY"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+"""按负责人姓名调 follow_up_by_principal 拉全量列表，匹配 catalog 回填负责人。"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import re
+import sys
+import time
+from collections import Counter
+
+sys.path.insert(0, "/opt/weilai-HealthCheck-Agent-v2.0")
+
+import sqlalchemy as sa
+from clients.mcp_client import ReusableMcpSessionClient
+from integrations.database import create_database_engine
+from integrations.repositories.tables import patrol_operating_unit_catalog, patrol_sys_user
+
+_RATE_LIMIT_RE = re.compile(r"请\s*(\d+(?:\.\d+)?)\s*(MS|毫秒|秒|S|SECONDS|SECOND)", re.IGNORECASE)
+TOOL = "erp_listing_follow_up_by_principal"
+
+
+def _wait_from(message: str) -> float | None:
+    m = _RATE_LIMIT_RE.search(message or "")
+    if not m:
+        return None
+    v = float(m.group(1))
+    return v / 1000.0 if m.group(2).upper() == "MS" else v
+
+
+async def fetch_all(client, name: str, page_size: int, min_interval: float, max_retries: int):
+    records = []
+    page_no = 1
+    total_pages = None
+    last_call = 0.0
+    while True:
+        elapsed = time.monotonic() - last_call
+        if elapsed < min_interval:
+            await asyncio.sleep(min_interval - elapsed)
+        last_call = time.monotonic()
+        args = {"principalName": name, "pageNo": page_no, "pageSize": page_size}
+        last_err = ""
+        ok = False
+        for attempt in range(1, max_retries + 1):
+            try:
+                r = await client.call_tool(TOOL, args)
+                env = r.data[0] if r.data else {}
+                page_records = env.get("records") or []
+                total_pages = env.get("totalPages")
+                records.extend(page_records)
+                ok = True
+                break
+            except Exception as exc:
+                last_err = str(exc)
+                wait = _wait_from(last_err) or 2.0 * (2 ** (attempt - 1))
+                await asyncio.sleep(min(wait, 30))
+        if not ok:
+            raise RuntimeError(f"{name} page {page_no}: {last_err[:200]}")
+        if page_no >= (total_pages or 1):
+            break
+        page_no += 1
+    return records
+
+
+async def run(*, names: list[str], name_to_user_id: dict[str, int], page_size: int, min_interval: float, max_retries: int, apply: bool) -> dict:
+    token = os.environ["MCP_API_KEY"]
+    gateway = os.environ.get("AZLISTING_GATEWAY", "http://mcp-gateway.example.com/mcp")
+    engine = create_database_engine()
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            sa.select(
+                patrol_operating_unit_catalog.c.operating_unit_id,
+                patrol_operating_unit_catalog.c.shop_account_ref,
+                patrol_operating_unit_catalog.c.parent_asin,
+                patrol_operating_unit_catalog.c.parent_seller_sku,
+                patrol_operating_unit_catalog.c.owner_user_ids_json,
+            )
+        ).mappings().all()
+    cat_by_key: dict[tuple[str, str, str], dict] = {}
+    for row in rows:
+        key = (str(row["shop_account_ref"] or "").strip(), str(row["parent_asin"] or "").strip(), str(row["parent_seller_sku"] or "").strip())
+        cat_by_key.setdefault(key, dict(row))
+    print(f"catalog loaded: {len(rows)} units", flush=True)
+
+    client = ReusableMcpSessionClient(gateway, token, timeout_seconds=90)
+    results: dict[str, set[int]] = {}
+    per_name = {}
+    stats = Counter()
+    t0 = time.monotonic()
+    async with client:
+        for name in names:
+            user_id = name_to_user_id.get(name)
+            try:
+                recs = await fetch_all(client, name, page_size, min_interval, max_retries)
+                matched = 0
+                unit_ids: set[str] = set()
+                for rec in recs:
+                    key = (
+                        str(rec.get("shopAccount") or "").strip(),
+                        str(rec.get("parentAsin") or "").strip(),
+                        str(rec.get("parentSellerSku") or "").strip(),
+                    )
+                    unit = cat_by_key.get(key)
+                    if unit is None:
+                        continue
+                    matched += 1
+                    unit_ids.add(unit["operating_unit_id"])
+                    if user_id:
+                        results.setdefault(unit["operating_unit_id"], set()).add(user_id)
+                per_name[name] = {"records": len(recs), "matched": matched, "distinct_units": len(unit_ids)}
+                stats["matched"] += matched
+                print(f"name={name} uid={user_id} records={len(recs)} matched={matched} distinct_units={len(unit_ids)}", flush=True)
+            except Exception as exc:
+                stats["error"] += 1
+                print(f"name={name} ERROR {exc}", flush=True)
+            await asyncio.sleep(min_interval)
+    elapsed = time.monotonic() - t0
+    print(f"elapsed={elapsed:.1f}s units_with_owner={len(results)} per_name={ {k: v['distinct_units'] for k, v in per_name.items()} }", flush=True)
+
+    if not apply:
+        return {"names": names, "per_name": per_name, "units_with_owner": len(results), "stats": dict(stats), "elapsed_s": round(elapsed, 1), "applied": False}
+
+    updated = 0
+    with engine.begin() as connection:
+        for row in rows:
+            owners = results.get(row["operating_unit_id"])
+            if not owners:
+                continue
+            existing = {
+                int(v) for v in (row["owner_user_ids_json"] or []) if str(v).isdigit() and int(v) > 0
+            }
+            merged = sorted(existing | owners)
+            if merged == sorted(existing):
+                continue
+            connection.execute(
+                sa.update(patrol_operating_unit_catalog)
+                .where(patrol_operating_unit_catalog.c.operating_unit_id == row["operating_unit_id"])
+                .values(owner_user_ids_json=merged)
+            )
+            updated += 1
+    print(f"updated catalog rows: {updated}", flush=True)
+    return {"names": names, "per_name": per_name, "units_with_owner": len(results), "updated": updated, "stats": dict(stats), "elapsed_s": round(elapsed, 1), "applied": True}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--names", nargs="*", default=[])
+    parser.add_argument("--all-names", action="store_true", help="自动使用 t_patrol_sys_user 全部有名字的用户")
+    parser.add_argument("--page-size", type=int, default=200)
+    parser.add_argument("--min-interval", type=float, default=1.2)
+    parser.add_argument("--max-retries", type=int, default=4)
+    parser.add_argument("--apply", action="store_true")
+    args = parser.parse_args()
+    engine = create_database_engine()
+    with engine.connect() as connection:
+        rows = connection.execute(
+            sa.select(patrol_sys_user.c.user_id, patrol_sys_user.c.user_name).where(
+                sa.and_(patrol_sys_user.c.user_name.is_not(None), patrol_sys_user.c.user_name != "")
+            )
+        ).mappings().all()
+    name_to_user_id: dict[str, int] = {}
+    for r in rows:
+        name_to_user_id.setdefault(str(r["user_name"]).strip(), int(r["user_id"]))
+    names = sorted(name_to_user_id) if args.all_names else args.names
+    print(f"names selected: {len(names)}", flush=True)
+    result = asyncio.run(run(
+        names=names, name_to_user_id=name_to_user_id, page_size=args.page_size,
+        min_interval=args.min_interval, max_retries=args.max_retries, apply=args.apply,
+    ))
+    print(json.dumps(result, ensure_ascii=False, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

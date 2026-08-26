@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/handoff-directive.v1.schema.json",
+  "title": "HandoffDirective",
+  "description": "当前供人工串联、未来供 Router 消费的统一交接指令。它不是动作单，也不授予执行权限。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "handoff_id",
+    "source_result_ref",
+    "target_ref",
+    "next_capability",
+    "reason_code",
+    "requested_outcome",
+    "required_input_refs",
+    "missing_input_codes",
+    "urgency",
+    "human_attention",
+    "permitted_next_step",
+    "routing_mode",
+    "expires_at",
+    "producer_versions"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.handoff.v1"
+    },
+    "handoff_id": {
+      "type": "string",
+      "pattern": "^hd_[0-9a-f]{24}$"
+    },
+    "source_result_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "next_capability": {
+      "enum": [
+        "OPERATING_FACT",
+        "MARKET_RELATION",
+        "MARKET_RESEARCH",
+        "BUSINESS_INSPECTION",
+        "COST_PROFIT_EVIDENCE",
+        "OPERATING_DECISION",
+        "ADVERTISING_DECISION_EXECUTION",
+        "PRICE_PROMOTION",
+        "INVENTORY_PLANNING",
+        "LISTING_EXECUTION",
+        "PORTFOLIO_COORDINATION",
+        "OUTCOME_REVIEW",
+        "DATA_REPAIR",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "reason_code": {
+      "enum": [
+        "IDENTITY_REVIEW_REQUIRED",
+        "MARKET_EVIDENCE_REQUIRED",
+        "SEASON_REBASE_REQUIRED",
+        "COST_EVIDENCE_REQUIRED",
+        "PROFIT_RECONCILIATION_REQUIRED",
+        "MODE_REVIEW_REQUIRED",
+        "ADVERTISING_ACTION_REQUIRED",
+        "PRICE_ACTION_REQUIRED",
+        "INVENTORY_ACTION_REQUIRED",
+        "LISTING_ACTION_REQUIRED",
+        "EXECUTION_VERIFICATION_REQUIRED",
+        "OBSERVATION_DUE",
+        "ENVELOPE_NEAR_LIMIT",
+        "ENVELOPE_EXCEEDED",
+        "CHILD_EXCEPTION_REQUIRED",
+        "PORTFOLIO_COORDINATION_REQUIRED",
+        "INSPECTION_SIGNAL_DETECTED",
+        "REQUIRED_CONFIGURATION_MISSING",
+        "MARKET_CONTEXT_READY",
+        "NEW_PRODUCT_PRIOR_READY",
+        "MATERIAL_MARKET_CHANGE",
+        "PURE_OFF_SEASON_CONFIRMED",
+        "CLEARANCE_WINDOW_UPDATED",
+        "PRICE_STRUCTURE_UPDATED",
+        "COMPETITIVENESS_CHANGED",
+        "MARKET_EVIDENCE_BLOCKED",
+        "HUMAN_BOUNDARY_DECISION_REQUIRED",
+        "OPERATING_UNIT_INITIALIZATION_REQUIRED",
+        "INITIALIZATION_RECOMMENDATION_READY",
+        "BATCH_APPROVAL_REQUIRED",
+        "INDIVIDUAL_EXIT_APPROVAL_REQUIRED"
+      ]
+    },
+    "requested_outcome": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_input_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "missing_input_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+      }
+    },
+    "urgency": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3",
+        "UNASSESSED"
+      ]
+    },
+    "human_attention": {
+      "enum": [
+        "NONE",
+        "REVIEW_RECOMMENDED",
+        "DECISION_REQUIRED"
+      ]
+    },
+    "permitted_next_step": {
+      "enum": [
+        "SUPPLY_EVIDENCE",
+        "PRODUCE_RECOMMENDATION",
+        "PROPOSE_ACTION",
+        "EXECUTE_APPROVED_ACTION",
+        "VERIFY_EXECUTION",
+        "HUMAN_DECISION"
+      ]
+    },
+    "routing_mode": {
+      "enum": [
+        "HUMAN_ONLY",
+        "HUMAN_CONFIRM_THEN_ROUTER",
+        "AUTO_ROUTER"
+      ]
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "producer_versions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

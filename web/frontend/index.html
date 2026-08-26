@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>业务巡检 Agent · 运营工作台</title>
+<link rel="stylesheet" href="/ui/assets/app.css?v=56"/>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">巡</div><span>业务巡检 Agent</span></div>
+  <nav class="nav">
+    <div class="nav-item active" data-view="today">今日任务</div>
+    <div class="nav-item" data-view="all">全部异常</div>
+    <div class="nav-item" data-view="review">调整复盘</div>
+    <div class="nav-item" data-view="history">处理记录</div>
+    <div class="nav-item" data-view="dashboard">数据看板</div>
+    <div class="nav-item" data-view="health">数据健康</div>
+  </nav>
+  <div class="top-spacer"></div>
+  <div class="fresh"><i class="dot"></i><span id="freshInfo">加载中…</span></div>
+  <div class="top-user" id="topUser" style="display:none">
+    <span id="viewerName"></span>
+    <select id="targetSelect" style="display:none"></select>
+  </div>
+  <div class="avatar" id="topAvatar">·</div>
+</header>
+
+<!-- 视图1: 今日任务 -->
+<div class="view active" id="viewToday"><div class="today-workspace">
+  <section class="task-overview">
+    <div class="task-overview-body">
+      <div class="goal-card compact-goal">
+        <div class="goal-line"><div class="goal-num"><b id="doneNum">0</b><span> / <span id="totalNum">0</span> 个产品</span></div><div class="goal-pct" id="goalPct">完成 0%</div></div>
+        <div class="progress"><i id="goalBar"></i></div>
+        <div class="goal-meta"><span>剩余 <b id="remainNum">0</b> 个产品</span><span>异常处理 <b id="doneEventNum">0</b>/<span id="totalEventNum">0</span></span><span>今日完成 <span id="doneTodayNum">0</span> 个产品</span></div>
+      </div>
+      <section class="anomaly-structure" id="anomalyStructure" aria-label="异常结构"></section>
+      <div class="overview-block"><div class="queue queue-inline" id="queueList"></div></div>
+    </div>
+  </section>
+  <div class="today-content">
+    <section class="product-pane">
+      <div class="product-pane-head"><h2>产品列表</h2><div class="product-pane-summary"><b id="productTotalLabel">共 0 个产品</b><span id="productSortLabel">按优先级排序</span></div></div>
+      <div class="toolbar product-filters">
+        <div class="search"><input id="searchInput" placeholder="搜索 ASIN / SKU / 商品名"/></div>
+        <select class="filter" id="priorityFilter"><option value="all">全部优先级</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
+        <select class="filter" id="issueFilter"><option value="">全部异常类型</option></select>
+        <select class="filter" id="statusFilter"><option value="all">全部状态</option><option value="未完成">未完成</option><option value="处理中">处理中</option><option value="已完成">已完成</option><option value="正常">正常</option></select>
+        <select class="filter" id="assignFilter"><option value="">全部指派</option><option value="to_me">派给我的</option><option value="by_me">我派出的</option><option value="assigned">已指派</option><option value="none">未指派</option></select>
+        <select class="filter" id="sortFilter"><option value="priority">按优先级</option><option value="anomalyCount">按异常数量</option></select>
+        <button class="btn ghost-blue" id="assignModeBtn">👥 批量指派</button>
+        <button class="btn" id="reloadBtn">刷新</button>
+      </div>
+      <div class="assign-bar" id="assignBar" style="display:none">
+        <span class="assign-bar-count">已选 <b id="assignSelCount">0</b> 个产品</span>
+        <select class="filter" id="assignTargetSelect"><option value="">指派给…</option></select>
+        <button class="btn primary" id="assignConfirmBtn">指派</button>
+        <button class="btn" id="assignRevokeBtn">撤回</button>
+        <button class="btn ghost" id="assignCancelBtn">退出</button>
+      </div>
+      <div class="task-list-wrap" id="taskListWrap"><div id="taskBody"><div class="loading">加载中…</div></div></div>
+    </section>
+    <section class="detail detail-pane">
+    <div class="detail-head product-detail-head">
+      <div class="detail-title" id="detailTitle">请从左侧选择一条任务</div>
+    </div>
+    <div class="detail-scroll" id="detailScroll">
+      <div style="padding:30px;text-align:center;color:#8a93a2;font-size:12px">点击任务行查看详情</div>
+    </div>
+    <div class="detail-actions">
+      <div class="detail-assign" id="detailAssign"></div>
+      <button class="btn ghost-blue" id="aiBtn" disabled>AI 深度分析</button>
+      <button class="btn primary" id="completeProductBtn" type="button" disabled>批量完成全部未完成异常</button>
+    </div>
+    </section>
+  </div>
+</div></div>
+
+<!-- 视图2: 全部异常 -->
+<div class="view" id="viewAll">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">全量事件池</div><h1>全部异常</h1><p>该负责人名下所有异常（含已关闭）。今日任务页只显示待处理的开放事件。</p></div>
+      <div class="page-actions"><button class="btn" id="allReloadBtn">刷新</button></div>
+    </div>
+    <div class="kpi-grid" id="allKpi"></div>
+    <div class="page-panel">
+      <div class="filter-row">
+        <div class="search wide"><input id="allSearch" placeholder="搜索 ASIN / 问题点位"/></div>
+        <select id="allPriority"><option value="">全部优先级</option><option>P0</option><option>P1</option><option>P2</option></select>
+        <select id="allCategory"><option value="">全部异常大类</option></select>
+        <select id="allStatus"><option value="">全部状态</option><option>未完成</option><option>处理中</option><option>待复查</option><option>已完成</option><option>已关闭</option></select>
+        <select id="allAssign"><option value="">全部指派</option><option value="to_me">派给我的</option><option value="by_me">我派出的</option><option value="assigned">已指派</option><option value="none">未指派</option></select>
+        <span class="filter-result">共 <b id="allResultCount">0</b> 条</span>
+      </div>
+      <div class="data-table-scroll">
+        <table class="data-table">
+          <thead><tr><th>最高优先级</th><th>产品</th><th>异常数量 / 类型</th><th>异常列表</th><th>最长持续</th><th>最高执行分</th><th>产品状态</th><th>操作</th></tr></thead>
+          <tbody id="allBody"><tr><td colspan="8" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 视图3: 调整复盘 -->
+<div class="view" id="viewReview">
+  <section class="workspace-page review-workspace">
+    <div class="page-head review-page-head">
+      <div class="review-page-copy"><h1>调整复盘</h1><p>Agent 基于执行前与观察期数据生成结论，运营确认下一步。</p></div>
+      <div class="page-actions"><button class="btn" id="reviewReloadBtn">刷新</button></div>
+    </div>
+    <div class="review-kpi-strip" id="reviewKpi"></div>
+    <div class="page-panel review-panel">
+      <div class="filter-row review-filter-row">
+        <input id="reviewSearch" class="search" placeholder="搜索 ASIN / 商品 / 异常" />
+        <select id="reviewShop"><option value="">全部店铺</option></select>
+        <select id="reviewPhase"><option value="">全部阶段</option><option>观察中</option><option>等待巡检</option><option>待运营确认</option></select>
+        <select id="reviewEffect"><option value="">全部判断</option><option>变好</option><option>变差</option><option>数据不足</option></select>
+        <select id="reviewSeverity"><option value="">全部严重度</option><option>S0</option><option>S1</option><option>S2</option></select>
+        <input id="reviewFrom" type="date" aria-label="观察节点起始日期" />
+        <input id="reviewTo" type="date" aria-label="观察节点结束日期" />
+        <span class="filter-result" id="reviewResultCount">0 个产品 · 0 条异常</span>
+      </div>
+      <div class="data-table-scroll review-table-scroll">
+        <table class="data-table review-table">
+          <colgroup><col><col><col><col><col></colgroup>
+          <thead><tr><th>异常</th><th>处理进度</th><th>Agent 结论</th><th>指标变化</th><th>后续操作</th></tr></thead>
+          <tbody id="reviewBody"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 视图: 处理记录 -->
+<div class="view" id="viewHistory">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">可审计执行凭证</div><h1>处理记录</h1><p>按父 ASIN + 店铺汇总展示；每次单异常操作仍保留独立凭证，可随时展开追溯。</p></div>
+      <div class="page-actions"><button class="btn" id="historyReloadBtn">刷新</button></div>
+    </div>
+    <div class="kpi-grid" id="historyKpi"></div>
+    <div class="history-notice"><div class="notice-icon">i</div><div><b>展示口径：</b>同一父 ASIN 在同一店铺只显示一行，汇总该产品的处理次数、覆盖异常和最新动作；展开后可查看每条 <b>动作记录ID</b>、异常事件、操作人、执行前快照和复查结论。产品第 N 天再出现异常会生成新事件ID，与原记录并存。</div></div>
+    <div class="page-panel">
+      <div class="filter-row">
+        <div class="search wide"><input id="historySearch" placeholder="搜索 ASIN / 记录ID / 事件ID / 实际动作"/></div>
+        <select id="historyRange"><option value="all">全部时间</option><option value="today">今天</option><option value="7d">近7天</option><option value="30d">近30天</option></select>
+        <select id="historyStatus"><option value="">全部完整性</option><option>完整</option><option>待补</option></select>
+        <select id="historyEvent"><option value="">全部事件关系</option><option value="new">处理后有新异常</option><option value="single">单次异常</option></select>
+        <span class="filter-result">共 <b id="historyResultCount">0</b> 个产品</span>
+      </div>
+      <div class="data-table-scroll">
+        <table class="data-table" style="min-width:1200px">
+          <thead><tr><th>处理汇总</th><th>最近处理</th><th>产品</th><th>覆盖异常</th><th>最近实际动作</th><th>操作人</th><th>复查</th><th>完整性</th><th>后续新异常</th><th>操作</th></tr></thead>
+          <tbody id="historyBody"><tr><td colspan="10" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 视图: 数据看板 -->
+<div class="view" id="viewDashboard">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">运营效率与异常恢复</div><h1>数据看板</h1><p>衡量任务是否按时完成、调整是否真正恢复，以及哪些异常正在反复发生。SLA：P0 当天、P1 3天、P2 7天。</p></div>
+      <div class="page-actions"><select id="dashRange" class="btn"><option value="7">近7天</option><option value="14">近14天</option><option value="30">近30天</option></select><button class="btn" id="dashReloadBtn">刷新</button></div>
+    </div>
+    <div class="dash-kpis" id="dashKpis"></div>
+    <div class="dash-grid">
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>每日任务完成量</h2><p>虚线为参考目标 80 条/日</p></div></div>
+        <div class="daily-chart"><div class="daily-chart-area" id="dailyChart"><div class="daily-target"><span>目标 80</span></div></div></div>
+      </section>
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>异常大类分布</h2><p>点击可下钻到全部异常</p></div></div>
+        <div class="anomaly-bars" id="anomalyBars"></div>
+      </section>
+    </div>
+    <div class="dash-second">
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>异常恢复趋势</h2><p>仅统计已复查任务（effect ∈ 变好/变差/待观察）</p></div><span style="font-size:10px;color:var(--muted)">目标 ≥80%</span></div>
+        <div class="line-chart" id="recoveryChart"><div class="line-axis-y"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div><svg viewBox="0 0 700 180" preserveAspectRatio="none"><path class="area" id="recoveryArea"></path><polyline class="line" id="recoveryLine"></polyline><g id="recoveryPoints"></g></svg><div class="line-axis-x" id="recoveryXAxis"></div></div>
+      </section>
+      <section class="dash-panel">
+        <div class="dash-panel-head"><div><h2>调整动作有效率</h2><p>按实际动作关键词自动分类</p></div></div>
+        <div class="action-list" id="actionEffectList"></div>
+      </section>
+    </div>
+    <section class="dash-panel">
+      <div class="dash-panel-head"><div><h2>高频异常产品</h2><p>同产品出现 ≥2 次异常，考虑升级 AI 深度分析</p></div></div>
+      <div class="data-table-scroll">
+        <table class="data-table" style="min-width:1000px">
+          <thead><tr><th>产品</th><th>异常次数</th><th>主要异常</th><th>已处理次数</th><th>最近效果</th><th>当前优先级</th><th>执行分</th><th>持续</th></tr></thead>
+          <tbody id="repeatProductBody"><tr><td colspan="8" class="loading">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+</div>
+
+<!-- 视图4: 数据健康 -->
+<div class="view" id="viewHealth">
+  <section class="workspace-page">
+    <div class="page-head">
+      <div><div class="page-eyebrow">判定可信度保障</div><h1>数据健康</h1><p>确认巡检依赖的数据源是否同步、字段是否覆盖完整。</p></div>
+      <div class="page-actions"><span class="filter-result" id="lastHealthCheck">-</span><button class="btn primary" id="healthReloadBtn">重新检查</button></div>
+    </div>
+    <div class="kpi-grid" id="healthKpi"></div>
+    <div class="health-grid">
+      <div class="page-panel">
+        <div class="panel-title"><div><b>每日数据表覆盖率</b><span>按日期 × 产品，覆盖率 ≥90% 正常</span></div></div>
+        <div class="source-list" id="healthDaily"></div>
+      </div>
+      <div class="page-panel">
+        <div class="panel-title"><div><b>快照表覆盖率</b><span>每个产品至少一条即视为覆盖</span></div></div>
+        <div class="source-list" id="healthSnapshot"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+</div>
+
+<!-- 首次访问选人弹窗 -->
+<div class="user-gate" id="userGate">
+  <div class="user-gate-card">
+    <div style="font-size:38px;margin-bottom:10px">👤</div>
+    <h2>选择工作台身份</h2>
+    <p>选择你的账号进入运营工作台，仅显示你名下的商品与异常</p>
+    <select id="userGateSelect"><option value="">加载中…</option></select>
+    <button id="userGateConfirm">进入工作台</button>
+  </div>
+</div>
+
+<!-- 处理记录抽屉 -->
+<div class="drawer-mask" id="historyDrawer">
+  <aside class="drawer">
+    <div class="drawer-head"><div><div class="page-eyebrow">动作凭证与产品轨迹</div><h2 id="drawerTitle">处理记录详情</h2><p id="drawerSubtitle">-</p></div><button class="drawer-close" id="drawerCloseX">×</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+    <div class="drawer-actions"><button class="btn" id="drawerBackBtn" hidden>← 返回该产品记录</button><button class="btn" id="drawerCloseBtn">关闭</button><button class="btn ghost-blue" id="drawerCopyBtn">复制记录编号</button></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/ui/assets/js/common.js?v=13"></script>
+<script src="/ui/assets/js/view-today.js?v=78"></script>
+<script src="/ui/assets/js/view-all.js?v=13"></script>
+<script src="/ui/assets/js/view-review.js?v=22"></script>
+<script src="/ui/assets/js/view-history.js?v=14"></script>
+<script src="/ui/assets/js/view-dashboard.js?v=8"></script>
+<script src="/ui/assets/js/view-health.js?v=8"></script>
+<script src="/ui/assets/js/boot.js?v=8"></script>
+</body>
+</html>

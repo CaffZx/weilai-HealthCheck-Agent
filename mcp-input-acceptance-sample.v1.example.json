@@ -1,0 +1,159 @@
+{
+  "contract_version": "amazon_ops.mcp_input_acceptance.v1",
+  "as_of": "2026-07-29",
+  "operating_unit_pages": [
+    {
+      "pageNo": 1,
+      "pageSize": 20,
+      "totalCount": 1,
+      "totalPages": 1,
+      "records": [
+        {
+          "shopId": 1622,
+          "shopAccount": "redacted-shop-account",
+          "siteCode": "US",
+          "asin": "B0CHILD01",
+          "sellerSku": "CHILD-SKU-01",
+          "parentAsin": "B0PARENT01",
+          "parentSellerSku": "PARENT-SKU-01",
+          "userId": 35,
+          "status": "Active"
+        }
+      ]
+    }
+  ],
+  "fact_sample_identity": {
+    "shopId": 1622,
+    "siteCode": "US",
+    "parentAsin": "B0PARENT01",
+    "parentSellerSku": "PARENT-SKU-01"
+  },
+  "fact_samples": {
+    "erp_listing_product_info": [
+      {
+        "asin": "B0CHILD01",
+        "sellerSku": "CHILD-SKU-01",
+        "parentAsin": "B0PARENT01",
+        "status": "可售",
+        "productName": "Redacted Product",
+        "fiveBulletPoint1": "redacted bullet 1",
+        "fiveBulletPoint2": "redacted bullet 2",
+        "fiveBulletPoint3": "redacted bullet 3",
+        "fiveBulletPoint4": "redacted bullet 4",
+        "fiveBulletPoint5": "redacted bullet 5",
+        "principalUserId": 35,
+        "principalUserName": "测试负责人"
+      }
+    ],
+    "erp_asin_full_detail": [
+      {
+        "asin": "B0PARENT01",
+        "siteCode": "US",
+        "bonus": {
+          "title": "Redacted Product",
+          "star": 4.5,
+          "ratingsNum": 100
+        },
+        "linkStatus": {
+          "inStock": true,
+          "price": "19.90",
+          "hasCart": true
+        }
+      }
+    ],
+    "erp_listing_gross_profit_history": [
+      {
+        "recordDate": "2026-07-28",
+        "productSaleNum": 12,
+        "orderNum": 10,
+        "orderSaleAmount": 238.8,
+        "adCostAmount": 25.0,
+        "adSaleMoney": 100.0,
+        "adSaleNum": 4,
+        "grossProfitAmountProportion": 0.22
+      }
+    ],
+    "erp_listing_business_report": [
+      {
+        "reportStartTime": "2026-07-21",
+        "conversation": 900,
+        "productOrderQty": 95,
+        "conversionRate": 0.105
+      },
+      {
+        "reportStartTime": "2026-07-14",
+        "conversation": 880,
+        "productOrderQty": 92,
+        "conversionRate": 0.104
+      }
+    ],
+    "erp_listing_natural_advert_flow": [
+      {
+        "asin": "B0PARENT01",
+        "parentAsin": "B0PARENT01",
+        "isSummary": true,
+        "totalOrderNum": 12,
+        "naturalOrderNum": 8,
+        "adOrderNum": 4
+      }
+    ],
+    "erp_listing_stock_alert": [
+      {
+        "parentAsin": "B0PARENT01",
+        "canSaleNum": 900,
+        "inStockNum": 200,
+        "reserveNum": 10,
+        "totalStock": 1110
+      }
+    ],
+    "erp_listing_unit_profit_analysis": [
+      {
+        "parentAsin": "B0PARENT01",
+        "unitProfit": 4.2,
+        "netCashRecovery": 5200.0,
+        "targetAcos": 0.25,
+        "dailyBudget": 40.0
+      }
+    ],
+    "erp_listing_inventory_cost_analysis": [
+      {
+        "parentAsin": "B0PARENT01",
+        "reportMonth": "2026-07",
+        "children": []
+      }
+    ],
+    "erp_listing_advert_agent_config": [
+      {
+        "parentAsin": "B0PARENT01",
+        "parentSellerSku": "PARENT-SKU-01",
+        "siteCode": "US",
+        "targetAcosSuggest": "25%",
+        "dailyBudgetSuggest": "40"
+      }
+    ],
+    "erp_listing_monthly_goal": [
+      {
+        "parentAsin": "B0PARENT01",
+        "parentSellerSku": "PARENT-SKU-01",
+        "currentMonth": "2026年07月",
+        "monthlyGoals": [
+          {
+            "everyMonthStr": "2026年07月",
+            "estimatedMonthOrderNum": 300
+          }
+        ]
+      }
+    ],
+    "erp_listing_refund_rate": [
+      {
+        "parentAsin": "B0PARENT01",
+        "summary": {
+          "sixteenWeekRefundRate": 0.05,
+          "thirtyTwoWeekRefundRate": 0.05
+        },
+        "children": []
+      }
+    ],
+    "erp_listing_platform_activity": []
+  }
+}

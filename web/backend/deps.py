@@ -1,0 +1,612 @@
+"""依赖装配（组合根）。
+
+把 clients / facts / inspector / integrations 拼成可运行的编排器。
+所有外部地址与令牌从环境变量读取，settings.yaml 里只放**变量名**，不放密钥。
+
+【为什么单独一个组合根】
+  编排器有 13 个依赖。如果在路由里现场 new，路由就绑死了实现；
+  集中在这里之后，测试注入替身、生产切 MQ 或换数据库都只改这一个文件。
+"""
+from __future__ import annotations
+
+import functools
+import hmac
+import json
+import logging
+import os
+import socket
+from datetime import timedelta
+from pathlib import Path
+from typing import Annotated, Any
+
+import yaml
+from fastapi import Header, HTTPException, status
+from sqlalchemy import Engine
+
+from clients.azlisting_contract import (
+    AZLISTING_ALLOWED_TOOLS,
+    AZLISTING_EXTERNAL_CONTRACT_STATUS,
+    AZLISTING_INTERNAL_CONTRACT_VERSION,
+)
+from clients.control_center_mcp import ControlCenterPatrolMcpClient
+from clients.mcp_client import AzListingMcpClient
+from clients.operating_mode_mcp import OperatingModeMcpClient
+from clients.streamable_contract import STREAMABLE_ALLOWED_TOOLS
+from facts.collector import DEFAULT_DISABLED_FACT_KEYS, FactCollector
+from facts.normalizer import FactNormalizer
+from facts.quality import FactQualityService
+from facts.snapshot import FactSnapshotBuilder
+from facts.supplemental import StreamableSupplementalAdapter
+from inspector.legacy_rule_adapter import LegacyRuleAdapter
+from inspector.patrol_orchestrator import PatrolOrchestrator as RuntimePatrolOrchestrator
+from inspector.signal_builder import SignalBuilder
+from inspector.signal_reconciler import SignalReconciler
+from integrations.category_baseline import MySqlCategoryBaselineService
+from integrations.child_fact_async import ChildFactWorker, MySqlChildFactService
+from integrations.control_center_delivery import (
+    ControlCenterBatchPublisher,
+    MySqlControlCenterDeliveryWorker,
+)
+from integrations.database import create_database_engine
+from integrations.feedback import FeedbackInboxService, FollowUpPolicy
+from integrations.mcp_operating_units import (
+    McpOperatingUnitProvider,
+    PrincipalDirectoryOperatingUnitProvider,
+    PrincipalFollowUpOperatingUnitProvider,
+    parse_principal_scopes_json,
+)
+from integrations.mcp_routing import (
+    require_azlisting_primary,
+    resolve_primary_mcp_route,
+    resolve_supplemental_mcp_route,
+)
+from integrations.observability import HealthThresholds, RuntimeHealthService
+from integrations.operating_unit_catalog import OperatingUnitCatalogService
+from integrations.product_image import MySqlProductImageService
+from integrations.result_delivery import HttpInspectionResultSink, MySqlResultDeliveryWorker
+from integrations.review import MySqlReviewStore, ReviewService
+from integrations.rollout import RolloutPolicy
+from integrations.runtime_queries import RuntimeQueryService
+from integrations.runtime_queue import MySqlRuntimeQueue
+from integrations.runtime_worker import MySqlRuntimeWorker
+from integrations.scheduler import PatrolScheduler, SchedulerLease
+
+logger = logging.getLogger(__name__)
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+SETTINGS_PATH = ROOT / "config" / "settings.yaml"
+
+
+@functools.lru_cache(maxsize=1)
+def load_settings() -> dict[str, Any]:
+    with SETTINGS_PATH.open(encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def _env(name: str | None, default: str = "") -> str:
+    """按配置里声明的**变量名**去环境变量取值。密钥不进 YAML。"""
+    if not name:
+        return default
+    return os.environ.get(name, default)
+
+
+def _storefront_zip_codes() -> dict[str, str]:
+    cfg = load_settings().get("mcp", {}) or {}
+    raw = _env(cfg.get("storefront_zip_codes_env"), "").strip()
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("AZListing storefront zip codes must be valid JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError("AZListing storefront zip codes must be a JSON object")
+    return {str(site_code): str(zip_code) for site_code, zip_code in value.items()}
+
+
+@functools.lru_cache(maxsize=1)
+def get_mcp_client() -> AzListingMcpClient:
+    cfg = load_settings().get("mcp", {})
+    route = require_azlisting_primary(resolve_primary_mcp_route(load_settings(), os.environ))
+    if str(cfg.get("tool_policy", "")).upper() != "AUDITED_ONLY":
+        raise ValueError("AZListing MCP tool policy must be AUDITED_ONLY")
+    if str(cfg.get("internal_contract_version", "")) != AZLISTING_INTERNAL_CONTRACT_VERSION:
+        raise ValueError("AZListing MCP internal contract version does not match runtime code")
+    if str(cfg.get("external_contract_status", "")).upper() != (
+        AZLISTING_EXTERNAL_CONTRACT_STATUS.value
+    ):
+        raise ValueError("AZListing MCP external contract status does not match runtime code")
+    return AzListingMcpClient(
+        url=route.url,
+        token=route.token,
+        timeout_seconds=float(
+            _env(cfg.get("timeout_seconds_env"), str(cfg.get("timeout_seconds", 15)))
+        ),
+        concurrency=int(
+            _env(cfg.get("concurrency_env"), str(cfg.get("concurrency", 6)))
+        ),
+        max_attempts=int(
+            _env(cfg.get("max_attempts_env"), str(cfg.get("max_attempts", 2)))
+        ),
+        request_interval_seconds=float(cfg.get("request_interval_seconds", 0)),
+        rate_limit_backoff_seconds=float(cfg.get("rate_limit_backoff_seconds", 10)),
+        allowed_tools=AZLISTING_ALLOWED_TOOLS,
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_supplemental_mcp_adapter() -> StreamableSupplementalAdapter:
+    settings = load_settings()
+    cfg = settings.get("supplemental_mcp", {}) or {}
+    route = resolve_supplemental_mcp_route(settings, os.environ)
+    if route.provider != "STREAMABLE":
+        raise ValueError("supplemental MCP provider must be STREAMABLE")
+    if str(cfg.get("contract_policy", "")).upper() != "FROZEN_ONLY":
+        raise ValueError("supplemental MCP contract policy must be FROZEN_ONLY")
+    enabled_tools = frozenset(str(tool) for tool in (cfg.get("enabled_tools") or []))
+    client = AzListingMcpClient(
+        url=route.url,
+        token=route.token,
+        timeout_seconds=float(cfg.get("timeout_seconds", 30)),
+        concurrency=int(cfg.get("concurrency", 2)),
+        max_attempts=int(cfg.get("max_attempts", 1)),
+        allowed_tools=enabled_tools & STREAMABLE_ALLOWED_TOOLS,
+        auth_header="X-Api-Key",
+        auth_scheme="",
+    )
+    return StreamableSupplementalAdapter(client, enabled=route.enabled)
+
+
+@functools.lru_cache(maxsize=1)
+def get_database_engine() -> Engine:
+    return create_database_engine()
+
+
+@functools.lru_cache(maxsize=1)
+def get_runtime_queue() -> MySqlRuntimeQueue:
+    cfg = load_settings().get("patrol", {})
+    inspection = load_settings().get("inspection", {})
+    return MySqlRuntimeQueue(
+        get_database_engine(),
+        max_retry=int(cfg.get("max_retry_count", 3)),
+        job_insert_batch_size=int(inspection.get("batch_size", 50)),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_runtime_queries() -> RuntimeQueryService:
+    return RuntimeQueryService(get_database_engine())
+
+
+@functools.lru_cache(maxsize=1)
+def get_review_service() -> ReviewService:
+    settings = load_settings()
+    inspection = settings.get("inspection", {})
+    lookback_days = int(inspection.get("default_lookback_days", 30))
+    child_fact_enabled = bool(
+        settings.get("feature_flags", {}).get("child_fact_enabled", True)
+    )
+    keyword_rank_enabled = bool(
+        settings.get("feature_flags", {}).get("keyword_rank_enabled", True)
+    )
+    # 临时开关：合规异常数据采集与判定（feature_flags.compliance_enabled）。
+    compliance_enabled = bool(
+        settings.get("feature_flags", {}).get("compliance_enabled", True)
+    )
+    # 静默缺口（feature_flags.silenced_gap_codes）：已知上游数据覆盖问题的缺口不再向中控产出。
+    silenced_gap_codes = frozenset(
+        settings.get("feature_flags", {}).get("silenced_gap_codes") or []
+    )
+    return ReviewService(
+        store=MySqlReviewStore(get_database_engine()),
+        collector=FactCollector(
+            get_mcp_client(),
+            lookback_days=lookback_days,
+            storefront_zip_codes=_storefront_zip_codes(),
+            supplemental_adapter=get_supplemental_mcp_adapter(),
+            disabled_fact_keys=frozenset(
+                inspection.get("disabled_fact_keys") or DEFAULT_DISABLED_FACT_KEYS
+            ),
+            child_ext_enabled=child_fact_enabled,
+            keyword_rank_enabled=keyword_rank_enabled,
+            compliance_enabled=compliance_enabled,
+        ),
+        normalizer=FactNormalizer(
+            lookback_days=lookback_days,
+            disabled_fact_keys=frozenset(
+                inspection.get("disabled_fact_keys") or DEFAULT_DISABLED_FACT_KEYS
+            ),
+        ),
+        quality_service=FactQualityService(
+            child_points_enabled=child_fact_enabled,
+            keyword_rank_enabled=keyword_rank_enabled,
+            compliance_enabled=compliance_enabled,
+            silenced_gap_codes=silenced_gap_codes,
+        ),
+        snapshot_builder=FactSnapshotBuilder(),
+        category_baseline_service=MySqlCategoryBaselineService(get_database_engine()),
+        child_fact_service=get_child_fact_service(),
+        product_image_service=get_product_image_service(),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_raw_operating_unit_provider() -> (
+    McpOperatingUnitProvider
+    | PrincipalFollowUpOperatingUnitProvider
+    | PrincipalDirectoryOperatingUnitProvider
+):
+    cfg = load_settings().get("mcp", {}) or {}
+    strategy = str(cfg.get("operating_unit_strategy", "QUERY_PAGE")).upper()
+    if strategy == "QUERY_PAGE":
+        return McpOperatingUnitProvider(get_mcp_client())
+    if strategy == "PRINCIPAL_FOLLOW_UP":
+        scopes_value = _env(cfg.get("principal_scopes_env"), "")
+        return PrincipalFollowUpOperatingUnitProvider(
+            get_mcp_client(),
+            parse_principal_scopes_json(scopes_value),
+        )
+    if strategy == "PRINCIPAL_DIRECTORY":
+        directory_url = _env(cfg.get("directory_url_env"), "").strip()
+        directory_token = _env(cfg.get("directory_token_env"), "").strip()
+        if not directory_url or not directory_token:
+            raise ValueError("principal directory MCP URL and token are required")
+        directory_client = AzListingMcpClient(
+            url=directory_url,
+            token=directory_token,
+            timeout_seconds=float(_env(cfg.get("timeout_seconds_env"), str(cfg.get("timeout_seconds", 15)))),
+            concurrency=int(_env(cfg.get("concurrency_env"), str(cfg.get("concurrency", 6)))),
+            max_attempts=int(_env(cfg.get("max_attempts_env"), str(cfg.get("max_attempts", 2)))),
+            allowed_tools=frozenset({"sys_user_query", "sprout_shop_query"}),
+            auth_header="X-Api-Key",
+            auth_scheme="",
+        )
+        return PrincipalDirectoryOperatingUnitProvider(
+            directory_client,
+            get_mcp_client(),
+            operator_role=str(cfg.get("directory_operator_role", "GROUP_FBASALER")),
+        )
+    if strategy == "OWNER_DIRECTORY":
+        raise ValueError("OWNER_DIRECTORY is retired; use AZ MCP operating-unit discovery")
+    raise ValueError("unsupported AZListing operating unit strategy")
+
+
+@functools.lru_cache(maxsize=1)
+def get_operating_unit_provider() -> OperatingUnitCatalogService:
+    settings = load_settings()
+    catalog = settings.get("operating_unit_catalog", {}) or {}
+    return OperatingUnitCatalogService(
+        get_database_engine(),
+        get_raw_operating_unit_provider(),
+        refresh_interval=timedelta(
+            days=float(catalog.get("refresh_interval_days", 7))
+        ),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_rollout_policy() -> RolloutPolicy:
+    settings = load_settings()
+    rollout = settings.get("rollout", {})
+    flags = settings.get("feature_flags", {}) or {}
+    return RolloutPolicy(
+        stage=str(rollout.get("stage", "INTERNAL_ONLY")),
+        allowlisted_shop_ids=[int(value) for value in rollout.get("allowlisted_shop_ids", [])],
+        result_delivery_enabled=flags.get("result_delivery_enabled"),
+        feedback_enabled=flags.get("feedback_enabled"),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_patrol_scheduler() -> PatrolScheduler:
+    settings = load_settings()
+    scheduler = settings.get("scheduler", {})
+    version = str(settings.get("service", {}).get("version", "2.0.0"))
+    return PatrolScheduler(
+        queue=get_runtime_queue(),
+        unit_provider=get_operating_unit_provider(),
+        lease=SchedulerLease(get_database_engine()),
+        holder_id=f"{socket.gethostname()}:{os.getpid()}",
+        rule_bundle_version=version,
+        lease_ttl=timedelta(seconds=int(scheduler.get("lease_ttl_seconds", 600))),
+        lease_heartbeat=timedelta(
+            seconds=int(scheduler.get("lease_heartbeat_seconds", 200))
+        ),
+        rollout_policy=get_rollout_policy(),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_feedback_inbox() -> FeedbackInboxService:
+    return FeedbackInboxService(
+        get_database_engine(),
+        FollowUpPolicy.load(ROOT / "inspector" / "rules" / "R7_复查频次.yaml"),
+    )
+
+
+def require_feedback_access(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    settings = load_settings()
+    if not get_rollout_policy().feedback_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "FEEDBACK_ROLLOUT_BLOCKED",
+                "message": "feedback is disabled before CANARY rollout",
+            },
+        )
+    if not settings.get("feature_flags", {}).get("feedback_enabled"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "FEEDBACK_DISABLED",
+                "message": "feedback contract is not production-ready",
+            },
+        )
+    cfg = settings.get("feedback", {})
+    expected = _env(cfg.get("token_env"), "").strip()
+    scheme, _, token = (authorization or "").partition(" ")
+    if (
+        not expected
+        or scheme.lower() != "bearer"
+        or not token
+        or not hmac.compare_digest(token, expected)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHORIZED", "message": "invalid feedback credentials"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+@functools.lru_cache(maxsize=1)
+def get_runtime_health() -> RuntimeHealthService:
+    settings = load_settings()
+    cfg = settings.get("observability", {})
+    return RuntimeHealthService(
+        get_database_engine(),
+        feature_flags=dict(settings.get("feature_flags", {})),
+        thresholds=HealthThresholds(
+            pending_jobs_warn=int(cfg.get("pending_jobs_warn", 100)),
+            oldest_pending_job_warn_minutes=int(
+                cfg.get("oldest_pending_job_warn_minutes", 30)
+            ),
+            stale_running_job_minutes=int(cfg.get("stale_running_job_minutes", 30)),
+            pending_outbox_warn=int(cfg.get("pending_outbox_warn", 100)),
+            oldest_pending_outbox_warn_minutes=int(
+                cfg.get("oldest_pending_outbox_warn_minutes", 15)
+            ),
+        ),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_result_delivery_worker() -> MySqlResultDeliveryWorker:
+    settings = load_settings()
+    cfg = settings.get("result_sink", {})
+    delivery = settings.get("delivery", {})
+    sink = HttpInspectionResultSink(
+        endpoint=_env(cfg.get("url_env"), ""),
+        token=_env(cfg.get("token_env"), ""),
+        timeout_seconds=float(cfg.get("timeout_seconds", 10)),
+    )
+    return MySqlResultDeliveryWorker(
+        engine=get_database_engine(),
+        sink=sink,
+        worker_id=f"{socket.gethostname()}:{os.getpid()}",
+        base_backoff_seconds=int(delivery.get("base_backoff_seconds", 30)),
+        rollout_policy=get_rollout_policy(),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_control_center_mcp_client() -> ControlCenterPatrolMcpClient:
+    cfg = load_settings().get("control_center_mcp", {})
+    return ControlCenterPatrolMcpClient(
+        url=_env(cfg.get("url_env"), str(cfg.get("default_url", ""))),
+        token=_env(cfg.get("token_env"), ""),
+        timeout_seconds=float(cfg.get("timeout_seconds", 15)),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_operating_mode_mcp_client() -> OperatingModeMcpClient:
+    cfg = load_settings().get("operating_mode_mcp", {})
+    if not str(cfg.get("evaluate_tool", "")).strip():
+        raise ValueError("operating_mode_mcp.evaluate_tool must be configured")
+    return OperatingModeMcpClient(
+        url=_env(cfg.get("url_env"), str(cfg.get("default_url", ""))),
+        token=_env(cfg.get("token_env"), ""),
+        timeout_seconds=float(cfg.get("timeout_seconds", 15)),
+        evaluation_wait_timeout_seconds=float(
+            cfg.get("evaluation_wait_timeout_seconds", 180)
+        ),
+        evaluation_poll_interval_seconds=float(
+            cfg.get("evaluation_poll_interval_seconds", 2)
+        ),
+        evaluation_cooldown_seconds=float(
+            cfg.get("evaluation_cooldown_seconds", 3600)
+        ),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_control_center_batch_publisher() -> ControlCenterBatchPublisher:
+    settings = load_settings()
+    delivery = load_settings().get("delivery", {})
+    mode_enabled = bool(
+        settings.get("feature_flags", {}).get("operating_mode_lookup_enabled")
+    )
+    return ControlCenterBatchPublisher(
+        engine=get_database_engine(),
+        rollout_policy=get_rollout_policy(),
+        max_retry=int(delivery.get("max_retry", 10)),
+        operating_mode_client=(get_operating_mode_mcp_client() if mode_enabled else None),
+        operating_mode_lookup_enabled=mode_enabled,
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_control_center_delivery_worker() -> MySqlControlCenterDeliveryWorker:
+    delivery = load_settings().get("delivery", {})
+    return MySqlControlCenterDeliveryWorker(
+        engine=get_database_engine(),
+        client=get_control_center_mcp_client(),
+        worker_id=f"{socket.gethostname()}:{os.getpid()}:control-center",
+        base_backoff_seconds=int(delivery.get("base_backoff_seconds", 30)),
+        rollout_policy=get_rollout_policy(),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_runtime_orchestrator() -> RuntimePatrolOrchestrator:
+    settings = load_settings()
+    inspection = settings.get("inspection", {})
+    version = str(settings.get("service", {}).get("version", "2.0.0"))
+    lookback = int(settings.get("inspection", {}).get("default_lookback_days", 30))
+    rollout_policy = get_rollout_policy()
+    # 临时开关：子 ASIN 扩展采集与变体级点位判定（config/settings.yaml）。
+    child_fact_enabled = bool(
+        settings.get("feature_flags", {}).get("child_fact_enabled", True)
+    )
+    # 临时开关：卡位数据采集与卡位异常判定（feature_flags.keyword_rank_enabled）。
+    keyword_rank_enabled = bool(
+        settings.get("feature_flags", {}).get("keyword_rank_enabled", True)
+    )
+    # 临时开关：合规异常数据采集与判定（feature_flags.compliance_enabled）。
+    compliance_enabled = bool(
+        settings.get("feature_flags", {}).get("compliance_enabled", True)
+    )
+    # 静默缺口（feature_flags.silenced_gap_codes）：已知上游数据覆盖问题的缺口不再向中控产出。
+    silenced_gap_codes = frozenset(
+        settings.get("feature_flags", {}).get("silenced_gap_codes") or []
+    )
+    return RuntimePatrolOrchestrator(
+        engine=get_database_engine(),
+        collector=FactCollector(
+            get_mcp_client(),
+            lookback_days=lookback,
+            storefront_zip_codes=_storefront_zip_codes(),
+            supplemental_adapter=get_supplemental_mcp_adapter(),
+            disabled_fact_keys=frozenset(
+                inspection.get("disabled_fact_keys") or DEFAULT_DISABLED_FACT_KEYS
+            ),
+            child_ext_enabled=child_fact_enabled,
+            keyword_rank_enabled=keyword_rank_enabled,
+            compliance_enabled=compliance_enabled,
+        ),
+        normalizer=FactNormalizer(
+            lookback_days=lookback,
+            disabled_fact_keys=frozenset(
+                inspection.get("disabled_fact_keys") or DEFAULT_DISABLED_FACT_KEYS
+            ),
+        ),
+        quality_service=FactQualityService(
+            child_points_enabled=child_fact_enabled,
+            keyword_rank_enabled=keyword_rank_enabled,
+            compliance_enabled=compliance_enabled,
+            silenced_gap_codes=silenced_gap_codes,
+        ),
+        snapshot_builder=FactSnapshotBuilder(),
+        rule_adapter=LegacyRuleAdapter(
+            child_points_enabled=child_fact_enabled,
+            keyword_rank_points_enabled=keyword_rank_enabled,
+            compliance_points_enabled=compliance_enabled,
+        ),
+        signal_builder=SignalBuilder(producer_version=version),
+        reconciler=SignalReconciler(),
+        service_version=version,
+        rule_versions={"R2": "current", "R3": "current", "R7": "current"},
+        outbox_delivery_status=rollout_policy.outbox_delivery_status,
+        category_baseline_service=MySqlCategoryBaselineService(get_database_engine()),
+        child_fact_service=get_child_fact_service(),
+        product_image_service=get_product_image_service(),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_child_fact_service() -> MySqlChildFactService:
+    cfg = load_settings().get("child_fact_async", {}) or {}
+    return MySqlChildFactService(
+        get_database_engine(),
+        snapshot_ttl=timedelta(hours=int(cfg.get("snapshot_ttl_hours", 24))),
+        failure_cooldown=timedelta(
+            minutes=int(cfg.get("failure_cooldown_minutes", 15))
+        ),
+        max_retry=int(cfg.get("max_retry", 3)),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_product_image_service() -> MySqlProductImageService:
+    return MySqlProductImageService(get_database_engine())
+
+
+@functools.lru_cache(maxsize=1)
+def get_child_fact_worker() -> ChildFactWorker:
+    cfg = load_settings().get("child_fact_async", {}) or {}
+    mcp_cfg = load_settings().get("mcp", {}) or {}
+    route = require_azlisting_primary(resolve_primary_mcp_route(load_settings(), os.environ))
+    # 子体前台爬虫（评论 ~180s / 价格 ~20s）比后端 ERP 工具慢得多，
+    # 用独立客户端 + 更长的超时，避免被主流程的短超时截断。
+    child_client = AzListingMcpClient(
+        url=route.url,
+        token=route.token,
+        timeout_seconds=240,
+        concurrency=int(mcp_cfg.get("concurrency", 5)),
+        max_attempts=int(mcp_cfg.get("max_attempts", 2)),
+        request_interval_seconds=float(mcp_cfg.get("request_interval_seconds", 0)),
+        rate_limit_backoff_seconds=float(mcp_cfg.get("rate_limit_backoff_seconds", 10)),
+        allowed_tools=AZLISTING_ALLOWED_TOOLS,
+    )
+    return ChildFactWorker(
+        get_child_fact_service(),
+        child_client,
+        worker_id=f"{socket.gethostname()}:{os.getpid()}:child-fact",
+        minimum_interval_seconds=float(cfg.get("minimum_interval_seconds", 0.25)),
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_runtime_worker() -> MySqlRuntimeWorker:
+    worker_cfg = load_settings().get("worker", {})
+
+    async def patrol_handler(job):
+        envelope = await get_runtime_orchestrator().run_job(job)
+        return envelope.run.run_id
+
+    return MySqlRuntimeWorker(
+        queue=get_runtime_queue(),
+        worker_id=f"api-composition:{os.getpid()}",
+        handlers={"patrol.run": patrol_handler},
+        rollout_policy=get_rollout_policy(),
+        handler_timeout_seconds=float(worker_cfg.get("handler_timeout_seconds", 600)),
+    )
+
+
+def reset_caches() -> None:
+    """测试用：清空所有 lru_cache 单例。"""
+    for factory in (
+        load_settings,
+        get_mcp_client,
+        get_supplemental_mcp_adapter,
+        get_database_engine,
+        get_runtime_queue,
+        get_runtime_queries,
+        get_operating_unit_provider,
+        get_patrol_scheduler,
+        get_feedback_inbox,
+        get_runtime_health,
+        get_result_delivery_worker,
+        get_control_center_mcp_client,
+        get_operating_mode_mcp_client,
+        get_control_center_batch_publisher,
+        get_control_center_delivery_worker,
+        get_runtime_orchestrator,
+        get_child_fact_service,
+        get_product_image_service,
+        get_child_fact_worker,
+        get_runtime_worker,
+    ):
+        factory.cache_clear()

@@ -1,0 +1,445 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/operating-unit-initialization.v1.schema.json",
+  "title": "OperatingUnitInitialization",
+  "description": "存量经营单元一次性重建当前经营状态，或新 ASIN 按生命周期直接初始化。旧标签只读且不得参与推理。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "initialization_id",
+    "operating_unit_ref",
+    "initialization_type",
+    "initialization_status",
+    "cutover_at",
+    "legacy_label_policy",
+    "evidence_bundle",
+    "agent_recommendation",
+    "priority_readiness",
+    "producer_versions"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.initialization.v1"
+    },
+    "initialization_id": {
+      "type": "string",
+      "pattern": "^oi_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "initialization_type": {
+      "enum": [
+        "EXISTING_OPERATING_UNIT",
+        "NEW_ASIN_LIFECYCLE"
+      ]
+    },
+    "initialization_status": {
+      "enum": [
+        "PENDING_EVIDENCE",
+        "RECOMMENDATION_READY",
+        "PENDING_BATCH_APPROVAL",
+        "PENDING_INDIVIDUAL_APPROVAL",
+        "APPROVED",
+        "BLOCKED"
+      ]
+    },
+    "cutover_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "legacy_label_policy": {
+      "const": "READ_ONLY_EXCLUDED_FROM_REASONING"
+    },
+    "evidence_bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operating_fact_ref",
+        "product_profile_ref",
+        "market_reference_view_ref",
+        "market_context_ref",
+        "cost_evidence_ref",
+        "inspection_signal_refs",
+        "data_gaps",
+        "as_of"
+      ],
+      "properties": {
+        "operating_fact_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product_profile_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "market_reference_view_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "market_context_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cost_evidence_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspection_signal_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_gaps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          }
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "agent_recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recommended_mode_code",
+        "recommended_mode_variant_code",
+        "rationale_evidence_refs",
+        "alternative_mode_codes",
+        "confidence",
+        "risk_level",
+        "approval_path",
+        "batch_group_key",
+        "blocking_gap_codes"
+      ],
+      "properties": {
+        "recommended_mode_code": {
+          "enum": [
+            "NEW_PRODUCT_VALIDATION",
+            "IMMEDIATE_EXIT",
+            "CONTROLLED_CLEARANCE",
+            "TIME_BOXED_REPAIR",
+            "STABLE_OPERATION",
+            "CONTROLLED_GROWTH",
+            "PROFIT_HARVEST"
+          ]
+        },
+        "recommended_mode_variant_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rationale_evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "alternative_mode_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "NEW_PRODUCT_VALIDATION",
+              "IMMEDIATE_EXIT",
+              "CONTROLLED_CLEARANCE",
+              "TIME_BOXED_REPAIR",
+              "STABLE_OPERATION",
+              "CONTROLLED_GROWTH",
+              "PROFIT_HARVEST"
+            ]
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "risk_level": {
+          "enum": [
+            "H1",
+            "H2",
+            "H3"
+          ]
+        },
+        "approval_path": {
+          "enum": [
+            "AUTO_LIFECYCLE",
+            "BATCH_APPROVAL",
+            "INDIVIDUAL_APPROVAL"
+          ]
+        },
+        "batch_group_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocking_gap_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          }
+        }
+      }
+    },
+    "human_decision": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "decided_by",
+        "decided_at",
+        "approved_mode_code",
+        "approved_mode_variant_code",
+        "modification_reason"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "APPROVE",
+            "MODIFY_AND_APPROVE",
+            "REJECT",
+            "DEFER"
+          ]
+        },
+        "decided_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "approved_mode_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approved_mode_variant_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modification_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "approved_operating_plan_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "priority_readiness": {
+      "enum": [
+        "UNASSESSED",
+        "READY"
+      ]
+    },
+    "producer_versions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "initialization_type": {
+            "const": "NEW_ASIN_LIFECYCLE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "NEW_PRODUCT_VALIDATION"
+              },
+              "approval_path": {
+                "const": "AUTO_LIFECYCLE"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_type": {
+            "const": "EXISTING_OPERATING_UNIT"
+          },
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "not": {
+                  "const": "IMMEDIATE_EXIT"
+                }
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        },
+        "required": [
+          "initialization_type",
+          "agent_recommendation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "BATCH_APPROVAL"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "recommended_mode_code": {
+                "const": "IMMEDIATE_EXIT"
+              }
+            },
+            "required": [
+              "recommended_mode_code"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "INDIVIDUAL_APPROVAL"
+              },
+              "risk_level": {
+                "const": "H3"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "approval_path": {
+                "const": "BATCH_APPROVAL"
+              }
+            },
+            "required": [
+              "approval_path"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_recommendation": {
+            "properties": {
+              "batch_group_key": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_status": {
+            "const": "APPROVED"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "approved_operating_plan_ref"
+        ],
+        "properties": {
+          "approved_operating_plan_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "priority_readiness": {
+            "const": "READY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialization_type": {
+            "const": "EXISTING_OPERATING_UNIT"
+          },
+          "initialization_status": {
+            "const": "APPROVED"
+          }
+        },
+        "required": [
+          "initialization_type",
+          "initialization_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "human_decision"
+        ],
+        "properties": {
+          "human_decision": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,265 @@
+{
+  "patrolBatchNo": "SIM-PATROL-20260804-001",
+  "units": [
+    {
+      "listing": {
+        "shopId": "SIM-SHOP-1622",
+        "siteCode": "Amazon_US",
+        "parentAsin": "B0EXAMPLE0",
+        "parentSellerSku": "DEMO-JUICER-P",
+        "productName": "便携榨汁杯（脱敏样例）",
+        "productPicUrl": "https://example.invalid/simulated-product-image.jpg",
+        "ownerUserId": "SIM-CONTROL-CENTER-USER-35",
+        "status": "ONLINE",
+        "businessModel": "CONTROLLED_GROWTH"
+      },
+      "tags": {
+        "productLevel": "P1_PRODUCT",
+        "productStage": "PUSHING",
+        "seasonStage": "PRE_PEAK",
+        "adPurpose": "PROFIT",
+        "targetKeywordStrategy": "GENERIC",
+        "adDirection": "OPTIMIZE_ACOS",
+        "adBudgetGroup": "EXACT_CORE_GROUP",
+        "specialScenario": "PROMOTION",
+        "placement": "TOP_OF_SEARCH"
+      },
+      "operatingMetric": {
+        "metricDate": "2026-08-04",
+        "salesAmount": 12680.5,
+        "salesQuantity": 286,
+        "orderQuantity": 271,
+        "productCost": 4200.0,
+        "azCommissionFee": 1902.08,
+        "fbaPackFee": 1160.0,
+        "refundRate": 0.032,
+        "refundMoney": 405.78,
+        "contributionProfit": 2810.24,
+        "profitRate": 0.2216,
+        "calculateMonthStorageFee": 180.0,
+        "adCost": 1520.3,
+        "adClick": 1840,
+        "adImpressions": 126000,
+        "adSalesAmount": 6800.0,
+        "adOrder": 142,
+        "canSaleNum": 1596,
+        "inboundInventory": 420,
+        "reservedInventory": 80
+      },
+      "factSnapshots": [
+        {
+          "snapshotType": "SALES",
+          "sourceSystem": "mcp-azlisting-server",
+          "windowStart": "2026-07-29T00:00:00+08:00",
+          "windowEnd": "2026-08-04T23:59:59+08:00",
+          "contentHash": "sha256:sim-sales-20260804-001",
+          "qualityStatus": "COMPLETE",
+          "completenessScore": 100,
+          "keyMetricsJson": {
+            "salesAmount7d": 12680.5,
+            "salesQuantity7d": 286,
+            "orderQuantity7d": 271,
+            "refundRate7d": 0.032
+          },
+          "rawReferenceJson": {
+            "isSimulated": true,
+            "tool": "query_listing_sales",
+            "requestId": "SIM-SALES-REQUEST-001",
+            "query": {
+              "shopId": "SIM-SHOP-1622",
+              "parentAsin": "B0EXAMPLE0"
+            }
+          }
+        },
+        {
+          "snapshotType": "ADVERTISING",
+          "sourceSystem": "mcp-azlisting-server",
+          "windowStart": "2026-07-29T00:00:00+08:00",
+          "windowEnd": "2026-08-04T23:59:59+08:00",
+          "contentHash": "sha256:sim-advertising-20260804-001",
+          "qualityStatus": "COMPLETE",
+          "completenessScore": 100,
+          "keyMetricsJson": {
+            "campaignId": "CAMPAIGN-10001",
+            "spend7d": 1520.3,
+            "sales7d": 6800.0,
+            "acos7d": 0.2236,
+            "clicks7d": 1840,
+            "impressions7d": 126000,
+            "orders7d": 142,
+            "currentBid": 1.2
+          },
+          "rawReferenceJson": {
+            "isSimulated": true,
+            "tool": "query_campaign_performance",
+            "requestId": "SIM-AD-REQUEST-001",
+            "query": {
+              "shopId": "SIM-SHOP-1622",
+              "campaignId": "CAMPAIGN-10001"
+            }
+          }
+        },
+        {
+          "snapshotType": "PROFIT",
+          "sourceSystem": "mcp-azlisting-server",
+          "windowStart": "2026-07-29T00:00:00+08:00",
+          "windowEnd": "2026-08-04T23:59:59+08:00",
+          "contentHash": "sha256:sim-profit-20260804-001",
+          "qualityStatus": "COMPLETE",
+          "completenessScore": 100,
+          "keyMetricsJson": {
+            "salesAmount7d": 12680.5,
+            "productCost7d": 4200.0,
+            "commissionFee7d": 1902.08,
+            "fbaFee7d": 1160.0,
+            "storageFee7d": 180.0,
+            "refundMoney7d": 405.78,
+            "contributionProfit7d": 2810.24
+          },
+          "rawReferenceJson": {
+            "isSimulated": true,
+            "tool": "query_listing_profit",
+            "requestId": "SIM-PROFIT-REQUEST-001",
+            "query": {
+              "shopId": "SIM-SHOP-1622",
+              "parentAsin": "B0EXAMPLE0"
+            }
+          }
+        },
+        {
+          "snapshotType": "INVENTORY",
+          "sourceSystem": "mcp-azlisting-server",
+          "windowStart": "2026-08-04T00:00:00+08:00",
+          "windowEnd": "2026-08-04T23:59:59+08:00",
+          "contentHash": "sha256:sim-inventory-20260804-001",
+          "qualityStatus": "COMPLETE",
+          "completenessScore": 100,
+          "keyMetricsJson": {
+            "availableInventory": 1596,
+            "inboundInventory": 420,
+            "reservedInventory": 80,
+            "inventoryDays": 39
+          },
+          "rawReferenceJson": {
+            "isSimulated": true,
+            "tool": "query_listing_inventory",
+            "requestId": "SIM-INVENTORY-REQUEST-001",
+            "query": {
+              "shopId": "SIM-SHOP-1622",
+              "parentAsin": "B0EXAMPLE0"
+            }
+          }
+        }
+      ],
+      "proposal": {
+        "status": "PENDING_APPROVAL",
+        "recommendedBusinessModel": "CONTROLLED_GROWTH",
+        "modeConfidence": 0.91,
+        "modeReasonSummary": "模拟外部经营模式 Agent 判定：当前商品处于增长期，但广告效率偏离目标，需要受控优化。",
+        "problemSummary": "核心广告活动 ACOS 高于模拟目标值",
+        "rootCauses": [
+          {
+            "code": "SIM-BID-EFFICIENCY-GAP",
+            "summary": "CAMPAIGN-10001 当前竞价与模拟目标 ACOS 不匹配",
+            "evidenceRef": "sha256:sim-advertising-20260804-001"
+          }
+        ],
+        "opportunitySummary": "在保持主要曝光的前提下改善广告投入效率",
+        "recommendationSummary": "下调核心活动竞价并观察 7 天",
+        "goal": "将 CAMPAIGN-10001 的 7 天 ACOS 从 22.36% 降至不高于 20%",
+        "expectedEffect": {
+          "acos7dMax": 0.2,
+          "adSalesRetentionMin": 0.9
+        },
+        "riskSummary": {
+          "trafficRisk": "竞价下调可能降低曝光和点击",
+          "mitigation": "观察 7 天并在广告销售保留率低于 90% 时回退"
+        },
+        "confidence": 0.88,
+        "approvalLevel": "H1",
+        "observationWindowDays": 7,
+        "reviewDueAt": "2026-08-11T23:59:59+08:00",
+        "rawAnalysis": {
+          "isSimulated": true,
+          "samplePurpose": "合同联调，不代表真实经营结论或可执行建议",
+          "businessModelSource": "SIMULATED_EXTERNAL_MODE_AGENT",
+          "identitySource": "SIMULATED_CONTROL_CENTER_DIRECTORY",
+          "tagSources": {
+            "configuredTags": "SIMULATED_OPERATING_UNIT_CONFIGURATION",
+            "agentJudgedTags": "SIMULATED_PATROL_ANALYSIS"
+          },
+          "specialistRecommendationSource": "SIMULATED_ADVERTISING_RULE",
+          "evidenceRefs": [
+            "sha256:sim-sales-20260804-001",
+            "sha256:sim-advertising-20260804-001",
+            "sha256:sim-profit-20260804-001",
+            "sha256:sim-inventory-20260804-001"
+          ]
+        },
+        "anomalies": [
+          {
+            "anomalyUid": "ANOMALY-ACOS-001",
+            "anomalyCategory": "TRANSACTION_PERFORMANCE",
+            "anomalyCode": "ACOS_ABNORMAL",
+            "causeMode": "DIRECT",
+            "targetType": "CAMPAIGN",
+            "targetId": "CAMPAIGN-10001",
+            "severity": "HIGH",
+            "summary": "核心广告活动 ACOS 连续 7 天高于目标值",
+            "metric": {
+              "acos": 0.2236
+            },
+            "threshold": {
+              "operator": "GT",
+              "targetAcos": 0.2
+            },
+            "evidenceRefs": [
+              "sha256:sim-advertising-20260804-001"
+            ],
+            "rootCauseStatus": "CONFIRMED",
+            "rootCauses": [
+              {
+                "type": "HIGH_BID",
+                "description": "核心关键词竞价偏高"
+              }
+            ],
+            "detectedAt": "2026-08-04T23:59:59+08:00",
+            "status": "PROPOSED"
+          }
+        ],
+        "details": [
+          {
+            "anomalyUid": "ANOMALY-ACOS-001",
+            "domain": "ADVERTISING",
+            "actionType": "ADJUST_BID",
+            "targetType": "CAMPAIGN",
+            "targetId": "CAMPAIGN-10001",
+            "currentValue": {
+              "bid": 1.2
+            },
+            "proposedValue": {
+              "bid": 1.05
+            },
+            "reason": "该活动 7 天 ACOS 为 22.36%，高于模拟目标 20%",
+            "expectedEffect": {
+              "acos7dMax": 0.2,
+              "adSalesRetentionMin": 0.9
+            },
+            "risk": {
+              "trafficRisk": "曝光、点击和广告销售可能下降",
+              "rollbackCondition": "广告销售保留率低于 90%"
+            },
+            "evidenceRefs": [
+              "sha256:sim-advertising-20260804-001"
+            ],
+            "approvalLevel": "H1",
+            "reversible": true,
+            "priority": 1,
+            "observationWindowDays": 7,
+            "status": "PENDING_APPROVAL"
+          }
+        ]
+      }
+    }
+  ]
+}

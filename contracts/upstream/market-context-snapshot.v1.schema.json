@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/market-context-snapshot.v1.schema.json",
+  "title": "MarketContextSnapshot",
+  "description": "运营市调唯一标准结果。提供市场证据，不输出经营模式或具体执行动作。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "market_context_id",
+    "operating_unit_ref",
+    "judgement_purpose",
+    "product_profile_ref",
+    "market_reference_view_ref",
+    "market_position_tier",
+    "demand_state",
+    "observed_market_volume",
+    "estimated_market_volume_range",
+    "target_related_volume_range",
+    "season_type",
+    "observed_season_stage",
+    "season_baseline",
+    "price_structure",
+    "relative_competitiveness",
+    "own_product_relationships",
+    "material_market_changes",
+    "evidence_refs",
+    "assumptions",
+    "data_gaps",
+    "as_of",
+    "valid_until",
+    "producer_versions",
+    "confidence",
+    "handoff_directives"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.market.v1"
+    },
+    "market_context_id": {
+      "type": "string",
+      "pattern": "^mcs_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "judgement_purpose": {
+      "enum": [
+        "NEW_PRODUCT_VALIDATION",
+        "RELATIVE_PRICE",
+        "RELATIVE_COMPETITIVENESS",
+        "SEASON_AND_DEMAND",
+        "CLEARANCE_WINDOW",
+        "GROWTH_CAPACITY",
+        "TRAFFIC_COMPETITION",
+        "OWN_PRODUCT_CANNIBALIZATION",
+        "PERIODIC_MARKET_REVIEW"
+      ]
+    },
+    "product_profile_ref": {
+      "type": "string",
+      "pattern": "^pp_[0-9a-f]{24}$"
+    },
+    "market_reference_view_ref": {
+      "type": "string",
+      "pattern": "^mrv_[0-9a-f]{24}$"
+    },
+    "market_position_tier": {
+      "enum": [
+        "HEAD",
+        "MID",
+        "LONG_TAIL",
+        "UNDETERMINED"
+      ]
+    },
+    "demand_state": {
+      "enum": [
+        "GROWING",
+        "STABLE",
+        "DECLINING",
+        "PURE_OFF_SEASON",
+        "STRUCTURAL_DECLINE",
+        "INSUFFICIENT_EVIDENCE"
+      ]
+    },
+    "observed_market_volume": {
+      "$ref": "#/$defs/volumeEvidence"
+    },
+    "estimated_market_volume_range": {
+      "$ref": "#/$defs/volumeEvidence"
+    },
+    "target_related_volume_range": {
+      "$ref": "#/$defs/volumeEvidence"
+    },
+    "season_type": {
+      "enum": [
+        "EVERGREEN",
+        "WEAK_SEASONAL",
+        "STRONG_SEASONAL",
+        "EVENT_DRIVEN",
+        "CLIMATE_REGIONAL",
+        "UNDETERMINED"
+      ]
+    },
+    "observed_season_stage": {
+      "enum": [
+        "PREHEAT",
+        "RISING",
+        "PEAK",
+        "DECLINING",
+        "PURE_OFF_SEASON",
+        "UNDETERMINED"
+      ]
+    },
+    "season_baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "metric_ranges",
+        "evidence_refs"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "AVAILABLE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ]
+        },
+        "metric_ranges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricRange"
+          }
+        },
+        "next_valid_validation_window": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "price_structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "core_substitute_price_range",
+        "promotion_structure",
+        "sample_size",
+        "target_relative_position",
+        "comparability_notes"
+      ],
+      "properties": {
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "core_substitute_price_range": {
+          "$ref": "#/$defs/metricRange"
+        },
+        "promotion_structure": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sample_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_relative_position": {
+          "enum": [
+            "BELOW_COMPARABLE_RANGE",
+            "WITHIN_LOWER_RANGE",
+            "WITHIN_CORE_RANGE",
+            "WITHIN_UPPER_RANGE",
+            "ABOVE_COMPARABLE_RANGE",
+            "NOT_COMPARABLE"
+          ]
+        },
+        "comparability_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "relative_competitiveness": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension",
+          "assessment",
+          "evidence_refs",
+          "confidence"
+        ],
+        "properties": {
+          "dimension": {
+            "enum": [
+              "PRODUCT_FIT",
+              "PRICE_VALUE",
+              "RATING_REVIEW",
+              "RETURN_RISK",
+              "VARIANT_AVAILABILITY",
+              "LISTING_CONVERSION",
+              "TRAFFIC_POSITION",
+              "SUPPLY_STABILITY",
+              "SEASON_FIT"
+            ]
+          },
+          "assessment": {
+            "enum": [
+              "ADVANTAGE",
+              "PARITY",
+              "DISADVANTAGE",
+              "NOT_YET_OBSERVABLE",
+              "INSUFFICIENT_EVIDENCE"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "own_product_relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "related_operating_unit_ref",
+          "relationship_types",
+          "impact",
+          "confidence",
+          "evidence_refs"
+        ],
+        "properties": {
+          "related_operating_unit_ref": {
+            "$ref": "operating-unit-ref.v2.schema.json"
+          },
+          "relationship_types": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "SUBSTITUTE",
+                "COMPLEMENT",
+                "PRICE_LADDER",
+                "SEASON_HANDOFF",
+                "TRAFFIC_OVERLAP",
+                "POTENTIAL_CANNIBALIZATION"
+              ]
+            }
+          },
+          "impact": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "material_market_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "change_type",
+          "direction",
+          "materiality",
+          "previous_snapshot_ref",
+          "evidence_refs"
+        ],
+        "properties": {
+          "change_type": {
+            "enum": [
+              "DEMAND_STATE",
+              "SEASON_STAGE",
+              "PRICE_STRUCTURE",
+              "REFERENCE_SET",
+              "RELATIVE_COMPETITIVENESS",
+              "OWN_PRODUCT_RELATION",
+              "EVIDENCE_ELIGIBILITY"
+            ]
+          },
+          "direction": {
+            "enum": [
+              "IMPROVED",
+              "DETERIORATED",
+              "CHANGED",
+              "BECAME_UNCERTAIN"
+            ]
+          },
+          "materiality": {
+            "enum": [
+              "NON_MATERIAL",
+              "MATERIAL"
+            ]
+          },
+          "previous_snapshot_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "data_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gap_code",
+          "readiness",
+          "impact",
+          "recommended_next_capability"
+        ],
+        "properties": {
+          "gap_code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          },
+          "readiness": {
+            "enum": [
+              "AVAILABLE",
+              "ADAPTATION_REQUIRED",
+              "MISSING",
+              "BLOCKING"
+            ]
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recommended_next_capability": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer_versions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "handoff_directives": {
+      "type": "array",
+      "items": {
+        "$ref": "handoff-directive.v2.schema.json"
+      }
+    },
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "reason_codes"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "LOW_CONFIDENCE_CORE_TAG",
+              "AMBIGUOUS_MARKET_BOUNDARY",
+              "HIGH_IMPACT_INTERNAL_RELATION",
+              "EVIDENCE_CONFLICT_CHANGES_MODE",
+              "MATERIAL_BOUNDARY_CHANGE"
+            ]
+          }
+        },
+        "recommended_option": {
+          "type": "string"
+        },
+        "alternative_options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "impact_difference": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "metricRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "lower",
+        "upper",
+        "unit",
+        "window"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lower": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "upper": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "window": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "volumeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "ranges",
+        "scope",
+        "calculation_note",
+        "evidence_refs"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "AVAILABLE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ]
+        },
+        "ranges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricRange"
+          }
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calculation_note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,502 @@
+{
+  "$defs": {
+    "CriterionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "actual": {
+          "default": null,
+          "title": "Actual"
+        },
+        "criterionId": {
+          "title": "Criterionid",
+          "type": "string"
+        },
+        "evaluationStatus": {
+          "enum": [
+            "MET",
+            "NOT_MET",
+            "NOT_EVALUATED"
+          ],
+          "title": "Evaluationstatus",
+          "type": "string"
+        },
+        "met": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Met"
+        },
+        "metricPath": {
+          "title": "Metricpath",
+          "type": "string"
+        },
+        "missingReason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Missingreason"
+        },
+        "operator": {
+          "enum": [
+            "GTE",
+            "LTE",
+            "EQ"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Target"
+        }
+      },
+      "required": [
+        "criterionId",
+        "metricPath",
+        "operator",
+        "target",
+        "evaluationStatus",
+        "missingReason",
+        "met"
+      ],
+      "title": "CriterionResult",
+      "type": "object"
+    },
+    "DataGap": {
+      "additionalProperties": false,
+      "properties": {
+        "blocking": {
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "code": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "impact": {
+          "title": "Impact",
+          "type": "string"
+        },
+        "repair_action": {
+          "title": "Repair Action",
+          "type": "string"
+        },
+        "source_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Tool"
+        }
+      },
+      "required": [
+        "code",
+        "field",
+        "impact",
+        "repair_action",
+        "blocking"
+      ],
+      "title": "DataGap",
+      "type": "object"
+    },
+    "DataQualityStatus": {
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "INSUFFICIENT",
+        "FAILED"
+      ],
+      "title": "DataQualityStatus",
+      "type": "string"
+    },
+    "OperatingFactSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "as_of_time": {
+          "format": "date-time",
+          "title": "As Of Time",
+          "type": "string"
+        },
+        "completeness_score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Completeness Score",
+          "type": "number"
+        },
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "data_gaps": {
+          "items": {
+            "$ref": "#/$defs/DataGap"
+          },
+          "title": "Data Gaps",
+          "type": "array"
+        },
+        "execution_history": {
+          "additionalProperties": true,
+          "title": "Execution History",
+          "type": "object"
+        },
+        "identity": {
+          "additionalProperties": true,
+          "title": "Identity",
+          "type": "object"
+        },
+        "inventory": {
+          "additionalProperties": true,
+          "title": "Inventory",
+          "type": "object"
+        },
+        "operating_unit": {
+          "$ref": "#/$defs/OperatingUnitRef"
+        },
+        "price": {
+          "additionalProperties": true,
+          "title": "Price",
+          "type": "object"
+        },
+        "profit": {
+          "additionalProperties": true,
+          "title": "Profit",
+          "type": "object"
+        },
+        "quality": {
+          "additionalProperties": true,
+          "title": "Quality",
+          "type": "object"
+        },
+        "quality_status": {
+          "$ref": "#/$defs/DataQualityStatus"
+        },
+        "sales": {
+          "additionalProperties": true,
+          "title": "Sales",
+          "type": "object"
+        },
+        "snapshot_id": {
+          "pattern": "^fs_[0-9a-f]{24}$",
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Source Refs",
+          "type": "array"
+        },
+        "traffic": {
+          "additionalProperties": true,
+          "title": "Traffic",
+          "type": "object"
+        },
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "operating_unit",
+        "as_of_time",
+        "content_hash",
+        "quality_status",
+        "completeness_score"
+      ],
+      "title": "OperatingFactSnapshot",
+      "type": "object"
+    },
+    "OperatingUnitRef": {
+      "additionalProperties": false,
+      "description": "由店铺、父 ASIN 和父 Seller SKU 唯一派生的经营单元身份。",
+      "properties": {
+        "contract_version": {
+          "const": "amazon_ops.v2",
+          "default": "amazon_ops.v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "operating_unit_id": {
+          "pattern": "^ou_[0-9a-f]{24}$",
+          "title": "Operating Unit Id",
+          "type": "string"
+        },
+        "parent_asin": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Parent Asin",
+          "type": "string"
+        },
+        "parent_seller_sku": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Parent Seller Sku",
+          "type": "string"
+        },
+        "shop_id": {
+          "minimum": 1,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "site_code": {
+          "pattern": "^AMAZON_[A-Z0-9_-]{2,24}$",
+          "title": "Site Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operating_unit_id",
+        "shop_id",
+        "site_code",
+        "parent_asin",
+        "parent_seller_sku"
+      ],
+      "title": "OperatingUnitRef",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "fetched_at": {
+          "format": "date-time",
+          "title": "Fetched At",
+          "type": "string"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "quality_status": {
+          "$ref": "#/$defs/DataQualityStatus",
+          "default": "COMPLETE"
+        },
+        "request_hash": {
+          "title": "Request Hash",
+          "type": "string"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Warning"
+        },
+        "window_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window End"
+        },
+        "window_start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Start"
+        }
+      },
+      "required": [
+        "tool_name",
+        "request_hash",
+        "fetched_at",
+        "content_hash"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/patrol-review-result.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "巡检 Agent 内部完成复盘后同步返回的最终结果",
+  "properties": {
+    "baselineSnapshotId": {
+      "title": "Baselinesnapshotid",
+      "type": "string"
+    },
+    "contractVersion": {
+      "const": "amazon_ops.patrol_review_result.v1",
+      "default": "amazon_ops.patrol_review_result.v1",
+      "title": "Contractversion",
+      "type": "string"
+    },
+    "currentFactSnapshot": {
+      "$ref": "#/$defs/OperatingFactSnapshot"
+    },
+    "dataGaps": {
+      "items": {
+        "$ref": "#/$defs/DataGap"
+      },
+      "title": "Datagaps",
+      "type": "array"
+    },
+    "executionDeviations": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Executiondeviations",
+      "type": "array"
+    },
+    "failureResults": {
+      "items": {
+        "$ref": "#/$defs/CriterionResult"
+      },
+      "title": "Failureresults",
+      "type": "array"
+    },
+    "nextRecommendation": {
+      "enum": [
+        "CLOSE_CYCLE",
+        "START_NEW_PATROL_CYCLE",
+        "REPAIR_DATA"
+      ],
+      "title": "Nextrecommendation",
+      "type": "string"
+    },
+    "outcomeStatus": {
+      "enum": [
+        "SUCCESS",
+        "PARTIAL_SUCCESS",
+        "FAILED",
+        "INCONCLUSIVE"
+      ],
+      "title": "Outcomestatus",
+      "type": "string"
+    },
+    "ownerUserName": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ownerusername"
+    },
+    "patrolBatchNo": {
+      "title": "Patrolbatchno",
+      "type": "string"
+    },
+    "proposalId": {
+      "title": "Proposalid",
+      "type": "string"
+    },
+    "requiresNewPatrol": {
+      "title": "Requiresnewpatrol",
+      "type": "boolean"
+    },
+    "reviewRequestId": {
+      "title": "Reviewrequestid",
+      "type": "string"
+    },
+    "reviewRound": {
+      "title": "Reviewround",
+      "type": "integer"
+    },
+    "reviewedAt": {
+      "format": "date-time",
+      "title": "Reviewedat",
+      "type": "string"
+    },
+    "successResults": {
+      "items": {
+        "$ref": "#/$defs/CriterionResult"
+      },
+      "title": "Successresults",
+      "type": "array"
+    }
+  },
+  "required": [
+    "reviewRequestId",
+    "reviewRound",
+    "patrolBatchNo",
+    "proposalId",
+    "baselineSnapshotId",
+    "currentFactSnapshot",
+    "outcomeStatus",
+    "successResults",
+    "failureResults",
+    "dataGaps",
+    "executionDeviations",
+    "requiresNewPatrol",
+    "nextRecommendation",
+    "reviewedAt"
+  ],
+  "title": "ReviewResult",
+  "type": "object"
+}

@@ -1,0 +1,433 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import math
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Protocol
+
+import sqlalchemy as sa
+from sqlalchemy import Connection, Engine
+from sqlalchemy.exc import IntegrityError
+
+from clients.control_center_mcp import ControlCenterPatrolMcpClient
+from clients.operating_mode_mcp import CurrentOperatingMode
+from core.contracts import canonical_json, sha256_json
+from core.control_center_contracts import (
+    PatrolUnitPayload,
+    SubmitPatrolBatchRequest,
+    SubmitPatrolBatchResult,
+    attach_operating_mode_error,
+    apply_current_operating_mode,
+)
+from core.enums import DeliveryStatus
+from core.errors import ContractInvalid, ControlCenterUnavailable, IdempotencyConflict
+from core.errors import ModeAgentUnavailable
+from integrations.repositories.patrol import _utc_naive
+from integrations.repositories.tables import patrol_delivery_outbox
+from integrations.result_delivery import ClaimedDelivery, DeliveryAttemptResult, ResultDeliveryError
+from integrations.rollout import RolloutPolicy
+
+AGGREGATE_TYPE = "CONTROL_CENTER_PATROL_BATCH"
+logger = logging.getLogger(__name__)
+
+
+class OperatingModeLookupPort(Protocol):
+    async def get_evaluate_by_key(
+        self,
+        *,
+        shop_id: int | str,
+        shop_account: str,
+        site_code: str,
+        parent_asin: str,
+        parent_seller_sku: str,
+    ) -> CurrentOperatingMode: ...
+
+
+def _aggregate_id(request: SubmitPatrolBatchRequest) -> str:
+    unit_keys = sorted("\x1f".join(unit.business_key) for unit in request.units)
+    digest = hashlib.sha256(
+        canonical_json({
+            "patrolBatchNo": request.patrol_batch_no,
+            "unitKeys": unit_keys,
+        }).encode("utf-8")
+    ).hexdigest()
+    return f"cc_{digest[:24]}"
+
+
+def _payload_hash(request: SubmitPatrolBatchRequest) -> str:
+    return sha256_json(
+        _stable_json_numbers(request.model_dump(mode="json", by_alias=True))
+    ).removeprefix("sha256:")
+
+
+def _stable_json_numbers(value):
+    if isinstance(value, dict):
+        return {key: _stable_json_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_stable_json_numbers(item) for item in value]
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("control center payload contains a non-finite number")
+        return round(value, 12)
+    return value
+
+
+def enqueue_control_center_batch(
+    connection: Connection,
+    request: SubmitPatrolBatchRequest,
+    *,
+    delivery_status: DeliveryStatus,
+    max_retry: int = 10,
+) -> str:
+    aggregate_id = _aggregate_id(request)
+    payload = request.model_dump(mode="json", by_alias=True)
+    payload_hash = _payload_hash(request)
+    outbox_id = f"ob_{hashlib.sha256(f'{aggregate_id}:{payload_hash}'.encode()).hexdigest()[:24]}"
+    try:
+        with connection.begin_nested():
+            connection.execute(
+                sa.insert(patrol_delivery_outbox).values(
+                    outbox_id=outbox_id,
+                    aggregate_type=AGGREGATE_TYPE,
+                    aggregate_id=aggregate_id,
+                    aggregate_version=1,
+                    payload_hash=payload_hash,
+                    payload_json=payload,
+                    status=delivery_status.value,
+                    retry_count=0,
+                    max_retry=max_retry,
+                    next_retry_at=None,
+                )
+            )
+    except IntegrityError:
+        row = connection.execute(
+            sa.select(
+                patrol_delivery_outbox.c.outbox_id,
+                patrol_delivery_outbox.c.payload_hash,
+            ).where(
+                patrol_delivery_outbox.c.aggregate_type == AGGREGATE_TYPE,
+                patrol_delivery_outbox.c.aggregate_id == aggregate_id,
+                patrol_delivery_outbox.c.aggregate_version == 1,
+            )
+        ).mappings().one_or_none()
+        if row is None or row["payload_hash"] != payload_hash:
+            raise IdempotencyConflict(
+                "control center batch key was reused with different content"
+            ) from None
+        return str(row["outbox_id"])
+    return outbox_id
+
+
+class ControlCenterBatchPublisher:
+    def __init__(
+        self,
+        *,
+        engine: Engine,
+        rollout_policy: RolloutPolicy | None = None,
+        max_retry: int = 10,
+        operating_mode_client: OperatingModeLookupPort | None = None,
+        operating_mode_lookup_enabled: bool = False,
+    ) -> None:
+        self.engine = engine
+        self.rollout_policy = rollout_policy or RolloutPolicy()
+        self.max_retry = max_retry
+        self.operating_mode_client = operating_mode_client
+        self.operating_mode_lookup_enabled = operating_mode_lookup_enabled
+        if operating_mode_lookup_enabled and operating_mode_client is None:
+            raise ValueError("enabled operating mode lookup requires a client")
+
+    async def enqueue(self, request: SubmitPatrolBatchRequest) -> str:
+        if self.operating_mode_lookup_enabled:
+            assert self.operating_mode_client is not None
+
+            async def _evaluate_one(unit: PatrolUnitPayload) -> PatrolUnitPayload:
+                """调用 get_evaluate 获取经营模式，失败时附上错误信息兜底 null。"""
+                listing = unit.listing
+                try:
+                    current = await self.operating_mode_client.get_evaluate_by_key(
+                        shop_id=listing.shop_id,
+                        shop_account=listing.shop_account,
+                        site_code=listing.site_code,
+                        parent_asin=listing.parent_asin,
+                        parent_seller_sku=listing.parent_seller_sku,
+                    )
+                except ModeAgentUnavailable as exc:
+                    logger.warning(
+                        "operating mode MCP unavailable for %s/%s: %s",
+                        listing.shop_id, listing.parent_asin, exc,
+                    )
+                    return attach_operating_mode_error(
+                        unit,
+                        error_code="MODE_AGENT_UNAVAILABLE",
+                        message=str(exc) or "operating mode MCP unavailable",
+                        source_tool="get_evaluate",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "operating mode MCP unexpected error for %s/%s: %s",
+                        listing.shop_id, listing.parent_asin, exc,
+                    )
+                    return attach_operating_mode_error(
+                        unit,
+                        error_code="MODE_AGENT_ERROR",
+                        message=f"{type(exc).__name__}: {exc}",
+                        source_tool="get_evaluate",
+                    )
+                return apply_current_operating_mode(unit, current)
+
+            enriched_units = await asyncio.gather(
+                *(_evaluate_one(unit) for unit in request.units)
+            )
+            request = request.model_copy(update={"units": list(enriched_units)})
+        with self.engine.begin() as connection:
+            return enqueue_control_center_batch(
+                connection,
+                request,
+                delivery_status=self.rollout_policy.outbox_delivery_status,
+                max_retry=self.max_retry,
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ControlCenterDeliveryResult:
+    outbox_id: str | None
+    status: DeliveryStatus | None
+    retry_count: int = 0
+    receipt: SubmitPatrolBatchResult | None = None
+    error: str | None = None
+
+
+class MySqlControlCenterDeliveryWorker:
+    def __init__(
+        self,
+        *,
+        engine: Engine,
+        client: ControlCenterPatrolMcpClient,
+        worker_id: str,
+        base_backoff_seconds: int = 30,
+        stale_after: timedelta = timedelta(minutes=5),
+        rollout_policy: RolloutPolicy | None = None,
+        allowed_outbox_ids: frozenset[str] | None = None,
+        request_timeout_seconds: float = 60,
+    ) -> None:
+        self.engine = engine
+        self.client = client
+        self.worker_id = worker_id
+        self.base_backoff_seconds = base_backoff_seconds
+        self.stale_after = stale_after
+        self.rollout_policy = rollout_policy or RolloutPolicy()
+        self.allowed_outbox_ids = allowed_outbox_ids
+        if request_timeout_seconds <= 0:
+            raise ValueError("request_timeout_seconds must be positive")
+        self.request_timeout_seconds = request_timeout_seconds
+
+    def claim(self, *, now: datetime | None = None) -> ClaimedDelivery | None:
+        if not self.rollout_policy.result_delivery_enabled:
+            return None
+        current = now or datetime.now(UTC)
+        stale_before = current - self.stale_after
+        with self.engine.begin() as connection:
+            # 先只查必要字段 + SKIP LOCKED 抢锁，避免 SELECT * 把 payload_json
+            # 大字段拉进 sort buffer 导致 MySQL 1038 "Out of sort memory"。
+            claim_query = (
+                sa.select(
+                    patrol_delivery_outbox.c.outbox_id,
+                    patrol_delivery_outbox.c.aggregate_id,
+                    patrol_delivery_outbox.c.payload_hash,
+                    patrol_delivery_outbox.c.payload_json,
+                    patrol_delivery_outbox.c.retry_count,
+                    patrol_delivery_outbox.c.max_retry,
+                )
+                .where(
+                    patrol_delivery_outbox.c.aggregate_type == AGGREGATE_TYPE,
+                    patrol_delivery_outbox.c.status == DeliveryStatus.PENDING.value,
+                    sa.or_(
+                        patrol_delivery_outbox.c.next_retry_at.is_(None),
+                        patrol_delivery_outbox.c.next_retry_at <= _utc_naive(current),
+                    ),
+                    sa.or_(
+                        patrol_delivery_outbox.c.locked_by.is_(None),
+                        patrol_delivery_outbox.c.locked_at < _utc_naive(stale_before),
+                    ),
+                )
+                .order_by(
+                    patrol_delivery_outbox.c.created_at,
+                    patrol_delivery_outbox.c.outbox_id,
+                )
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            if self.allowed_outbox_ids is not None:
+                claim_query = claim_query.where(
+                    patrol_delivery_outbox.c.outbox_id.in_(self.allowed_outbox_ids)
+                )
+            row = connection.execute(claim_query).mappings().one_or_none()
+            if row is None:
+                return None
+            payload = dict(row["payload_json"])
+            try:
+                request = SubmitPatrolBatchRequest.model_validate(payload)
+                hash_matches = _payload_hash(request) == row["payload_hash"]
+            except ValueError:
+                hash_matches = False
+            if not hash_matches:
+                connection.execute(
+                    sa.update(patrol_delivery_outbox)
+                    .where(patrol_delivery_outbox.c.outbox_id == row["outbox_id"])
+                    .values(
+                        status=DeliveryStatus.DEAD.value,
+                        last_error="stored control center payload hash mismatch",
+                        locked_by=None,
+                        locked_at=None,
+                    )
+                )
+                return None
+            connection.execute(
+                sa.update(patrol_delivery_outbox)
+                .where(patrol_delivery_outbox.c.outbox_id == row["outbox_id"])
+                .values(locked_by=self.worker_id, locked_at=_utc_naive(current))
+            )
+            return ClaimedDelivery(
+                outbox_id=row["outbox_id"],
+                aggregate_id=row["aggregate_id"],
+                payload_hash=row["payload_hash"],
+                payload=payload,
+                retry_count=int(row["retry_count"]),
+                max_retry=int(row["max_retry"]),
+            )
+
+    async def process_once(
+        self, *, now: datetime | None = None
+    ) -> ControlCenterDeliveryResult:
+        current = now or datetime.now(UTC)
+        delivery = self.claim(now=current)
+        if delivery is None:
+            return ControlCenterDeliveryResult(outbox_id=None, status=None)
+        try:
+            request = SubmitPatrolBatchRequest.model_validate(delivery.payload)
+            try:
+                async with asyncio.timeout(self.request_timeout_seconds):
+                    receipt = await self.client.submit_patrol_batch(request)
+            except TimeoutError as exc:
+                raise ControlCenterUnavailable(
+                    "control center submit_patrol_batch timed out"
+                ) from exc
+            failed = [item for item in receipt.results if item.status == "FAILED"]
+            if failed:
+                codes = {item.code for item in failed}
+                logger.warning(
+                    "control center partially rejected %d/%d units: %s",
+                    len(failed), len(receipt.results), sorted(codes),
+                )
+        except asyncio.CancelledError:
+            self._release_claim(delivery)
+            raise
+        except Exception as exc:
+            attempt = self._record_failure(delivery, exc, current)
+            return ControlCenterDeliveryResult(
+                outbox_id=attempt.outbox_id,
+                status=attempt.status,
+                retry_count=attempt.retry_count,
+                error=attempt.error,
+            )
+        self._record_success(delivery, receipt, current)
+        return ControlCenterDeliveryResult(
+            outbox_id=delivery.outbox_id,
+            status=DeliveryStatus.DELIVERED,
+            retry_count=delivery.retry_count,
+            receipt=receipt,
+        )
+
+    def _release_claim(self, delivery: ClaimedDelivery) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(
+                sa.update(patrol_delivery_outbox)
+                .where(
+                    patrol_delivery_outbox.c.outbox_id == delivery.outbox_id,
+                    patrol_delivery_outbox.c.status == DeliveryStatus.PENDING.value,
+                    patrol_delivery_outbox.c.locked_by == self.worker_id,
+                    patrol_delivery_outbox.c.payload_hash == delivery.payload_hash,
+                )
+                .values(locked_by=None, locked_at=None)
+            )
+
+    def _record_success(
+        self,
+        delivery: ClaimedDelivery,
+        receipt: SubmitPatrolBatchResult,
+        now: datetime,
+    ) -> None:
+        with self.engine.begin() as connection:
+            updated = connection.execute(
+                sa.update(patrol_delivery_outbox)
+                .where(
+                    patrol_delivery_outbox.c.outbox_id == delivery.outbox_id,
+                    patrol_delivery_outbox.c.status == DeliveryStatus.PENDING.value,
+                    patrol_delivery_outbox.c.locked_by == self.worker_id,
+                    patrol_delivery_outbox.c.payload_hash == delivery.payload_hash,
+                )
+                .values(
+                    status=DeliveryStatus.DELIVERED.value,
+                    locked_by=None,
+                    locked_at=None,
+                    last_error=None,
+                    delivery_ack_json=receipt.model_dump(mode="json", by_alias=True),
+                    published_at=_utc_naive(now),
+                )
+            )
+            if updated.rowcount != 1:
+                raise ResultDeliveryError(
+                    "control center outbox ownership changed before receipt commit"
+                )
+
+    def _record_failure(
+        self,
+        delivery: ClaimedDelivery,
+        error: Exception,
+        now: datetime,
+    ) -> DeliveryAttemptResult:
+        retry_count = delivery.retry_count + 1
+        retryable = bool(getattr(error, "retryable", False))
+        dead = not retryable or retry_count >= delivery.max_retry
+        error_name = str(error)[:2000]
+        ctx = getattr(error, "context", None) or {}
+        if ctx:
+            error_name = f"{error_name} | context={ctx}"[:2000]
+        with self.engine.begin() as connection:
+            values = {
+                "status": (
+                    DeliveryStatus.DEAD.value if dead else DeliveryStatus.PENDING.value
+                ),
+                "retry_count": retry_count,
+                "next_retry_at": (
+                    None
+                    if dead
+                    else _utc_naive(
+                        now
+                        + timedelta(
+                            seconds=self.base_backoff_seconds * (2 ** (retry_count - 1))
+                        )
+                    )
+                ),
+                "locked_by": None,
+                "locked_at": None,
+                "last_error": error_name,
+            }
+            connection.execute(
+                sa.update(patrol_delivery_outbox)
+                .where(
+                    patrol_delivery_outbox.c.outbox_id == delivery.outbox_id,
+                    patrol_delivery_outbox.c.status == DeliveryStatus.PENDING.value,
+                    patrol_delivery_outbox.c.locked_by == self.worker_id,
+                )
+                .values(**values)
+            )
+        return DeliveryAttemptResult(
+            outbox_id=delivery.outbox_id,
+            status=DeliveryStatus.DEAD if dead else DeliveryStatus.PENDING,
+            retry_count=retry_count,
+            error=error_name,
+        )

@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "FeedbackEventType": {
+      "enum": [
+        "HANDLING_STARTED",
+        "HANDLED",
+        "OBSERVE_REQUESTED",
+        "IGNORED",
+        "FALSE_POSITIVE",
+        "ACTION_RECEIPT_AVAILABLE",
+        "UNIT_ARCHIVED"
+      ],
+      "title": "FeedbackEventType",
+      "type": "string"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/inspection-feedback-event.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "中控向巡检 Agent 回传的处理反馈事件",
+  "properties": {
+    "action_receipt_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Action Receipt Ref"
+    },
+    "contract_version": {
+      "const": "amazon_ops.inspection_feedback.v1",
+      "default": "amazon_ops.inspection_feedback.v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/FeedbackEventType"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "signal_id": {
+      "pattern": "^is_[0-9a-f]{24}$",
+      "title": "Signal Id",
+      "type": "string"
+    },
+    "signal_version": {
+      "minimum": 1,
+      "title": "Signal Version",
+      "type": "integer"
+    },
+    "source_system": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Source System",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "signal_id",
+    "signal_version",
+    "event_type",
+    "source_system",
+    "occurred_at"
+  ],
+  "title": "InspectionFeedbackEvent",
+  "type": "object"
+}

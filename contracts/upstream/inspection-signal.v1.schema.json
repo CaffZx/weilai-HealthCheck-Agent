@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/inspection-signal.v1.schema.json",
+  "title": "InspectionSignal",
+  "description": "业务巡检识别的异常、机会、恢复或复发信号。它不是经营方案或动作单。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "signal_id",
+    "operating_unit_ref",
+    "signal_type",
+    "issue_code",
+    "severity",
+    "operating_priority",
+    "priority_basis",
+    "signal_state",
+    "first_detected_at",
+    "last_detected_at",
+    "last_scan_run_id",
+    "recurrence_count",
+    "evidence_refs",
+    "diagnosis",
+    "handoff_directive"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.inspection.v1"
+    },
+    "signal_id": {
+      "type": "string",
+      "pattern": "^is_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "child_scope": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "child_asins",
+        "exception_type"
+      ],
+      "properties": {
+        "child_asins": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "exception_type": {
+          "enum": [
+            "OUT_OF_STOCK",
+            "LOW_STOCK",
+            "SLOW_MOVING",
+            "PRICE",
+            "COLOR_KEYWORD",
+            "SIZE_KEYWORD",
+            "VARIANT_RELATION",
+            "OTHER"
+          ]
+        }
+      }
+    },
+    "signal_type": {
+      "enum": [
+        "ANOMALY",
+        "OPPORTUNITY",
+        "RECOVERY",
+        "RECURRENCE",
+        "DATA_QUALITY",
+        "OBSERVATION_DUE"
+      ]
+    },
+    "issue_code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "severity": {
+      "enum": [
+        "S0",
+        "S1",
+        "S2",
+        "DATA_INSUFFICIENT"
+      ]
+    },
+    "operating_priority": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "UNASSESSED"
+      ]
+    },
+    "priority_basis": {
+      "enum": [
+        "CURRENT_MODE_AND_CONTEXT",
+        "UNASSESSED"
+      ]
+    },
+    "signal_state": {
+      "enum": [
+        "NEW",
+        "PENDING_CONFIRMATION",
+        "IN_PROGRESS",
+        "OBSERVING",
+        "LONG_TERM_FOLLOW_UP",
+        "AWAITING_RESCAN",
+        "RESOLVED",
+        "FALSE_POSITIVE",
+        "IGNORED",
+        "INTERRUPTED"
+      ]
+    },
+    "first_detected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_detected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_scan_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recurrence_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnosis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "known_causes",
+        "unknowns",
+        "confidence"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "known_causes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "suggested_next_capability": {
+      "deprecated": true,
+      "enum": [
+        "OPERATING_DECISION",
+        "MARKET_RESEARCH",
+        "COST_PROFIT_EVIDENCE",
+        "PRICE_PROMOTION",
+        "INVENTORY_PLANNING",
+        "LISTING_EXECUTION",
+        "ADVERTISING_DECISION_EXECUTION",
+        "DATA_REPAIR",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "suggested_protective_action": {
+      "deprecated": true,
+      "type": "string"
+    },
+    "human_attention": {
+      "deprecated": true,
+      "enum": [
+        "NONE",
+        "REVIEW_RECOMMENDED",
+        "DECISION_REQUIRED"
+      ]
+    },
+    "handoff_directive": {
+      "$ref": "handoff-directive.v1.schema.json"
+    },
+    "valid_until": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  }
+}

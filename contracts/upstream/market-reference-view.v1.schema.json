@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/market-reference-view.v1.schema.json",
+  "title": "MarketReferenceView",
+  "description": "针对一个经营单元和一种判断用途生成的有限市场参照视图，不是永久竞品名单。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "view_id",
+    "operating_unit_ref",
+    "judgement_purpose",
+    "product_profile_ref",
+    "market_unit_refs",
+    "market_position_tier",
+    "references",
+    "sampling_explanation",
+    "as_of",
+    "valid_until",
+    "confidence"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.market.v1"
+    },
+    "view_id": {
+      "type": "string",
+      "pattern": "^mrv_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "judgement_purpose": {
+      "enum": [
+        "NEW_PRODUCT_VALIDATION",
+        "RELATIVE_PRICE",
+        "RELATIVE_COMPETITIVENESS",
+        "SEASON_AND_DEMAND",
+        "CLEARANCE_WINDOW",
+        "GROWTH_CAPACITY",
+        "TRAFFIC_COMPETITION",
+        "OWN_PRODUCT_CANNIBALIZATION",
+        "PERIODIC_MARKET_REVIEW"
+      ]
+    },
+    "product_profile_ref": {
+      "type": "string",
+      "pattern": "^pp_[0-9a-f]{24}$"
+    },
+    "market_unit_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "market_unit_id",
+          "definition_version",
+          "membership_role"
+        ],
+        "properties": {
+          "market_unit_id": {
+            "type": "string",
+            "pattern": "^mu_[0-9a-f]{24}$"
+          },
+          "definition_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "membership_role": {
+            "enum": [
+              "PRIMARY_PURCHASE_JOB",
+              "SECONDARY_PURCHASE_JOB",
+              "CONTEXT_ONLY"
+            ]
+          }
+        }
+      }
+    },
+    "market_position_tier": {
+      "enum": [
+        "HEAD",
+        "MID",
+        "LONG_TAIL",
+        "UNDETERMINED"
+      ]
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "product_ref",
+          "relationship_tier",
+          "eligible_evidence_uses",
+          "eligibility_status",
+          "relationship_reasons",
+          "evidence_refs"
+        ],
+        "properties": {
+          "product_ref": {
+            "$ref": "market-product-ref.v1.schema.json"
+          },
+          "relationship_tier": {
+            "enum": [
+              "CORE_SUBSTITUTE",
+              "ADJACENT_SUBSTITUTE",
+              "ENVIRONMENT_REFERENCE"
+            ]
+          },
+          "eligible_evidence_uses": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "PRODUCT_PRICE",
+                "PROMOTION_STRUCTURE",
+                "PRODUCT_COMPETITIVENESS",
+                "DEMAND_TREND",
+                "SEASON_STAGE",
+                "TRAFFIC_OVERLAP",
+                "MARKET_CAPACITY",
+                "CLEARANCE_WINDOW",
+                "PORTFOLIO_RELATION"
+              ]
+            }
+          },
+          "eligibility_status": {
+            "enum": [
+              "ELIGIBLE",
+              "LIMITED",
+              "TEMPORARILY_INELIGIBLE",
+              "DATA_MISSING"
+            ]
+          },
+          "ineligibility_reasons": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "OUT_OF_STOCK",
+                "ABNORMAL_PROMOTION",
+                "DELISTED",
+                "TIME_MISMATCH",
+                "CURRENCY_MISMATCH",
+                "VARIANT_NOT_COMPARABLE",
+                "DATA_INCOMPLETE",
+                "MARKET_BOUNDARY_MISMATCH"
+              ]
+            }
+          },
+          "relationship_reasons": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "sampling_explanation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "reason_codes"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "LOW_CONFIDENCE_CORE_TAG",
+              "AMBIGUOUS_MARKET_BOUNDARY",
+              "HIGH_IMPACT_INTERNAL_RELATION",
+              "MATERIAL_BOUNDARY_CHANGE",
+              "EVIDENCE_CONFLICT"
+            ]
+          }
+        },
+        "recommended_option": {
+          "type": "string"
+        },
+        "alternative_options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "impact_difference": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

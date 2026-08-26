@@ -1,0 +1,57 @@
+{
+  "contract_version": "amazon_ops.v2",
+  "id_algorithm": "ou_ + sha256('amazon_ops.v2|{shop_id}|{PARENT_ASIN}|{PARENT_SELLER_SKU}')[:24]",
+  "valid": [
+    {
+      "input": {
+        "shop_id": 1622,
+        "site_code": "us",
+        "parent_asin": " b0test ",
+        "parent_seller_sku": " SKU-001 "
+      },
+      "normalized": {
+        "contract_version": "amazon_ops.v2",
+        "operating_unit_id": "ou_0ba29d24b985f7650edf4399",
+        "shop_id": 1622,
+        "site_code": "AMAZON_US",
+        "parent_asin": "B0TEST",
+        "parent_seller_sku": "SKU-001"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "input": {
+        "shop_id": null,
+        "site_code": "US",
+        "parent_asin": "B0TEST"
+      },
+      "reason": "shop_id is required for writes"
+    },
+    {
+      "input": {
+        "shop_id": 1622,
+        "site_code": "",
+        "parent_asin": "B0TEST"
+      },
+      "reason": "site_code is required for writes"
+    },
+    {
+      "input": {
+        "shop_id": 1622,
+        "site_code": "US",
+        "parent_asin": ""
+      },
+      "reason": "parent_asin is required for writes"
+    },
+    {
+      "input": {
+        "shop_id": 1622,
+        "site_code": "US",
+        "parent_asin": "B0TEST",
+        "parent_seller_sku": ""
+      },
+      "reason": "parent_seller_sku is required for writes"
+    }
+  ]
+}

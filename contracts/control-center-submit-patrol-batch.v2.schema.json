@@ -1,0 +1,1389 @@
+{
+  "$defs": {
+    "FactSnapshotPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "completenessScore": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completenessscore"
+        },
+        "contentHash": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contenthash"
+        },
+        "keyMetricsJson": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Keymetricsjson"
+        },
+        "qualityStatus": {
+          "anyOf": [
+            {
+              "enum": [
+                "COMPLETE",
+                "PARTIAL",
+                "INVALID"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qualitystatus"
+        },
+        "rawReferenceJson": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rawreferencejson"
+        },
+        "snapshotType": {
+          "enum": [
+            "SALES",
+            "PROFIT",
+            "ADVERTISING",
+            "PRICE",
+            "INVENTORY",
+            "LISTING",
+            "OPERATING_UNIT"
+          ],
+          "title": "Snapshottype",
+          "type": "string"
+        },
+        "sourceSystem": {
+          "minLength": 1,
+          "title": "Sourcesystem",
+          "type": "string"
+        },
+        "windowEnd": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Windowend"
+        },
+        "windowStart": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Windowstart"
+        }
+      },
+      "required": [
+        "snapshotType",
+        "sourceSystem"
+      ],
+      "title": "FactSnapshotPayload",
+      "type": "object"
+    },
+    "OperatingMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "adClick": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adclick"
+        },
+        "adCost": {
+          "minimum": 0,
+          "title": "Adcost",
+          "type": "number"
+        },
+        "adImpressions": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adimpressions"
+        },
+        "adOrder": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adorder"
+        },
+        "adSalesAmount": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adsalesamount"
+        },
+        "azCommissionFee": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azcommissionfee"
+        },
+        "calculateMonthStorageFee": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calculatemonthstoragefee"
+        },
+        "canSaleNum": {
+          "minimum": 0,
+          "title": "Cansalenum",
+          "type": "integer"
+        },
+        "contributionProfit": {
+          "title": "Contributionprofit",
+          "type": "number"
+        },
+        "fbaPackFee": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fbapackfee"
+        },
+        "metricDate": {
+          "format": "date",
+          "title": "Metricdate",
+          "type": "string"
+        },
+        "orderQuantity": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Orderquantity"
+        },
+        "productCost": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Productcost"
+        },
+        "profitRate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profitrate"
+        },
+        "refundRate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refundrate"
+        },
+        "salesAmount": {
+          "minimum": 0,
+          "title": "Salesamount",
+          "type": "number"
+        },
+        "salesQuantity": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Salesquantity"
+        }
+      },
+      "required": [
+        "metricDate",
+        "salesAmount",
+        "contributionProfit",
+        "adCost",
+        "canSaleNum"
+      ],
+      "title": "OperatingMetric",
+      "type": "object"
+    },
+    "PatrolAnomaly": {
+      "additionalProperties": false,
+      "properties": {
+        "anomalyCategory": {
+          "enum": [
+            "LINK_STATUS",
+            "CONTENT_INTEGRITY",
+            "PRICE_PROMOTION",
+            "INVENTORY_AVAILABILITY",
+            "TRANSACTION_PERFORMANCE",
+            "COMPLIANCE_ATTRIBUTE",
+            "AFTER_SALES"
+          ],
+          "title": "Anomalycategory",
+          "type": "string"
+        },
+        "anomalyCode": {
+          "enum": [
+            "LISTING_UNSELLABLE",
+            "VARIATION_DROPPED",
+            "PARENT_CHILD_RELATION_ABNORMAL",
+            "BUY_BOX_LOST",
+            "MAIN_IMAGE_ABNORMAL",
+            "IMAGE_ABNORMAL",
+            "TITLE_ABNORMAL",
+            "BULLET_POINTS_ABNORMAL",
+            "A_PLUS_ABNORMAL",
+            "VARIATION_PRICE_GAP_ABNORMAL",
+            "PROMOTION_ABNORMAL",
+            "FBA_AVAILABLE_INVENTORY_ZERO",
+            "INVENTORY_SHORTAGE",
+            "INVENTORY_OVERSTOCK",
+            "SLOW_MOVING_INVENTORY",
+            "LISTING_CONVERSION_RATE_DROP",
+            "SALES_ABNORMAL",
+            "ACOS_ABNORMAL",
+            "AD_SPEND_ABNORMAL",
+            "TARGET_DEVIATION",
+            "ORGANIC_TRAFFIC_ABNORMAL",
+            "RANKING_ABNORMAL",
+            "SCALING_NOT_EXECUTED",
+            "CATEGORY_ABNORMAL",
+            "ATTRIBUTE_INFO_ABNORMAL",
+            "COMPLIANCE_ABNORMAL",
+            "CONCENTRATED_NEGATIVE_REVIEWS",
+            "RATING_ABNORMAL",
+            "REFUND_ABNORMAL"
+          ],
+          "title": "Anomalycode",
+          "type": "string"
+        },
+        "anomalyUid": {
+          "minLength": 1,
+          "title": "Anomalyuid",
+          "type": "string"
+        },
+        "causeMode": {
+          "enum": [
+            "DIRECT",
+            "INVESTIGATE"
+          ],
+          "title": "Causemode",
+          "type": "string"
+        },
+        "detectedAt": {
+          "format": "date-time",
+          "title": "Detectedat",
+          "type": "string"
+        },
+        "evidenceRefs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidencerefs"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric"
+        },
+        "rootCauseStatus": {
+          "enum": [
+            "NOT_REQUIRED",
+            "PENDING",
+            "INVESTIGATING",
+            "CONFIRMED",
+            "UNCERTAIN"
+          ],
+          "title": "Rootcausestatus",
+          "type": "string"
+        },
+        "rootCauses": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rootcauses"
+        },
+        "severity": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "DETECTED",
+            "CAUSE_PENDING",
+            "CAUSE_CONFIRMED",
+            "PROPOSED",
+            "PROCESSING",
+            "RESOLVED",
+            "CLOSED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "targetId": {
+          "minLength": 1,
+          "title": "Targetid",
+          "type": "string"
+        },
+        "targetType": {
+          "enum": [
+            "OPERATING_UNIT",
+            "CAMPAIGN",
+            "AD_GROUP",
+            "KEYWORD",
+            "PRODUCT_TARGET",
+            "ASIN",
+            "SKU",
+            "LISTING",
+            "OTHER"
+          ],
+          "title": "Targettype",
+          "type": "string"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        }
+      },
+      "required": [
+        "anomalyUid",
+        "anomalyCategory",
+        "anomalyCode",
+        "causeMode",
+        "targetType",
+        "targetId",
+        "severity",
+        "summary",
+        "rootCauseStatus",
+        "detectedAt",
+        "status"
+      ],
+      "title": "PatrolAnomaly",
+      "type": "object"
+    },
+    "PatrolListing": {
+      "additionalProperties": false,
+      "properties": {
+        "businessModel": {
+          "anyOf": [
+            {
+              "enum": [
+                "NEW_PRODUCT_VALIDATION",
+                "TIME_BOXED_REPAIR",
+                "STABLE_OPERATION",
+                "CONTROLLED_GROWTH",
+                "PROFIT_HARVEST",
+                "CONTROLLED_CLEARANCE",
+                "IMMEDIATE_EXIT"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Businessmodel"
+        },
+        "ownerUserId": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owneruserid"
+        },
+        "parentAsin": {
+          "minLength": 1,
+          "title": "Parentasin",
+          "type": "string"
+        },
+        "parentSellerSku": {
+          "minLength": 1,
+          "title": "Parentsellersku",
+          "type": "string"
+        },
+        "productName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Productname"
+        },
+        "productPicUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Productpicurl"
+        },
+        "shopId": {
+          "minLength": 1,
+          "title": "Shopid",
+          "type": "string"
+        },
+        "siteCode": {
+          "minLength": 1,
+          "title": "Sitecode",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ONLINE",
+                "OFFLINE",
+                "DISABLED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "shopId",
+        "siteCode",
+        "parentAsin",
+        "parentSellerSku"
+      ],
+      "title": "PatrolListing",
+      "type": "object"
+    },
+    "PatrolProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "anomalies": {
+          "items": {
+            "$ref": "#/$defs/PatrolAnomaly"
+          },
+          "minItems": 1,
+          "title": "Anomalies",
+          "type": "array"
+        },
+        "approvalLevel": {
+          "anyOf": [
+            {
+              "enum": [
+                "H0",
+                "H1",
+                "H2",
+                "H3"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approvallevel"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "conflicts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "dataGaps": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Datagaps",
+          "type": "array"
+        },
+        "details": {
+          "items": {
+            "$ref": "#/$defs/ProposalDetail"
+          },
+          "minItems": 1,
+          "title": "Details",
+          "type": "array"
+        },
+        "expectedEffect": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expectedeffect"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Goal"
+        },
+        "modeConfidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modeconfidence"
+        },
+        "modeReasonSummary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modereasonsummary"
+        },
+        "observationWindowDays": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observationwindowdays"
+        },
+        "opportunitySummary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opportunitysummary"
+        },
+        "problemSummary": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Problemsummary"
+        },
+        "rawAnalysis": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rawanalysis"
+        },
+        "recommendationSummary": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommendationsummary"
+        },
+        "recommendedBusinessModel": {
+          "anyOf": [
+            {
+              "enum": [
+                "NEW_PRODUCT_VALIDATION",
+                "TIME_BOXED_REPAIR",
+                "STABLE_OPERATION",
+                "CONTROLLED_GROWTH",
+                "PROFIT_HARVEST",
+                "CONTROLLED_CLEARANCE",
+                "IMMEDIATE_EXIT"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommendedbusinessmodel"
+        },
+        "reviewDueAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewdueat"
+        },
+        "riskSummary": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risksummary"
+        },
+        "rootCauses": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rootcauses"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "PENDING_APPROVAL",
+                "PARTIALLY_APPROVED",
+                "APPROVED",
+                "REJECTED",
+                "EXECUTING",
+                "COMPLETED",
+                "EXPIRED",
+                "CLOSED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "PENDING_APPROVAL",
+          "title": "Status"
+        }
+      },
+      "required": [
+        "anomalies",
+        "details"
+      ],
+      "title": "PatrolProposal",
+      "type": "object"
+    },
+    "PatrolTags": {
+      "additionalProperties": false,
+      "properties": {
+        "adBudgetGroup": {
+          "anyOf": [
+            {
+              "enum": [
+                "EXACT_CORE_GROUP",
+                "EXACT_TESTING_GROUP",
+                "AUTO_BROAD_GROUP",
+                "LOW_BID_RETENTION_GROUP"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adbudgetgroup"
+        },
+        "adDirections": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "PUSH_NATURAL_RANK",
+                  "EXPAND_KEYWORDS",
+                  "OPTIMIZE_ACOS",
+                  "BALANCE_MAINTAIN"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Addirections"
+        },
+        "adPurposes": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "TRAFFIC",
+                  "CONVERSION",
+                  "RANKING",
+                  "PROFIT"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adpurposes"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "enum": [
+                "TOP_OF_SEARCH",
+                "PRODUCT_PAGES",
+                "REST_OF_SEARCH"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "productLevel": {
+          "anyOf": [
+            {
+              "enum": [
+                "P0_PRODUCT",
+                "P1_PRODUCT",
+                "P2_PRODUCT",
+                "P3_PRODUCT"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Productlevel"
+        },
+        "productStage": {
+          "anyOf": [
+            {
+              "enum": [
+                "TESTING",
+                "PUSHING",
+                "HARVESTING",
+                "MAINTAINING",
+                "LIQUIDATING"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Productstage"
+        },
+        "seasonStage": {
+          "anyOf": [
+            {
+              "enum": [
+                "OFF_SEASON",
+                "PRE_PEAK",
+                "PEAK",
+                "LATE_PEAK"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seasonstage"
+        },
+        "specialScenario": {
+          "anyOf": [
+            {
+              "enum": [
+                "PROMOTION",
+                "INVENTORY_LOW",
+                "BAD_REVIEWS",
+                "LISTING_OPTIMIZATION",
+                "URGENT_LIQUIDATION"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specialscenario"
+        },
+        "targetKeywordStrategies": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "GENERIC",
+                  "LONG_TAIL",
+                  "COMPETITOR",
+                  "BRAND",
+                  "CUSTOM"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Targetkeywordstrategies"
+        }
+      },
+      "title": "PatrolTags",
+      "type": "object"
+    },
+    "PatrolUnitPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "factSnapshots": {
+          "items": {
+            "$ref": "#/$defs/FactSnapshotPayload"
+          },
+          "minItems": 1,
+          "title": "Factsnapshots",
+          "type": "array"
+        },
+        "listing": {
+          "$ref": "#/$defs/PatrolListing"
+        },
+        "operatingMetric": {
+          "$ref": "#/$defs/OperatingMetric"
+        },
+        "proposal": {
+          "$ref": "#/$defs/PatrolProposal"
+        },
+        "tags": {
+          "$ref": "#/$defs/PatrolTags"
+        }
+      },
+      "required": [
+        "listing",
+        "tags",
+        "operatingMetric",
+        "factSnapshots",
+        "proposal"
+      ],
+      "title": "PatrolUnitPayload",
+      "type": "object"
+    },
+    "ProposalDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "actionType": {
+          "enum": [
+            "ADJUST_BUDGET",
+            "ADJUST_BID",
+            "ENABLE_AD",
+            "PAUSE_AD",
+            "ADJUST_PRICE",
+            "CREATE_PROMOTION",
+            "REPLENISH",
+            "STOP_REPLENISH",
+            "CLEAR_INVENTORY",
+            "UPDATE_LISTING",
+            "OTHER"
+          ],
+          "title": "Actiontype",
+          "type": "string"
+        },
+        "anomalyUid": {
+          "minLength": 1,
+          "title": "Anomalyuid",
+          "type": "string"
+        },
+        "approvalLevel": {
+          "anyOf": [
+            {
+              "enum": [
+                "H0",
+                "H1",
+                "H2",
+                "H3"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approvallevel"
+        },
+        "boundaryCheck": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boundarycheck"
+        },
+        "currentValue": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currentvalue"
+        },
+        "domain": {
+          "enum": [
+            "ADVERTISING",
+            "PRICE",
+            "INVENTORY",
+            "LISTING",
+            "CLEARANCE",
+            "REPLENISHMENT",
+            "OTHER"
+          ],
+          "title": "Domain",
+          "type": "string"
+        },
+        "evidenceRefs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidencerefs"
+        },
+        "expectedEffect": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expectedeffect"
+        },
+        "observationWindowDays": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observationwindowdays"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Priority"
+        },
+        "proposedValue": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposedvalue"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "reversible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reversible"
+        },
+        "risk": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "PENDING_APPROVAL",
+                "APPROVED",
+                "RETURNED",
+                "REJECTED",
+                "EXECUTING",
+                "SUCCEEDED",
+                "FAILED",
+                "EXPIRED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "PENDING_APPROVAL",
+          "title": "Status"
+        },
+        "targetId": {
+          "minLength": 1,
+          "title": "Targetid",
+          "type": "string"
+        },
+        "targetType": {
+          "enum": [
+            "OPERATING_UNIT",
+            "CAMPAIGN",
+            "AD_GROUP",
+            "KEYWORD",
+            "PRODUCT_TARGET",
+            "ASIN",
+            "SKU",
+            "LISTING",
+            "OTHER"
+          ],
+          "title": "Targettype",
+          "type": "string"
+        }
+      },
+      "required": [
+        "anomalyUid",
+        "domain",
+        "actionType",
+        "targetType",
+        "targetId"
+      ],
+      "title": "ProposalDetail",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/control-center-submit-patrol-batch.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "巡检 Agent 调用中控 submit_patrol_batch 的 v2.0 业务参数",
+  "properties": {
+    "patrolBatchNo": {
+      "minLength": 1,
+      "title": "Patrolbatchno",
+      "type": "string"
+    },
+    "units": {
+      "items": {
+        "$ref": "#/$defs/PatrolUnitPayload"
+      },
+      "maxItems": 50,
+      "minItems": 1,
+      "title": "Units",
+      "type": "array"
+    }
+  },
+  "required": [
+    "patrolBatchNo",
+    "units"
+  ],
+  "title": "SubmitPatrolBatchRequest",
+  "type": "object"
+}

@@ -1,0 +1,149 @@
+# =============================================================================
+# 执行建议生成规则
+# =============================================================================
+# 来源：改造方案 v1.0 §14 + 交接包 04-人机协作授权与执行闭环 §3
+#
+# 【⚠ 全部数值均为待确认项】
+#   交接包 01-人工确认清单 B03/B04/B05 明确要求观察窗口、授权额度、
+#   保护底线由 Owner 逐项填写，并写明"技术部门不得自行补阈值"。
+#   本文件里带 `待确认: true` 的项目在代码中会被当作"未配置"处理：
+#   相关判定降级为观察，不会用默认值产生可审批动作。
+# =============================================================================
+
+版本: "2026-07-29-v1"
+状态: "结构已定，数值待 Owner 确认"
+
+# -----------------------------------------------------------------------------
+# 观察窗口（对应 01 §B03）
+# -----------------------------------------------------------------------------
+# 交接包推荐口径已抄录在 `推荐口径` 字段，供 Owner 填数时参考。
+# `days` 为 null 表示未确认 —— 代码会输出 observation_window_days=None
+# 并在建议里标 [待确认]，不会自己填一个数。
+observation_window:
+  NEW_PRODUCT_VALIDATION:
+    days: null
+    待确认: true
+    推荐口径: "按有效曝光/点击/订单样本为主，日历天只做上限"
+  TIME_BOXED_REPAIR:
+    days: null
+    待确认: true
+    推荐口径: "按动作类型配置，不设公司统一天数"
+  LAST_CHANCE_REPAIR:
+    days: null
+    待确认: true
+    推荐口径: "固定一次窗口，不允许延期"
+  CONTROLLED_CLEARANCE:
+    days: null
+    待确认: true
+    推荐口径: "以库存退出速度、净现金回收和季节窗口共同触发"
+  ACTIVE_ADVANCE:
+    days: null
+    待确认: true
+    推荐口径: "按批准的资源包分阶段设定"
+  PROFIT_HARVEST:
+    days: null
+    待确认: true
+    推荐口径: "按保护底线复评周期设定"
+  STABLE_OPERATION:
+    days: null
+    待确认: true
+    推荐口径: "常规复评周期"
+  IMMEDIATE_EXIT:
+    days: null
+    待确认: true
+    推荐口径: "退出动作完成并核验即结束，不设观察窗口"
+
+# -----------------------------------------------------------------------------
+# 模式目标语句（业务语言，非阈值，可直接使用）
+# -----------------------------------------------------------------------------
+mode_goals:
+  NEW_PRODUCT_VALIDATION: "用有限库存、预算和时间获取真实需求、转化、利润与退货证据"
+  IMMEDIATE_EXIT: "在净现金回收为负的前提下停止继续投入，按批准的退出路径完成处置"
+  CONTROLLED_CLEARANCE: "在净现金回收不为负的边界内加快库存退出"
+  TIME_BOXED_REPAIR: "在预定期限和预算内修复明确、可控且值得修的问题"
+  STABLE_OPERATION: "保护贡献利润、库存健康与经营稳定"
+  ACTIVE_ADVANCE: "在批准的资源包和止损条件内受控放量"
+  PROFIT_HARVEST: "在不突破保护底线的前提下主动提高利润率"
+
+# -----------------------------------------------------------------------------
+# 审批门升级规则（对应 04 §3，Agent 可调高不可调低）
+# -----------------------------------------------------------------------------
+approval_escalation:
+  # 这些模式本身就是 H3
+  h3_modes:
+    - IMMEDIATE_EXIT
+  # 这些变体强制 H3
+  h3_variants:
+    - LAST_CHANCE_REPAIR
+    - PRIORITY_SCALE
+  # 这些动作类型强制 H3（不可逆 / 重大损失 / 重大库存承诺）
+  h3_action_types:
+    - IMMEDIATE_EXIT
+    - DESTROY_INVENTORY
+    - DISPOSE_INVENTORY
+    - MAJOR_PURCHASE
+    - BELOW_PRICE_FLOOR
+    - ACCEPT_MAJOR_LOSS
+    - REMOVE_LISTING
+  # 子体立即退出 → 整份计划 H3（approved-operating-plan allOf 规则 14）
+  child_immediate_exit_forces_h3: true
+  # 默认门。改变模式或增加有限经营承诺 = H2。
+  default: H2
+
+# -----------------------------------------------------------------------------
+# 动作准入（哪些动作才配进 action_items）
+# -----------------------------------------------------------------------------
+action_admission:
+  # 必填字段。缺任何一项 → 只能进观察项，不能进待审批动作。
+  required_fields:
+    - action_key
+    - action_type
+    - target_id
+    - proposed_value
+    - reason_code
+  # 广告能力冻结期间，广告域动作一律不进 action_items，只出人工交接。
+  advertising_requires_human_handoff: true
+
+# -----------------------------------------------------------------------------
+# 成功/失败判据模板（结构固定，阈值待确认）
+# -----------------------------------------------------------------------------
+criteria_templates:
+  ACTIVE_ADVANCE:
+    success:
+      - criterion_ref: "AA_SUCCESS_MARGINAL_CONTRIBUTION"
+        metric_ref: "marginal_contribution"
+        comparator: GTE
+        threshold: null
+        note: "[待确认] 边际贡献不得为负（CONTROLLED_SCALE 已确认口径，具体数值待填）"
+    failure:
+      - criterion_ref: "AA_FAILURE_STOP_LOSS"
+        metric_ref: "cumulative_negative_contribution"
+        comparator: LTE
+        threshold: null
+        note: "[待确认] 强制止损条件，见 01 §B04"
+  CONTROLLED_CLEARANCE:
+    success:
+      - criterion_ref: "CC_SUCCESS_NET_CASH_RECOVERY"
+        metric_ref: "net_cash_recovery"
+        comparator: GTE
+        threshold: 0
+        note: "净现金回收不得为负（Ontology A4，已确认，非待填项）"
+    failure:
+      - criterion_ref: "CC_FAILURE_NEGATIVE_RECOVERY"
+        metric_ref: "net_cash_recovery"
+        comparator: LT
+        threshold: 0
+        note: "净现金回收转负则必须转立即退出（Ontology A4）"
+  PROFIT_HARVEST:
+    success:
+      - criterion_ref: "PH_SUCCESS_PROTECTION_FLOOR"
+        metric_ref: "protection_floor_status"
+        comparator: EQ
+        threshold: null
+        note: "[待确认] 保护底线未突破，具体底线项见 01 §B05"
+    failure:
+      - criterion_ref: "PH_FAILURE_FLOOR_BREACH"
+        metric_ref: "protection_floor_status"
+        comparator: EQ
+        threshold: null
+        note: "[待确认] 任一保护底线失败即回到经营决策"

@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/inspection-signal.v2.schema.json",
+  "title": "InspectionSignal",
+  "description": "巡检异常事实与确定性任务队列信息。v2 取消综合执行分和 P0/P1/P2。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "signal_id",
+    "operating_unit_ref",
+    "signal_type",
+    "issue_code",
+    "severity",
+    "signal_state",
+    "action_timing_status",
+    "economic_exposure",
+    "constraint_flags",
+    "execution_readiness",
+    "first_detected_at",
+    "last_detected_at",
+    "last_scan_run_id",
+    "recurrence_count",
+    "evidence_refs",
+    "diagnosis",
+    "handoff_directive"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.inspection.v2"
+    },
+    "signal_id": {
+      "type": "string",
+      "pattern": "^is_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "child_scope": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "child_asins",
+        "exception_type"
+      ],
+      "properties": {
+        "child_asins": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "exception_type": {
+          "enum": [
+            "OUT_OF_STOCK",
+            "LOW_STOCK",
+            "SLOW_MOVING",
+            "PRICE",
+            "COLOR_KEYWORD",
+            "SIZE_KEYWORD",
+            "VARIANT_RELATION",
+            "OTHER"
+          ]
+        }
+      }
+    },
+    "signal_type": {
+      "enum": [
+        "ANOMALY",
+        "OPPORTUNITY",
+        "RECOVERY",
+        "RECURRENCE",
+        "DATA_QUALITY",
+        "OBSERVATION_DUE"
+      ]
+    },
+    "issue_code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "severity": {
+      "enum": [
+        "S0",
+        "S1",
+        "S2",
+        "DATA_INSUFFICIENT"
+      ]
+    },
+    "signal_state": {
+      "enum": [
+        "NEW",
+        "PENDING_CONFIRMATION",
+        "IN_PROGRESS",
+        "OBSERVING",
+        "LONG_TERM_FOLLOW_UP",
+        "AWAITING_RESCAN",
+        "RESOLVED",
+        "FALSE_POSITIVE",
+        "IGNORED",
+        "INTERRUPTED"
+      ]
+    },
+    "action_timing_status": {
+      "enum": [
+        "OVERDUE",
+        "DUE_TODAY",
+        "DUE_SOON",
+        "SCHEDULED",
+        "MONITOR_ONLY"
+      ]
+    },
+    "economic_exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "amount",
+        "window",
+        "calculation_basis",
+        "as_of"
+      ],
+      "properties": {
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "amount": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "window": {
+          "enum": [
+            "PER_DAY",
+            "CURRENT_CYCLE",
+            "OPPORTUNITY_WINDOW",
+            "UNASSESSED"
+          ]
+        },
+        "calculation_basis": {
+          "type": "string"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "constraint_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "NEGATIVE_CASH_RECOVERY",
+          "STOCKOUT_RISK",
+          "CLEARANCE_DEADLINE",
+          "SEASONAL_WINDOW_CLOSING",
+          "REPAIR_WINDOW_ENDING",
+          "GROWTH_STOP_LOSS",
+          "PROTECTION_FLOOR_BREACHED",
+          "CORE_CHILD_AT_RISK",
+          "DATA_UNTRUSTED",
+          "HUMAN_APPROVAL_REQUIRED"
+        ]
+      }
+    },
+    "execution_readiness": {
+      "enum": [
+        "READY_AUTO",
+        "READY_HUMAN",
+        "BLOCKED_DATA",
+        "BLOCKED_DEPENDENCY",
+        "MONITORING"
+      ]
+    },
+    "first_detected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_detected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_scan_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recurrence_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnosis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "known_causes",
+        "unknowns",
+        "confidence"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "known_causes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "handoff_directive": {
+      "$ref": "handoff-directive.v2.schema.json"
+    },
+    "valid_until": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  }
+}

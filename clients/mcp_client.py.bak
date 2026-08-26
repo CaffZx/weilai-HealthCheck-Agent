@@ -1,0 +1,502 @@
+"""MCP 客户端 — 统一事实的唯一入口。
+
+改造方案 v1.0 §7 的落地实现。
+
+【安全约束】
+  - Token 只从环境变量或密钥中心读取，绝不写入日志、异常上下文或快照。
+  - 调用方不能传入任意 MCP URL（URL 由配置注入，call_tool 只接受工具名）。
+  - 每次调用记录：工具名、参数哈希、耗时、结果哈希。参数原文不落日志
+    （可能含店铺账号等敏感信息）。
+
+【与改造方案的实现差异】
+  方案 §7 用的是 `streamable_http_client(url, headers=...)`。官方 SDK 1.27 起
+  该函数签名改为接受预配置的 `httpx.AsyncClient`（旧签名保留在
+  `streamablehttp_client`）。这里采用新签名并复用同一个 httpx 客户端，
+  顺带满足方案里"生产环境应考虑复用 Session"的要求：连接池被复用，
+  每次调用仍开新的 MCP Session（首版口径）。
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from contextlib import AsyncExitStack
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+import httpx
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+
+from clients.mcp_security import sanitize_mcp_payload, sanitize_mcp_text
+from core.contracts import sha256_json
+from core.errors import (
+    McpContractInvalid,
+    McpError,
+    McpPermissionDenied,
+    McpRateLimited,
+    McpToolNotAllowed,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class McpToolResult:
+    """一次 MCP 工具调用的结果。
+
+    `data` 永远是 list —— MCP 返回封套里可能是 structuredContent.data、
+    content[].text 里的裸数组，或 text 里的 {"data": [...]}，三种都归一到 list。
+    """
+
+    tool_name: str
+    data: list[dict[str, Any]]
+    raw: dict[str, Any]
+    request_hash: str = ""
+    latency_ms: int = 0
+    warning: str | None = None
+    fetched_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "data", sanitize_mcp_payload(self.data))
+        object.__setattr__(self, "raw", sanitize_mcp_payload(self.raw))
+        if self.warning is not None:
+            object.__setattr__(self, "warning", sanitize_mcp_text(self.warning))
+
+    @property
+    def content_hash(self) -> str:
+        return sha256_json(self.data)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.data
+
+
+def request_hash(tool_name: str, arguments: dict[str, Any]) -> str:
+    """参数哈希。用于溯源与去重，本身不可逆推出账号。"""
+    return sha256_json({"tool": tool_name, "arguments": arguments})
+
+
+def _extract_warning(payload: dict[str, Any]) -> str | None:
+    for key in ("warning", "warn", "message"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    structured = payload.get("structuredContent") or payload.get("structured_content") or {}
+    if isinstance(structured, dict):
+        for key in ("warning", "warn", "message"):
+            value = structured.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _error_message(payload: dict[str, Any]) -> str:
+    texts: list[str] = []
+    for item in payload.get("content") or []:
+        if isinstance(item, dict) and item.get("type") == "text":
+            value = item.get("text")
+            if isinstance(value, str) and value.strip():
+                texts.append(value.strip())
+    return " ".join(texts)[:500]
+
+
+def _tool_error(tool_name: str, payload: dict[str, Any]) -> McpError:
+    message = _error_message(payload).upper()
+    if any(code in message for code in ("无权调用工具", "PERMISSION_DENIED", "FORBIDDEN", "403")):
+        return McpPermissionDenied(
+            f"permission denied for MCP tool {tool_name}",
+            tool_name=tool_name,
+        )
+    if any(code in message for code in ("RATE_LIMIT", "TOO_MANY_REQUESTS", "429")):
+        return McpRateLimited(f"{tool_name} was rate limited", tool_name=tool_name)
+    if any(
+        code in message
+        for code in (
+            "INVALID_",
+            "MISSING_",
+            "REQUIRED",
+            "BAD_REQUEST",
+            "-32602",
+        )
+    ):
+        return McpContractInvalid(
+            f"{tool_name} rejected its arguments",
+            tool_name=tool_name,
+        )
+    detail = f": {message[:200]}" if message else ""
+    return McpError(
+        f"{tool_name} returned isError=true{detail}",
+        tool_name=tool_name,
+    )
+
+
+def parse_tool_result(tool_name: str, result: Any, *, _depth: int = 0) -> McpToolResult:
+    """解析 MCP 返回封套。
+
+    空数组是**合法结果**（例如没有库存告警），不是错误 —— 由
+    FactQualityService 决定它是不是缺口。isError=true 才是错误。
+    """
+    if hasattr(result, "model_dump"):
+        payload = result.model_dump(mode="json")
+    elif isinstance(result, dict):
+        payload = dict(result)
+    else:  # pragma: no cover - 防御性
+        raise McpError(f"{tool_name} returned an unsupported result type")
+
+    if payload.get("isError") is True or payload.get("is_error") is True:
+        raise _tool_error(tool_name, payload)
+    if _depth > 3:
+        raise McpContractInvalid(
+            f"{tool_name} response envelope nesting exceeds safety limit",
+            tool_name=tool_name,
+        )
+
+    warning = _extract_warning(payload)
+
+    structured = (
+        payload.get("structuredContent")
+        or payload.get("structured_content")
+        or {}
+    )
+    if isinstance(structured, dict):
+        data = structured.get("data")
+        if isinstance(data, list):
+            count = structured.get("count")
+            if count is not None and (isinstance(count, bool) or count != len(data)):
+                raise McpContractInvalid(
+                    f"{tool_name} response count does not match data",
+                    tool_name=tool_name,
+                )
+            if len(data) == 1 and _is_nested_tool_envelope(data[0]):
+                return parse_tool_result(tool_name, data[0], _depth=_depth + 1)
+            return McpToolResult(tool_name, data, payload, warning=warning)
+
+    for item in payload.get("content") or []:
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        text = item.get("text") or "{}"
+        try:
+            parsed = json.loads(text)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(parsed, list):
+            return McpToolResult(tool_name, parsed, payload, warning=warning)
+        if isinstance(parsed, dict):
+            if _is_nested_tool_envelope(parsed):
+                return parse_tool_result(tool_name, parsed, _depth=_depth + 1)
+            if isinstance(parsed.get("data"), list):
+                return McpToolResult(tool_name, parsed["data"], payload, warning=warning)
+            if isinstance(parsed.get("data"), dict):
+                return McpToolResult(tool_name, [parsed["data"]], payload, warning=warning)
+            # 单对象响应也归一成单元素列表，下游不必分支处理。
+            if parsed and "data" not in parsed:
+                return McpToolResult(tool_name, [parsed], payload, warning=warning)
+
+    raise McpError(f"{tool_name} response has no data array", tool_name=tool_name)
+
+
+def _is_nested_tool_envelope(value: Any) -> bool:
+    return isinstance(value, dict) and (
+        value.get("isError") is True
+        or value.get("is_error") is True
+        or "structuredContent" in value
+        or "structured_content" in value
+        or "content" in value
+    )
+
+
+def _nested_mcp_error(exc: BaseException) -> McpError | None:
+    if isinstance(exc, McpError):
+        return exc
+    if isinstance(exc, BaseExceptionGroup):
+        for nested in exc.exceptions:
+            found = _nested_mcp_error(nested)
+            if found is not None:
+                return found
+    return None
+
+
+class AzListingMcpClient:
+    """ERP Listing MCP 服务客户端。
+
+    并发由信号量限制（默认 6），避免大批量巡检把 MCP 打挂。
+    超时用 asyncio.timeout 包整个会话，不是只包单个 HTTP 请求。
+    """
+
+    def __init__(
+        self,
+        url: str,
+        token: str,
+        *,
+        timeout_seconds: float = 15,
+        concurrency: int = 6,
+        max_attempts: int = 2,
+        retry_backoff_seconds: float = 0.5,
+        request_interval_seconds: float = 0.0,
+        rate_limit_backoff_seconds: float = 10.0,
+        allowed_tools: frozenset[str] | None = None,
+        auth_header: str = "Authorization",
+        auth_scheme: str = "Bearer",
+    ) -> None:
+        if not url:
+            raise ValueError("MCP url is required")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if concurrency < 1:
+            raise ValueError("concurrency must be at least 1")
+        self._url = url
+        self._token = token
+        self.timeout_seconds = timeout_seconds
+        self.max_attempts = max(1, max_attempts)
+        self.retry_backoff_seconds = retry_backoff_seconds
+        if request_interval_seconds < 0:
+            raise ValueError("request_interval_seconds must be non-negative")
+        if rate_limit_backoff_seconds < 0:
+            raise ValueError("rate_limit_backoff_seconds must be non-negative")
+        self.request_interval_seconds = request_interval_seconds
+        self.rate_limit_backoff_seconds = rate_limit_backoff_seconds
+        self.allowed_tools = allowed_tools
+        self.auth_header = auth_header
+        self.auth_scheme = auth_scheme
+        self._semaphore = asyncio.Semaphore(concurrency)
+        self._request_lock = asyncio.Lock()
+        self._last_request_at = 0.0
+        self._http_client: httpx.AsyncClient | None = None
+
+    # -- 生命周期 ----------------------------------------------------------
+    def _client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            headers = {"Accept": "application/json, text/event-stream"}
+            if self._token:
+                headers[self.auth_header] = (
+                    f"{self.auth_scheme} {self._token}" if self.auth_scheme else self._token
+                )
+            self._http_client = httpx.AsyncClient(
+                headers=headers,
+                timeout=httpx.Timeout(self.timeout_seconds, read=self.timeout_seconds * 2),
+            )
+        return self._http_client
+
+    async def aclose(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+        self._http_client = None
+
+    async def __aenter__(self) -> AzListingMcpClient:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.aclose()
+
+    # -- 调用 --------------------------------------------------------------
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> McpToolResult:
+        """调用一个 MCP 工具。失败按 max_attempts 重试，最终仍失败抛 McpError。"""
+        if self.allowed_tools is not None and tool_name not in self.allowed_tools:
+            raise McpToolNotAllowed(
+                f"MCP tool is outside the audited AZListing contract: {tool_name}",
+                tool_name=tool_name,
+            )
+        digest = request_hash(tool_name, arguments)
+        last_error: Exception | None = None
+
+        for attempt in range(1, self.max_attempts + 1):
+            started = time.monotonic()
+            try:
+                async with self._semaphore:
+                    async with asyncio.timeout(self.timeout_seconds):
+                        result = await self._call_once(tool_name, arguments)
+            except TimeoutError as exc:
+                last_error = McpError(f"{tool_name} timed out", tool_name=tool_name)
+                last_error.__cause__ = exc
+            except McpError as exc:
+                last_error = exc
+            except Exception as exc:  # 传输层/协议层错误统一收敛成 McpError
+                nested_error = _nested_mcp_error(exc)
+                if nested_error is not None:
+                    last_error = nested_error
+                else:
+                    last_error = McpError(
+                        f"{tool_name} transport error: {type(exc).__name__}",
+                        tool_name=tool_name,
+                    )
+                    last_error.__cause__ = exc
+            else:
+                latency_ms = int((time.monotonic() - started) * 1000)
+                enriched = McpToolResult(
+                    tool_name=result.tool_name,
+                    data=result.data,
+                    raw=result.raw,
+                    request_hash=digest,
+                    latency_ms=latency_ms,
+                    warning=result.warning,
+                    fetched_at=datetime.now(UTC),
+                )
+                logger.info(
+                    "mcp_call ok tool=%s request_hash=%s rows=%d latency_ms=%d",
+                    tool_name, digest[:19], len(enriched.data), latency_ms,
+                )
+                return enriched
+
+            logger.warning(
+                "mcp_call failed tool=%s request_hash=%s attempt=%d/%d error=%s",
+                tool_name, digest[:19], attempt, self.max_attempts, last_error,
+            )
+            if not bool(getattr(last_error, "retryable", True)):
+                raise last_error
+            if attempt < self.max_attempts:
+                message = str(last_error).upper()
+                if "429" in message or "RATE_LIMIT" in message or "TOO_MANY_REQUESTS" in message:
+                    delay = self.rate_limit_backoff_seconds * (2 ** (attempt - 1))
+                else:
+                    delay = self.retry_backoff_seconds * attempt
+                await asyncio.sleep(delay)
+
+        assert last_error is not None
+        raise last_error
+
+    async def _call_once(self, tool_name: str, arguments: dict[str, Any]) -> McpToolResult:
+        async with self._request_lock:
+            now = time.monotonic()
+            wait_for = self.request_interval_seconds - (now - self._last_request_at)
+            if wait_for > 0:
+                await asyncio.sleep(wait_for)
+            self._last_request_at = time.monotonic()
+        async with streamable_http_client(self._url, http_client=self._client()) as streams:
+            read_stream, write_stream = streams[0], streams[1]
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments)
+                return parse_tool_result(tool_name, result)
+
+
+class ReusableMcpSessionClient:
+    """复用单个 MCP Session 的批量只读客户端。
+
+    仅用于需要连续分页的完整快照同步。任一调用失败即让整批失败，调用方不得发布半批数据。
+    """
+
+    def __init__(
+        self,
+        url: str,
+        token: str,
+        *,
+        timeout_seconds: float = 60,
+        allowed_tools: frozenset[str] | None = None,
+        auth_header: str = "Authorization",
+        auth_scheme: str = "Bearer",
+    ) -> None:
+        if not url:
+            raise ValueError("MCP url is required")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        self.url = url
+        self.token = token
+        self.timeout_seconds = timeout_seconds
+        self.allowed_tools = allowed_tools
+        self.auth_header = auth_header
+        self.auth_scheme = auth_scheme
+        self._stack: AsyncExitStack | None = None
+        self._session: ClientSession | None = None
+
+    async def __aenter__(self) -> ReusableMcpSessionClient:
+        headers = {"Accept": "application/json, text/event-stream"}
+        if self.token:
+            headers[self.auth_header] = (
+                f"{self.auth_scheme} {self.token}" if self.auth_scheme else self.token
+            )
+        stack = AsyncExitStack()
+        try:
+            client = await stack.enter_async_context(
+                httpx.AsyncClient(
+                    headers=headers,
+                    timeout=httpx.Timeout(
+                        self.timeout_seconds,
+                        read=self.timeout_seconds * 2,
+                    ),
+                )
+            )
+            streams = await stack.enter_async_context(
+                streamable_http_client(self.url, http_client=client)
+            )
+            session = await stack.enter_async_context(ClientSession(streams[0], streams[1]))
+            await session.initialize()
+            await session.list_tools()
+        except BaseException:
+            await stack.aclose()
+            raise
+        self._stack = stack
+        self._session = session
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        stack = self._stack
+        self._stack = None
+        self._session = None
+        if stack is not None:
+            await stack.aclose()
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> McpToolResult:
+        if self._session is None:
+            raise RuntimeError("ReusableMcpSessionClient must be entered before use")
+        if self.allowed_tools is not None and tool_name not in self.allowed_tools:
+            raise McpToolNotAllowed(
+                f"MCP tool is outside the configured batch contract: {tool_name}",
+                tool_name=tool_name,
+            )
+        started = time.monotonic()
+        async with asyncio.timeout(self.timeout_seconds):
+            result = await self._session.call_tool(tool_name, arguments)
+        parsed = parse_tool_result(tool_name, result)
+        return McpToolResult(
+            tool_name=parsed.tool_name,
+            data=parsed.data,
+            raw=parsed.raw,
+            request_hash=request_hash(tool_name, arguments),
+            latency_ms=int((time.monotonic() - started) * 1000),
+            warning=parsed.warning,
+            fetched_at=datetime.now(UTC),
+        )
+
+
+@dataclass
+class FakeMcpClient:
+    """离线测试替身。
+
+    行为与真实客户端一致：按工具名返回预置结果，未预置的工具名抛 McpError
+    （不返回空数据蒙混过关）。集成测试用它模拟 MCP 全链路。
+    """
+
+    responses: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    failures: dict[str, Exception] = field(default_factory=dict)
+    calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> McpToolResult:
+        self.calls.append((tool_name, arguments))
+        if tool_name in self.failures:
+            raise self.failures[tool_name]
+        if tool_name not in self.responses:
+            raise McpError(f"{tool_name} is not configured on the fake MCP server",
+                           tool_name=tool_name)
+        data = self.responses[tool_name]
+        return McpToolResult(
+            tool_name=tool_name,
+            data=data,
+            raw={"structuredContent": {"data": data}},
+            request_hash=request_hash(tool_name, arguments),
+            latency_ms=1,
+            fetched_at=datetime.now(UTC),
+        )
+
+    async def aclose(self) -> None:
+        return None

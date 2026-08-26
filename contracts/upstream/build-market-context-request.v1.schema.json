@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/build-market-context-request.v1.schema.json",
+  "title": "BuildMarketContextRequest",
+  "description": "运营市调入口。必须明确经营单元和判断用途；不得以文件上传或通用市调作为主任务。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "request_id",
+    "operating_unit_ref",
+    "judgement_purpose",
+    "as_of",
+    "requested_freshness"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.market.v1"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^mcr_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "judgement_purpose": {
+      "enum": [
+        "NEW_PRODUCT_VALIDATION",
+        "RELATIVE_PRICE",
+        "RELATIVE_COMPETITIVENESS",
+        "SEASON_AND_DEMAND",
+        "CLEARANCE_WINDOW",
+        "GROWTH_CAPACITY",
+        "TRAFFIC_COMPETITION",
+        "OWN_PRODUCT_CANNIBALIZATION",
+        "PERIODIC_MARKET_REVIEW"
+      ]
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "requested_freshness": {
+      "enum": [
+        "USE_VALID_SNAPSHOT",
+        "REFRESH_IF_EXPIRED",
+        "FORCE_REFRESH"
+      ]
+    },
+    "product_profile_ref": {
+      "type": "string",
+      "pattern": "^pp_[0-9a-f]{24}$"
+    },
+    "market_reference_view_ref": {
+      "type": "string",
+      "pattern": "^mrv_[0-9a-f]{24}$"
+    },
+    "operating_fact_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "entry_brief_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "previous_market_context_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^mcs_[0-9a-f]{24}$"
+    },
+    "trigger_code": {
+      "enum": [
+        "ASIN_CREATED",
+        "PRODUCT_PROFILE_CHANGED",
+        "KEY_VARIANT_CHANGED",
+        "MARKET_OR_SEASON_CHANGED",
+        "MODE_REVIEW",
+        "PRICE_OR_CLEARANCE_PLAN",
+        "SNAPSHOT_EXPIRED",
+        "HUMAN_REQUEST"
+      ]
+    }
+  }
+}

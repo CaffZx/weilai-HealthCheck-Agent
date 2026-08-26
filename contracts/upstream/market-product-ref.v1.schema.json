@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/market-product-ref.v1.schema.json",
+  "title": "MarketProductRef",
+  "description": "市场关系中的商品引用。自有商品必须带完整经营单元引用；外部商品只允许在同一站点作为市场证据。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ownership_role",
+    "site_code",
+    "asin"
+  ],
+  "properties": {
+    "ownership_role": {
+      "enum": [
+        "INTERNAL",
+        "EXTERNAL"
+      ]
+    },
+    "site_code": {
+      "type": "string",
+      "pattern": "^AMAZON_[A-Z0-9_-]{2,24}$"
+    },
+    "asin": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ownership_role": {
+            "const": "INTERNAL"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "operating_unit_ref"
+        ]
+      }
+    }
+  ]
+}

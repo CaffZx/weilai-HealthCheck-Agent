@@ -1,0 +1,348 @@
+{
+  "registry_version": "amazon_ops.market_tags.v1",
+  "status": "ACTIVE_CONTROLLED",
+  "authority": "MARKET_RELATION",
+  "consumers": [
+    "MARKET_RESEARCH",
+    "BUSINESS_INSPECTION",
+    "OPERATING_DECISION",
+    "PRICE_PROMOTION",
+    "INVENTORY_PLANNING",
+    "LISTING_EXECUTION"
+  ],
+  "governance": {
+    "one_authoritative_producer": true,
+    "unknown_terms_become_candidates": true,
+    "agent_may_publish_new_canonical_concept": false,
+    "historical_profiles_are_immutable": true,
+    "color_and_size_default_role": "FILTER_ONLY",
+    "forbidden_inferences": [
+      "tag_count_equals_relationship_strength",
+      "keyword_equals_verified_product_attribute",
+      "category_tree_node_equals_market_unit",
+      "season_word_equals_observed_season_stage",
+      "price_word_equals_current_price_position"
+    ]
+  },
+  "namespaces": [
+    {
+      "namespace": "PRODUCT_FORM",
+      "default_role": "PURCHASE_JOB_DEFINING",
+      "description": "商品的核心形态或服装品类形态。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "DRESS",
+        "TOP",
+        "BLOUSE",
+        "T_SHIRT",
+        "TANK_TOP",
+        "SKIRT",
+        "PANTS",
+        "SHORTS",
+        "JUMPSUIT",
+        "SWIMWEAR",
+        "LINGERIE",
+        "OUTERWEAR",
+        "SET",
+        "ACCESSORY"
+      ]
+    },
+    {
+      "namespace": "FIT_CUT",
+      "default_role": "PURCHASE_JOB_DEFINING",
+      "description": "版型、廓形、长度、领型、袖型和关键剪裁。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "SLIM_FIT",
+        "RELAXED_FIT",
+        "OVERSIZED",
+        "BODYCON",
+        "A_LINE",
+        "HIGH_WAIST",
+        "LOW_WAIST",
+        "CROPPED",
+        "MINI",
+        "MIDI",
+        "MAXI",
+        "SLEEVELESS",
+        "LONG_SLEEVE",
+        "STRAPLESS",
+        "BACKLESS"
+      ]
+    },
+    {
+      "namespace": "MATERIAL",
+      "default_role": "RELATIONSHIP_REFINING",
+      "description": "主要面料、成分和结构性材质。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "COTTON",
+        "POLYESTER",
+        "NYLON",
+        "SPANDEX",
+        "RAYON",
+        "VISCOSE",
+        "LINEN",
+        "DENIM",
+        "WOOL",
+        "FLEECE",
+        "MESH",
+        "LACE",
+        "VELVET",
+        "LEATHER",
+        "SILICONE"
+      ]
+    },
+    {
+      "namespace": "FUNCTION",
+      "default_role": "PURCHASE_JOB_DEFINING",
+      "description": "消费者购买任务中的关键功能。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "SHAPING",
+        "TUMMY_CONTROL",
+        "PUSH_UP",
+        "QUICK_DRY",
+        "BREATHABLE",
+        "WATER_RESISTANT",
+        "THERMAL",
+        "UV_PROTECTION",
+        "NURSING",
+        "MATERNITY",
+        "POCKETS",
+        "REVERSIBLE",
+        "ADJUSTABLE",
+        "SEAMLESS"
+      ]
+    },
+    {
+      "namespace": "SCENARIO",
+      "default_role": "PURCHASE_JOB_DEFINING",
+      "description": "穿着或购买场景。",
+      "source_priority": [
+        "HUMAN_CONFIRMED",
+        "AMAZON_STRUCTURED",
+        "ERP_STRUCTURED",
+        "LISTING_TEXT_RULE",
+        "MARKET_TEXT_RULE",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "CASUAL",
+        "OFFICE",
+        "PARTY",
+        "WEDDING",
+        "EVENING",
+        "VACATION",
+        "BEACH",
+        "SPORT",
+        "OUTDOOR",
+        "LOUNGE",
+        "SCHOOL",
+        "FESTIVAL",
+        "MATERNITY",
+        "TRAVEL"
+      ]
+    },
+    {
+      "namespace": "AUDIENCE",
+      "default_role": "PURCHASE_JOB_DEFINING",
+      "description": "目标人群和关键体型需求。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE"
+      ],
+      "initial_concepts": [
+        "WOMEN",
+        "MEN",
+        "GIRLS",
+        "BOYS",
+        "PLUS_SIZE",
+        "PETITE",
+        "TALL",
+        "MATERNITY",
+        "TEEN",
+        "MATURE"
+      ]
+    },
+    {
+      "namespace": "STYLE",
+      "default_role": "RELATIONSHIP_REFINING",
+      "description": "审美风格与表达风格。",
+      "source_priority": [
+        "HUMAN_CONFIRMED",
+        "AMAZON_STRUCTURED",
+        "LISTING_TEXT_RULE",
+        "MARKET_TEXT_RULE",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "BASIC",
+        "MINIMALIST",
+        "BOHO",
+        "VINTAGE",
+        "Y2K",
+        "WESTERN",
+        "ELEGANT",
+        "SEXY",
+        "SPORTY",
+        "STREETWEAR",
+        "FORMAL",
+        "ROMANTIC"
+      ]
+    },
+    {
+      "namespace": "COLOR_PATTERN",
+      "default_role": "FILTER_ONLY",
+      "description": "颜色、图案和印花；默认只在变体、关键词或特定市场用途下参与关系过滤。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE"
+      ],
+      "initial_concepts": [
+        "BLACK",
+        "WHITE",
+        "RED",
+        "BLUE",
+        "GREEN",
+        "PINK",
+        "NEUTRAL",
+        "SOLID",
+        "FLORAL",
+        "STRIPED",
+        "PLAID",
+        "LEOPARD",
+        "CAMO",
+        "TROPICAL",
+        "PATRIOTIC"
+      ]
+    },
+    {
+      "namespace": "SEASON_ATTRIBUTE",
+      "default_role": "RELATIONSHIP_REFINING",
+      "description": "产品长期季节属性，不代表当前观测季节阶段。",
+      "source_priority": [
+        "HUMAN_CONFIRMED",
+        "MARKET_TEXT_RULE",
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "AGENT_SEMANTIC"
+      ],
+      "initial_concepts": [
+        "ALL_SEASON",
+        "SPRING_SUMMER",
+        "FALL_WINTER",
+        "SUMMER_ONLY",
+        "WINTER_ONLY",
+        "HOLIDAY_EVENT",
+        "CLIMATE_DEPENDENT"
+      ]
+    },
+    {
+      "namespace": "PRICE_STRUCTURE",
+      "default_role": "FILTER_ONLY",
+      "description": "长期价值结构或规格造成的价格可比性，不写入当前实时价格结论。",
+      "source_priority": [
+        "HUMAN_CONFIRMED",
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "MARKET_TEXT_RULE"
+      ],
+      "initial_concepts": [
+        "SINGLE_ITEM",
+        "MULTIPACK",
+        "BUNDLE",
+        "PREMIUM_MATERIAL",
+        "STANDARD_MATERIAL",
+        "CUSTOMIZED"
+      ]
+    },
+    {
+      "namespace": "SPECIFICATION",
+      "default_role": "FILTER_ONLY",
+      "description": "长度、容量、件数、裤长等影响可比性的规格。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED",
+        "LISTING_TEXT_RULE"
+      ],
+      "initial_concepts": [
+        "ONE_PIECE",
+        "TWO_PIECE",
+        "MULTIPACK",
+        "SHORT_LENGTH",
+        "REGULAR_LENGTH",
+        "LONG_LENGTH"
+      ]
+    },
+    {
+      "namespace": "VARIATION_STRUCTURE",
+      "default_role": "FILTER_ONLY",
+      "description": "父子ASIN的颜色、尺码、款式或组合变体结构。",
+      "source_priority": [
+        "ERP_STRUCTURED",
+        "AMAZON_STRUCTURED",
+        "HUMAN_CONFIRMED"
+      ],
+      "initial_concepts": [
+        "COLOR",
+        "SIZE",
+        "COLOR_SIZE",
+        "STYLE",
+        "PACK_SIZE",
+        "MIXED"
+      ]
+    }
+  ],
+  "compatibility_aliases": [
+    {
+      "legacy_field": "product_tags.TARGET_STAR_RATE",
+      "status": "NOT_A_MARKET_TAG",
+      "replacement": "operating_fact_or_listing_target"
+    },
+    {
+      "legacy_field": "product_tags.主要色/次要色/长尾色",
+      "status": "MIGRATION_EVIDENCE_ONLY",
+      "replacement": "COLOR_PATTERN with evidence and variant scope"
+    },
+    {
+      "legacy_field": "CATEGORY_PROFILES",
+      "status": "DEPRECATED",
+      "replacement": "controlled tag registry + ProductProfile"
+    },
+    {
+      "legacy_field": "dynamic_profile",
+      "status": "DEPRECATED_AS_OUTPUT",
+      "replacement": "ProductProfile"
+    }
+  ]
+}

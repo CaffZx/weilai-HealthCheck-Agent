@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/rule-change-proposal.v1.schema.json",
+  "title": "RuleChangeProposal",
+  "description": "Agent 基于自动积累案例形成的正式规则变更建议。Agent不能自行发布规则。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "proposal_id",
+    "current_rule_ref",
+    "problem_observed",
+    "affected_market_clusters",
+    "evidence_case_refs",
+    "sample_size",
+    "observed_success_rate",
+    "observed_failure_modes",
+    "proposed_rule",
+    "expected_improvement",
+    "possible_side_effects",
+    "affected_agents",
+    "affected_contracts",
+    "affected_ontology",
+    "rollback_condition",
+    "proposal_status",
+    "human_gate",
+    "created_at"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.rule_change_proposal.v1"
+    },
+    "proposal_id": {
+      "type": "string",
+      "pattern": "^rc_[0-9a-f]{24}$"
+    },
+    "current_rule_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "problem_observed": {
+      "type": "string",
+      "minLength": 1
+    },
+    "affected_market_clusters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_case_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "sample_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "observed_success_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "observed_failure_modes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "proposed_rule": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_improvement": {
+      "type": "string"
+    },
+    "possible_side_effects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "affected_agents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "affected_contracts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "affected_ontology": {
+      "type": "boolean"
+    },
+    "rollback_condition": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proposal_status": {
+      "enum": [
+        "PROPOSED",
+        "APPROVED",
+        "REJECTED",
+        "FORWARD_VALIDATING",
+        "ROLLED_BACK"
+      ]
+    },
+    "human_gate": {
+      "const": "H3"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approved_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approved_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "proposal_status": {
+            "enum": [
+              "APPROVED",
+              "FORWARD_VALIDATING",
+              "ROLLED_BACK"
+            ]
+          }
+        },
+        "required": [
+          "proposal_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "approved_by",
+          "approved_at"
+        ],
+        "properties": {
+          "approved_by": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approved_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  ]
+}

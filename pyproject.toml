@@ -1,0 +1,30 @@
+[project]
+name = "weilai-healthcheck-agent"
+version = "2.0.0"
+description = "Amazon 运营闭环 · 业务巡检 Agent"
+requires-python = ">=3.12,<3.13"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "contract: 跨项目契约一致性测试（CI 必跑）",
+    "integration: 端到端集成测试（用离线替身，不需要外部服务）",
+    "regression: 现有 R2/R3/R7 规则回归",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:fastapi.*",
+    "ignore::DeprecationWarning:starlette.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".uv-cache", "参考资料"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]

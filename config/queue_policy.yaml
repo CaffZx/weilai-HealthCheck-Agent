@@ -1,0 +1,87 @@
+# =============================================================================
+# 任务排序策略（取代旧综合执行分 / P0-P1-P2）
+# =============================================================================
+# 来源：交接包 05 §5.2 build_queue 伪代码 + 设计_v1.3/10 §10.10 口径
+#
+# 【为什么要有这个文件】
+#   ADR 0006「取消综合执行分采用确定性任务排序」明确要求：排序规则写入
+#   版本化配置并测试，不允许巡检 Prompt 或前端自行计算。
+#
+# 【排序键顺序（不可调整）】
+#   1. constraint_rank      先阻断不可违反的硬约束
+#   2. timing_rank          再处理逾期和今日到期
+#   3. -economic_exposure   同时点按经济暴露从大到小
+#   4. readiness_rank       同暴露按执行就绪度
+#   5. signal_id            最后按稳定 ID 保证顺序可重放
+#
+# 【⚠ 待冻结事项 F-05】
+#   交接包**未规定** constraint_rank / timing_rank / readiness_rank 的具体权重值。
+#   下列数值是工程默认值，需 Owner 按 01-人工确认清单 的方式拍板。
+#   拍板前排序结果可用于观察，不应作为考核依据。
+# =============================================================================
+
+版本: "2026-07-29-v1"
+状态: "工程默认值，待 Owner 确认"
+
+# 约束权重：数值越小越靠前。取信号命中的所有 flag 中的最小值。
+constraint_rank:
+  NEGATIVE_CASH_RECOVERY: 0      # 净现金回收为负 → 必然立即退出，最高优先
+  PROTECTION_FLOOR_BREACHED: 1   # 保护底线已破
+  CORE_CHILD_AT_RISK: 2          # 核心子体受威胁
+  STOCKOUT_RISK: 3               # 断货风险
+  GROWTH_STOP_LOSS: 4            # 触发扩量止损
+  CLEARANCE_DEADLINE: 5          # 清货窗口临近
+  SEASONAL_WINDOW_CLOSING: 6     # 季节窗口关闭
+  REPAIR_WINDOW_ENDING: 7        # 修复窗口到期
+  DATA_UNTRUSTED: 8              # 数据不可信（先修数据再谈动作）
+  HUMAN_APPROVAL_REQUIRED: 9     # 等人批准
+  _无约束: 99
+
+# 时点权重
+timing_rank:
+  OVERDUE: 0
+  DUE_TODAY: 1
+  DUE_SOON: 2
+  SCHEDULED: 3
+  MONITOR_ONLY: 4
+
+# 就绪度权重
+readiness_rank:
+  READY_AUTO: 0
+  READY_HUMAN: 1
+  BLOCKED_DATA: 2
+  BLOCKED_DEPENDENCY: 3
+  MONITORING: 4
+
+# 严重度 → 默认动作时点。信号没有明确到期日时用这张表推导。
+severity_to_timing:
+  S0: DUE_TODAY
+  S1: DUE_SOON
+  S2: SCHEDULED
+  DATA_INSUFFICIENT: MONITOR_ONLY
+
+# 经济暴露估算口径
+economic_exposure:
+  # 断货：按日均销量 × 单位贡献估算每日损失
+  stockout:
+    window: PER_DAY
+    basis: "日均销量 × 单位贡献"
+  # 库存积压/滞销：按超龄仓租估算每周期成本
+  overstock:
+    window: CURRENT_CYCLE
+    basis: "超龄仓租费（月）"
+  # ACOS 超标：按超出目标的广告花费估算每日浪费
+  acos:
+    window: PER_DAY
+    basis: "近3天日均广告花费 × (实际ACOS - 目标ACOS) / 实际ACOS"
+  # 其余点位当前无可复算口径 → UNASSESSED，不编造金额
+  default:
+    window: UNASSESSED
+    basis: "本轮无可复算的经济暴露口径"
+
+# 信号有效期（小时）。到期后中控页面不再当作当前信号。
+signal_validity_hours:
+  S0: 24
+  S1: 72
+  S2: 168
+  DATA_INSUFFICIENT: 168

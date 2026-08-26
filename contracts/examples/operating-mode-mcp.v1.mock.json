@@ -1,0 +1,253 @@
+{
+  "contractVersion": "1.0",
+  "isSimulated": true,
+  "samplePurpose": "经营模式 Agent 与巡检 Agent 离线合同联调，不代表真实经营结论",
+  "evaluateOperatingMode": {
+    "arguments": {
+      "request": {
+        "request_id": "SIM-MODE-REQ-20260804-001",
+        "trace_id": "SIM-MODE-TRACE-20260804-001",
+        "contract_version": "1.0",
+        "operating_unit": {
+          "operating_unit_id": "SIM-OU-001",
+          "shop_account": "sim-shop-account",
+          "shop_id": "99001622",
+          "site_code": "AMAZON_US",
+          "parent_asin": "B0EXAMPLE0",
+          "parent_seller_sku": "DEMO-JUICER-P"
+        },
+        "fact_snapshot": {
+          "snapshot_id": "SIM-FS-20260804-001",
+          "snapshot_version": 1,
+          "as_of_time": "2026-08-04T08:00:00Z",
+          "content_hash": "sha256:sim-operating-mode-fact-20260804-001",
+          "identity": {
+            "shopId": "99001622",
+            "siteCode": "AMAZON_US",
+            "parentAsin": "B0EXAMPLE0",
+            "parentSellerSku": "DEMO-JUICER-P"
+          },
+          "sales": {
+            "salesAmount7d": 12680.5,
+            "salesQuantity7d": 286,
+            "orderQuantity7d": 271,
+            "salesAmount30d": 50820.4
+          },
+          "traffic": {
+            "sessions7d": 8900,
+            "conversionRate7d": 0.0304,
+            "adImpressions7d": 126000,
+            "adClicks7d": 1840
+          },
+          "profit": {
+            "contributionProfit7d": 2810.24,
+            "profitRate7d": 0.2216,
+            "adCost7d": 1520.3,
+            "acos7d": 0.2236
+          },
+          "inventory": {
+            "availableInventory": 1596,
+            "inboundInventory": 420,
+            "reservedInventory": 80,
+            "inventoryDays": 39
+          },
+          "price": {
+            "currentPrice": 44.99,
+            "currency": "USD"
+          },
+          "quality": {
+            "quality_status": "COMPLETE",
+            "completeness_score": 100,
+            "data_gaps": []
+          },
+          "execution_history": {
+            "recentApprovedActions": [],
+            "recentReviewConclusions": []
+          },
+          "source_refs": [
+            {
+              "tool_name": "inspection-agent",
+              "source_request_id": "SIM-FACT-SOURCE-001",
+              "fetched_at": "2026-08-04T08:00:00Z",
+              "data_window_start": "2026-07-29",
+              "data_window_end": "2026-08-04",
+              "content_hash": "sha256:sim-operating-mode-fact-20260804-001",
+              "quality_status": "COMPLETE"
+            }
+          ]
+        },
+        "policy_context": {
+          "rule_version": "mode_rules_v1",
+          "progress_preparation": "PROGRESS_PERIOD",
+          "season_posture": "NORMAL",
+          "product_launch_date": "2026-01-01",
+          "approved_threshold_profile": "US_STANDARD_V1",
+          "cash_recovery_assumptions": {
+            "scenarios": []
+          }
+        },
+        "options": {
+          "include_explanation": true,
+          "strict_evidence": true
+        }
+      }
+    },
+    "decidedResult": {
+      "decision_id": "SIM-DEC-20260804-001",
+      "request_id": "SIM-MODE-REQ-20260804-001",
+      "trace_id": "SIM-MODE-TRACE-20260804-001",
+      "operating_unit_id": "SIM-OU-001",
+      "fact_snapshot_id": "SIM-FS-20260804-001",
+      "decision_status": "DECIDED",
+      "recommended_mode_code": "ACTIVE_ADVANCE",
+      "recommended_mode": "积极推进",
+      "mode_variant": null,
+      "scope_type": "PARENT",
+      "confidence": 0.91,
+      "gate_results": [
+        {
+          "gate_id": "G0",
+          "status": "PASS",
+          "reason_codes": [],
+          "evidence": {
+            "factSnapshotId": "SIM-FS-20260804-001"
+          }
+        }
+      ],
+      "key_metrics": {
+        "salesAmount7d": 12680.5,
+        "profitRate7d": 0.2216,
+        "inventoryDays": 39
+      },
+      "reason_codes": [
+        "SIM_GROWTH_SIGNAL_CONFIRMED"
+      ],
+      "excluded_modes": [],
+      "data_gaps": [],
+      "child_disposition_candidates": [],
+      "required_guardrails": [],
+      "observation_requirements": [
+        "7天后复核销售、利润率与库存周转"
+      ],
+      "explanation": "模拟判断：增长信号、利润率与库存覆盖满足积极推进条件。",
+      "rule_version": "mode_rules_v1",
+      "producer_version": "1.0.0-mock",
+      "generated_at": "2026-08-04T08:00:01Z"
+    },
+    "blockedResult": {
+      "decision_id": "SIM-DEC-20260804-002",
+      "request_id": "SIM-MODE-REQ-20260804-002",
+      "trace_id": "SIM-MODE-TRACE-20260804-002",
+      "operating_unit_id": "SIM-OU-002",
+      "fact_snapshot_id": "SIM-FS-20260804-002",
+      "decision_status": "BLOCKED",
+      "recommended_mode_code": null,
+      "recommended_mode": null,
+      "mode_variant": null,
+      "scope_type": "PARENT",
+      "confidence": 0.0,
+      "gate_results": [
+        {
+          "gate_id": "G0",
+          "status": "BLOCKED",
+          "reason_codes": [
+            "FACT_SNAPSHOT_INSUFFICIENT"
+          ],
+          "evidence": {
+            "factSnapshotId": "SIM-FS-20260804-002"
+          }
+        }
+      ],
+      "key_metrics": {},
+      "reason_codes": [
+        "FACT_SNAPSHOT_INSUFFICIENT"
+      ],
+      "excluded_modes": [],
+      "data_gaps": [
+        "profit.profitRate7d",
+        "inventory.inventoryDays"
+      ],
+      "child_disposition_candidates": [],
+      "required_guardrails": [],
+      "observation_requirements": [],
+      "explanation": "模拟阻断：利润率和库存周转事实缺失，不能形成经营模式结论。",
+      "rule_version": "mode_rules_v1",
+      "producer_version": "1.0.0-mock",
+      "generated_at": "2026-08-04T08:00:02Z"
+    }
+  },
+  "getCurrentOperatingMode": {
+    "decided": {
+      "arguments": {
+        "shop_id": "99001622",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-JUICER-P"
+      },
+      "result": {
+        "shop_id": "99001622",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-JUICER-P",
+        "decision_status": "DECIDED",
+        "recommended_mode_code": "ACTIVE_ADVANCE",
+        "recommended_mode": "积极推进",
+        "explanation": "模拟判断：增长信号、利润率与库存覆盖满足积极推进条件。"
+      }
+    },
+    "blocked": {
+      "arguments": {
+        "shop_id": "99002002",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-BLOCKED-P"
+      },
+      "result": {
+        "shop_id": "99002002",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-BLOCKED-P",
+        "decision_status": "BLOCKED",
+        "recommended_mode_code": null,
+        "recommended_mode": null,
+        "explanation": "模拟阻断：事实完整度不足，不能形成经营模式结论。"
+      }
+    },
+    "realSampleBlocked": {
+      "arguments": {
+        "shop_id": "1562",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "FS04026-zhu"
+      },
+      "result": {
+        "shop_id": "1562",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "FS04026-zhu",
+        "decision_status": "BLOCKED",
+        "recommended_mode_code": null,
+        "recommended_mode": null,
+        "explanation": "模拟经营模式服务响应：真实巡检快照完整度不足，不生成经营模式。"
+      }
+    },
+    "needsHumanReview": {
+      "arguments": {
+        "shop_id": "99003003",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-REVIEW-P"
+      },
+      "result": {
+        "shop_id": "99003003",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-REVIEW-P",
+        "decision_status": "NEEDS_HUMAN_REVIEW",
+        "recommended_mode_code": null,
+        "recommended_mode": null,
+        "explanation": "模拟待审核：高影响边界存在冲突，需要人工确认。"
+      }
+    },
+    "noRecord": {
+      "arguments": {
+        "shop_id": "99004004",
+        "parent_asin": "B0EXAMPLE0",
+        "parent_seller_sku": "DEMO-NONE-P"
+      },
+      "result": null
+    }
+  }
+}

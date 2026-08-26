@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/cost-evidence-snapshot.v1.schema.json",
+  "title": "CostEvidenceSnapshot",
+  "description": "成本与利润能力的标准证据结果。它提供计算和情景比较，不决定经营模式或专业动作。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "cost_evidence_id",
+    "operating_unit_ref",
+    "profit_basis",
+    "attribution_basis",
+    "currency",
+    "unit_contribution_profit",
+    "full_cost_profit",
+    "reconciled_profit",
+    "cost_components",
+    "inventory_cash_scenarios",
+    "authorization_consumption",
+    "evidence_refs",
+    "assumptions",
+    "data_gaps",
+    "as_of",
+    "valid_until",
+    "producer_versions",
+    "confidence"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.cost.v1"
+    },
+    "cost_evidence_id": {
+      "type": "string",
+      "pattern": "^ces_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "profit_basis": {
+      "enum": [
+        "ESTIMATED_UNIT_CONTRIBUTION",
+        "ESTIMATED_FULL_COST",
+        "RECONCILED_ACTUAL",
+        "MIXED_WITH_EXPLICIT_COMPONENTS"
+      ]
+    },
+    "attribution_basis": {
+      "enum": [
+        "DIRECT",
+        "ORDER_LEVEL_ALLOCATED",
+        "ASIN_LEVEL_ALLOCATED",
+        "PARENT_ASIN_ALLOCATED",
+        "UNATTRIBUTED",
+        "MIXED_WITH_EXPLICIT_COMPONENTS"
+      ]
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "unit_contribution_profit": {
+      "$ref": "#/$defs/profitMeasure"
+    },
+    "full_cost_profit": {
+      "$ref": "#/$defs/profitMeasure"
+    },
+    "reconciled_profit": {
+      "$ref": "#/$defs/profitMeasure"
+    },
+    "cost_components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "component_code",
+          "amount",
+          "unit",
+          "source_type",
+          "attribution_basis",
+          "evidence_refs"
+        ],
+        "properties": {
+          "component_code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          },
+          "amount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "enum": [
+              "ACTUAL",
+              "RATE_CARD",
+              "ESTIMATE",
+              "ALLOCATION",
+              "MANUAL_CONFIRMED",
+              "MISSING"
+            ]
+          },
+          "attribution_basis": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "inventory_cash_scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_code",
+          "time_window",
+          "cash_recovery_range",
+          "incremental_cost_range",
+          "inventory_remaining_range",
+          "assumptions"
+        ],
+        "properties": {
+          "scenario_code": {
+            "enum": [
+              "CONTINUE_HOLDING",
+              "SELL_THROUGH",
+              "REMOVE",
+              "LIQUIDATE",
+              "DISPOSE"
+            ]
+          },
+          "time_window": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cash_recovery_range": {
+            "$ref": "#/$defs/numberRange"
+          },
+          "incremental_cost_range": {
+            "$ref": "#/$defs/numberRange"
+          },
+          "inventory_remaining_range": {
+            "$ref": "#/$defs/numberRange"
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "authorization_consumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "envelope_ref",
+        "consumed",
+        "remaining",
+        "projected_after_pending_actions"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "AVAILABLE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ]
+        },
+        "envelope_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consumed": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "remaining": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "projected_after_pending_actions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "data_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gap_code",
+          "impact",
+          "readiness",
+          "required_next_step"
+        ],
+        "properties": {
+          "gap_code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "readiness": {
+            "enum": [
+              "AVAILABLE",
+              "ADAPTATION_REQUIRED",
+              "MISSING",
+              "BLOCKING"
+            ]
+          },
+          "required_next_step": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer_versions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "$defs": {
+    "numberRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lower",
+        "upper"
+      ],
+      "properties": {
+        "lower": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "upper": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "profitMeasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "amount",
+        "margin_rate",
+        "window",
+        "source_type",
+        "evidence_refs"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "AVAILABLE",
+            "PARTIAL",
+            "UNAVAILABLE"
+          ]
+        },
+        "amount": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "margin_rate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "window": {
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "ACTUAL",
+            "ESTIMATE",
+            "MIXED",
+            "MISSING"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "registry_version": "amazon_ops.capability_registry.v1",
+  "capabilities": [
+    {
+      "code": "OPERATING_FACT",
+      "name": "经营事实",
+      "kind": "DETERMINISTIC_MODULE",
+      "standard_outputs": [
+        "OperatingFactSnapshot"
+      ]
+    },
+    {
+      "code": "MARKET_RELATION",
+      "name": "市场关系",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "ProductProfile",
+        "MarketReferenceView"
+      ]
+    },
+    {
+      "code": "MARKET_RESEARCH",
+      "name": "运营市调",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "MarketContextSnapshot"
+      ]
+    },
+    {
+      "code": "BUSINESS_INSPECTION",
+      "name": "业务巡检",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "InspectionSignal"
+      ]
+    },
+    {
+      "code": "COST_PROFIT_EVIDENCE",
+      "name": "成本利润证据",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "CostEvidenceSnapshot"
+      ]
+    },
+    {
+      "code": "OPERATING_DECISION",
+      "name": "经营决策",
+      "kind": "AGENT_CAPABILITY",
+      "standard_outputs": [
+        "OperatingDecisionRecommendation"
+      ]
+    },
+    {
+      "code": "ADVERTISING_DECISION_EXECUTION",
+      "name": "广告决策执行",
+      "kind": "AGENT_CAPABILITY",
+      "standard_outputs": [
+        "AdvertisingActionProposal",
+        "ActionOrder",
+        "ActionReceipt"
+      ],
+      "rollout_status": "FROZEN_FOR_CURRENT_MIGRATION"
+    },
+    {
+      "code": "PRICE_PROMOTION",
+      "name": "价格促销",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "PricePromotionProposal",
+        "ActionOrder",
+        "ActionReceipt"
+      ]
+    },
+    {
+      "code": "INVENTORY_PLANNING",
+      "name": "库存规划",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "InventoryProposal",
+        "ActionOrder",
+        "ActionReceipt"
+      ]
+    },
+    {
+      "code": "LISTING_EXECUTION",
+      "name": "Listing执行",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "ListingProposal",
+        "ActionOrder",
+        "ActionReceipt"
+      ]
+    },
+    {
+      "code": "PORTFOLIO_COORDINATION",
+      "name": "组合协调",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "PortfolioCoordinationResult"
+      ]
+    },
+    {
+      "code": "OUTCOME_REVIEW",
+      "name": "结果复盘",
+      "kind": "HYBRID_CAPABILITY",
+      "standard_outputs": [
+        "OutcomeSnapshot",
+        "DecisionReview"
+      ]
+    },
+    {
+      "code": "DATA_REPAIR",
+      "name": "数据修复",
+      "kind": "DETERMINISTIC_MODULE",
+      "standard_outputs": [
+        "DataRepairReceipt"
+      ]
+    },
+    {
+      "code": "HUMAN_REVIEW",
+      "name": "人工判断",
+      "kind": "HUMAN_CAPABILITY",
+      "standard_outputs": [
+        "HumanDecision"
+      ]
+    }
+  ],
+  "reason_codes": [
+    "IDENTITY_REVIEW_REQUIRED",
+    "MARKET_EVIDENCE_REQUIRED",
+    "SEASON_REBASE_REQUIRED",
+    "COST_EVIDENCE_REQUIRED",
+    "PROFIT_RECONCILIATION_REQUIRED",
+    "MODE_REVIEW_REQUIRED",
+    "ADVERTISING_ACTION_REQUIRED",
+    "PRICE_ACTION_REQUIRED",
+    "INVENTORY_ACTION_REQUIRED",
+    "LISTING_ACTION_REQUIRED",
+    "EXECUTION_VERIFICATION_REQUIRED",
+    "OBSERVATION_DUE",
+    "OUTCOME_READY",
+    "ADVERSE_EFFECT_DETECTED",
+    "RULE_CHANGE_PROPOSED",
+    "ENVELOPE_NEAR_LIMIT",
+    "ENVELOPE_EXCEEDED",
+    "CHILD_EXCEPTION_REQUIRED",
+    "PORTFOLIO_COORDINATION_REQUIRED",
+    "INSPECTION_SIGNAL_DETECTED",
+    "REQUIRED_CONFIGURATION_MISSING",
+    "MARKET_CONTEXT_READY",
+    "NEW_PRODUCT_PRIOR_READY",
+    "MATERIAL_MARKET_CHANGE",
+    "PURE_OFF_SEASON_CONFIRMED",
+    "CLEARANCE_WINDOW_UPDATED",
+    "PRICE_STRUCTURE_UPDATED",
+    "COMPETITIVENESS_CHANGED",
+    "MARKET_EVIDENCE_BLOCKED",
+    "HUMAN_BOUNDARY_DECISION_REQUIRED",
+    "OPERATING_UNIT_INITIALIZATION_REQUIRED",
+    "INITIALIZATION_RECOMMENDATION_READY",
+    "BATCH_APPROVAL_REQUIRED",
+    "INDIVIDUAL_EXIT_APPROVAL_REQUIRED"
+  ],
+  "human_attention_codes": [
+    "NONE",
+    "REVIEW_RECOMMENDED",
+    "DECISION_REQUIRED"
+  ],
+  "permitted_next_steps": [
+    "SUPPLY_EVIDENCE",
+    "PRODUCE_RECOMMENDATION",
+    "PROPOSE_ACTION",
+    "EXECUTE_APPROVED_ACTION",
+    "VERIFY_EXECUTION",
+    "HUMAN_DECISION"
+  ],
+  "routing_modes": [
+    "HUMAN_ONLY",
+    "HUMAN_CONFIRM_THEN_ROUTER",
+    "AUTO_ROUTER"
+  ],
+  "action_timing_status_codes": [
+    "OVERDUE",
+    "DUE_TODAY",
+    "DUE_SOON",
+    "SCHEDULED",
+    "MONITOR_ONLY"
+  ]
+}

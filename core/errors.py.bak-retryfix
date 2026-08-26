@@ -1,0 +1,212 @@
+"""业务错误与错误码 — 改造方案 v1.0 §25 + 交接包 05 §6 统一错误码。
+
+设计原则：
+  1. 每个错误都自带 `retryable`，编排器和任务队列据此决定重试还是落地失败。
+  2. 错误码是稳定字符串常量，会进入中控日志和监控，改名视为破坏性变更。
+  3. 错误不携带令牌、URL 或原始响应体（防止密钥进日志）。
+"""
+from __future__ import annotations
+
+from typing import Any
+
+
+class PatrolError(RuntimeError):
+    """巡检 Agent 业务错误基类。"""
+
+    code: str = "PATROL_ERROR"
+    retryable: bool = False
+    http_status: int = 500
+
+    def __init__(self, message: str = "", **context: Any) -> None:
+        super().__init__(message or self.code)
+        self.message = message or self.code
+        self.context: dict[str, Any] = context
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "retryable": self.retryable,
+            "context": self.context,
+        }
+
+    def __repr__(self) -> str:  # pragma: no cover - 调试用
+        return f"<{type(self).__name__} code={self.code} retryable={self.retryable}>"
+
+
+# --- 身份与入参 -------------------------------------------------------------
+class InvalidOperatingUnit(PatrolError):
+    code = "INVALID_OPERATING_UNIT"
+    retryable = False
+    http_status = 400
+
+
+class ContractInvalid(PatrolError):
+    """交接包 05 §6：400 CONTRACT_INVALID。"""
+
+    code = "CONTRACT_INVALID"
+    retryable = False
+    http_status = 400
+
+
+# --- MCP 事实 ---------------------------------------------------------------
+class McpError(PatrolError):
+    code = "MCP_ERROR"
+    retryable = True
+    http_status = 503
+
+
+class McpCoreFactFailed(McpError):
+    code = "MCP_CORE_FACT_FAILED"
+    retryable = True
+
+
+class McpContractInvalid(McpError):
+    code = "MCP_CONTRACT_INVALID"
+    retryable = False
+    http_status = 502
+
+
+class McpRateLimited(McpError):
+    code = "MCP_RATE_LIMITED"
+    retryable = True
+    http_status = 429
+
+
+class McpPermissionDenied(McpError):
+    code = "MCP_PERMISSION_DENIED"
+    retryable = False
+    http_status = 403
+
+
+class McpToolNotAllowed(McpError):
+    code = "MCP_TOOL_NOT_ALLOWED"
+    retryable = False
+    http_status = 403
+
+
+class FactSnapshotInsufficient(PatrolError):
+    code = "FACT_SNAPSHOT_INSUFFICIENT"
+    retryable = False          # 补数据后重跑，不是自动重试
+    http_status = 424
+
+
+# --- 下游 Agent -------------------------------------------------------------
+class ModeAgentUnavailable(PatrolError):
+    code = "MODE_AGENT_UNAVAILABLE"
+    retryable = True
+    http_status = 503
+
+
+class ModeDecisionBlocked(PatrolError):
+    code = "MODE_DECISION_BLOCKED"
+    retryable = False          # 补数据后重跑
+    http_status = 424
+
+
+class AdvertisingAgentUnavailable(PatrolError):
+    code = "AD_AGENT_UNAVAILABLE"
+    retryable = True
+    http_status = 503
+
+
+class AdvertisingAgentFrozen(PatrolError):
+    """广告 Agent 处于 FROZEN 灰度状态，禁止自动调用。
+
+    这不是故障，是治理约束（不变量 10 / Ontology A13）。编排器捕获后
+    产出人工交接指令，主流程继续。
+    """
+
+    code = "AD_AGENT_FROZEN"
+    retryable = False
+    http_status = 409
+
+
+class AgentSnapshotMismatch(PatrolError):
+    code = "AGENT_SNAPSHOT_MISMATCH"
+    retryable = False
+    http_status = 409
+
+
+class AgentOperatingUnitMismatch(PatrolError):
+    code = "AGENT_OPERATING_UNIT_MISMATCH"
+    retryable = False
+    http_status = 409
+
+
+# --- 规则与建议 -------------------------------------------------------------
+class PatrolRuleFailed(PatrolError):
+    code = "PATROL_RULE_FAILED"
+    retryable = True
+    http_status = 500
+
+
+class ProposalConflict(PatrolError):
+    code = "PROPOSAL_CONFLICT"
+    retryable = False
+    http_status = 409
+
+
+# --- 中控 -------------------------------------------------------------------
+class ControlCenterUnavailable(PatrolError):
+    code = "CONTROL_CENTER_UNAVAILABLE"
+    retryable = True           # 重投原包，不重新生成
+    http_status = 503
+
+
+class IdempotencyConflict(PatrolError):
+    code = "IDEMPOTENCY_CONFLICT"
+    retryable = False
+    http_status = 409
+
+
+class PlanVersionConflict(PatrolError):
+    """交接包 05 §6：409 PLAN_VERSION_CONFLICT。"""
+
+    code = "PLAN_VERSION_CONFLICT"
+    retryable = False
+    http_status = 409
+
+
+class InvalidStateTransition(PatrolError):
+    """交接包 05 §6：422 INVALID_STATE_TRANSITION。"""
+
+    code = "INVALID_STATE_TRANSITION"
+    retryable = False
+    http_status = 422
+
+
+# --- 复盘 -------------------------------------------------------------------
+class ReviewFactIncomplete(PatrolError):
+    code = "REVIEW_FACT_INCOMPLETE"
+    retryable = False          # 延后复盘
+    http_status = 424
+
+
+#: 错误码 → 是否可重试（改造方案 §25 的表格化镜像，供监控与任务队列查表）
+ERROR_RETRY_POLICY: dict[str, bool] = {
+    cls.code: cls.retryable
+    for cls in (
+        InvalidOperatingUnit,
+        ContractInvalid,
+        McpError,
+        McpCoreFactFailed,
+        McpContractInvalid,
+        McpRateLimited,
+        McpPermissionDenied,
+        FactSnapshotInsufficient,
+        ModeAgentUnavailable,
+        ModeDecisionBlocked,
+        AdvertisingAgentUnavailable,
+        AdvertisingAgentFrozen,
+        AgentSnapshotMismatch,
+        AgentOperatingUnitMismatch,
+        PatrolRuleFailed,
+        ProposalConflict,
+        ControlCenterUnavailable,
+        IdempotencyConflict,
+        PlanVersionConflict,
+        InvalidStateTransition,
+        ReviewFactIncomplete,
+    )
+}

@@ -1,0 +1,175 @@
+{
+  "$id": "https://schemas.amazon-ops.local/contracts/mcp-input-acceptance-sample.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "巡检 Agent 输入 MCP 脱敏合同验收样本包。仅用于本地只读验收，不包含地址或 Token。",
+  "properties": {
+    "as_of": {
+      "description": "巡检运行日期；事实窗口自动截止到该日期的前一个完整自然日。",
+      "format": "date",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "amazon_ops.mcp_input_acceptance.v1",
+      "type": "string"
+    },
+    "fact_sample_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "parentAsin": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "parentSellerSku": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "shopId": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "siteCode": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "shopId",
+        "siteCode",
+        "parentAsin",
+        "parentSellerSku"
+      ],
+      "type": "object"
+    },
+    "fact_samples": {
+      "additionalProperties": false,
+      "properties": {
+        "erp_asin_full_detail": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_advert_agent_config": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_business_report": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_gross_profit_history": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_inventory_cost_analysis": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_monthly_goal": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_natural_advert_flow": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_platform_activity": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_parent_listing_product_info": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_price_promotion_analysis": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_product_info": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_review_analysis": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_refund_rate": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_amazon_account_health_issue": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_asin_keyword_rank_history": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_stock_alert": {
+          "$ref": "#/$defs/dataArray"
+        },
+        "erp_listing_unit_profit_analysis": {
+          "$ref": "#/$defs/dataArray"
+        }
+      },
+      "required": [
+        "erp_listing_product_info",
+        "erp_asin_full_detail",
+        "erp_listing_gross_profit_history",
+        "erp_listing_business_report",
+        "erp_listing_natural_advert_flow",
+        "erp_listing_stock_alert",
+        "erp_listing_unit_profit_analysis",
+        "erp_listing_inventory_cost_analysis",
+        "erp_listing_advert_agent_config",
+        "erp_listing_monthly_goal",
+        "erp_listing_refund_rate",
+        "erp_listing_platform_activity"
+      ],
+      "type": "object"
+    },
+    "operating_unit_pages": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "pageNo": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "pageSize": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "records": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "totalCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalPages": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pageNo",
+          "pageSize",
+          "totalCount",
+          "totalPages",
+          "records"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract_version",
+    "as_of",
+    "operating_unit_pages",
+    "fact_sample_identity",
+    "fact_samples"
+  ],
+  "title": "MCP Input Acceptance Sample v1",
+  "type": "object",
+  "$defs": {
+    "dataArray": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    }
+  }
+}

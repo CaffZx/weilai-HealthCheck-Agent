@@ -1,0 +1,776 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import hashlib
+import logging
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from clients.azlisting_contract import (
+    AZLISTING_LIST_UNITS_BY_PRINCIPAL_TOOL,
+    AZLISTING_LIST_UNITS_TOOL,
+)
+from clients.mcp_client import McpToolResult
+from core.errors import McpContractInvalid
+from core.operating_unit import OperatingUnitBinding, OperatingUnitIdentityError
+
+LIST_UNITS_TOOL = AZLISTING_LIST_UNITS_TOOL
+LIST_UNITS_BY_PRINCIPAL_TOOL = AZLISTING_LIST_UNITS_BY_PRINCIPAL_TOOL
+SYS_USER_TOOL = "sys_user_query"
+SHOP_TOOL = "sprout_shop_query"
+ACTIVE_USER_STATES = frozenset({"1", "ACTIVE", "ENABLED", "NORMAL", "启用", "正常"})
+ACTIVE_LISTING_STATUSES = frozenset(
+    {"ACTIVE", "ONLINE", "INACTIVE", "OFFLINE", "DISABLED"}
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _extract_owner_user_ids(record: dict[str, Any]) -> tuple[int, ...]:
+    """从 listing 记录中提取负责人 userId。
+
+    ``erp_amazon_listing_query_page`` 返回 ``records[].userId`` 字段，
+    之前 _binding() 未提取，导致全量巡检的经营单元绑定丢失负责人信息。
+    """
+    raw = record.get("userId")
+    if raw is None:
+        return ()
+    try:
+        uid = int(raw)
+    except (TypeError, ValueError):
+        return ()
+    return (uid,) if uid > 0 else ()
+
+
+class McpPort(Protocol):
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> McpToolResult: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PrincipalScope:
+    principal_name: str
+    principal_user_id: int
+    shop_id: int
+    shop_account: str
+    site_code: str
+
+    def __post_init__(self) -> None:
+        principal_name = str(self.principal_name or "").strip()
+        if not principal_name:
+            raise ValueError("principalName is required")
+        principal_user_id = McpOperatingUnitProvider._positive_int(
+            self.principal_user_id,
+            "principalUserId",
+        )
+        try:
+            binding = OperatingUnitBinding(
+                shop_id=self.shop_id,
+                shop_account=self.shop_account,
+                site_code=self.site_code,
+                parent_asin="SCOPE_VALIDATION",
+                parent_seller_sku="SCOPE_VALIDATION",
+            )
+        except OperatingUnitIdentityError as exc:
+            raise ValueError("principal scope has invalid shop identity") from exc
+        object.__setattr__(self, "principal_name", principal_name)
+        object.__setattr__(self, "principal_user_id", principal_user_id)
+        object.__setattr__(self, "shop_id", binding.shop_id)
+        object.__setattr__(self, "shop_account", binding.shop_account)
+        object.__setattr__(self, "site_code", binding.site_code)
+
+
+def parse_principal_scopes_json(value: str) -> tuple[PrincipalScope, ...]:
+    try:
+        payload = json.loads(value)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("principal scopes must be valid JSON") from exc
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("principal scopes must be a non-empty array")
+
+    scopes: list[PrincipalScope] = []
+    account_bindings: dict[str, tuple[int, str]] = {}
+    seen: set[PrincipalScope] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ValueError("each principal scope must be an object")
+        scope = PrincipalScope(
+            principal_name=item.get("principalName"),
+            principal_user_id=item.get("principalUserId"),
+            shop_id=item.get("shopId"),
+            shop_account=item.get("shopAccount"),
+            site_code=item.get("siteCode"),
+        )
+        binding = (scope.shop_id, scope.site_code)
+        existing = account_bindings.setdefault(scope.shop_account, binding)
+        if existing != binding:
+            raise ValueError("shopAccount maps to inconsistent shop identity")
+        if scope not in seen:
+            scopes.append(scope)
+            seen.add(scope)
+    return tuple(scopes)
+
+
+class McpOperatingUnitProvider:
+    """分页读取有效经营单元；身份不完整时拒绝整批，避免静默漏巡。"""
+
+    def __init__(
+        self,
+        client: McpPort,
+        *,
+        page_size: int = 20,
+        max_pages: int = 10_000,
+        page_concurrency: int = 3,
+    ) -> None:
+        if not 1 <= page_size <= 20:
+            raise ValueError("page_size must be between 1 and 20")
+        if max_pages < 1:
+            raise ValueError("max_pages must be positive")
+        if not 1 <= page_concurrency <= 8:
+            raise ValueError("page_concurrency must be between 1 and 8")
+        self.client = client
+        self.page_size = page_size
+        self.max_pages = max_pages
+        self.page_concurrency = page_concurrency
+
+    async def list_all_active_units(self) -> list[OperatingUnitBinding]:
+        units: dict[str, OperatingUnitBinding] = {}
+        expected_total_pages: int | None = None
+        expected_total_count: int | None = None
+        traversed_record_count = 0
+        active_record_count = 0
+
+        for page_no in range(1, self.max_pages + 1):
+            result = await self.client.call_tool(
+                LIST_UNITS_TOOL,
+                {"pageNo": page_no, "pageSize": self.page_size},
+            )
+            page = self._page(result, requested_page=page_no)
+            total_count = self._non_negative_int(page.get("totalCount"), "totalCount")
+            total_pages = self._non_negative_int(page.get("totalPages"), "totalPages")
+            returned_page = self._positive_int(page.get("pageNo"), "pageNo")
+            if total_count == 0 and total_pages == 0:
+                records = page.get("records")
+                if returned_page != 1 or records != []:
+                    raise McpContractInvalid(
+                        f"{LIST_UNITS_TOOL} empty page metadata is inconsistent"
+                    )
+                return []
+            if total_count == 0 or total_pages == 0:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_TOOL} totalCount and totalPages are inconsistent"
+                )
+            if returned_page != page_no:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_TOOL} returned page {returned_page} for request {page_no}"
+                )
+            if expected_total_pages is None:
+                expected_total_pages = total_pages
+                expected_total_count = total_count
+                if total_pages > self.max_pages:
+                    raise McpContractInvalid(
+                        f"{LIST_UNITS_TOOL} totalPages exceeds configured safety limit"
+                    )
+            elif total_pages != expected_total_pages or total_count != expected_total_count:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_TOOL} pagination totals changed during traversal"
+                )
+
+            records = page.get("records")
+            if not isinstance(records, list):
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} records must be an array")
+            if len(records) > self.page_size:
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} returned more than pageSize records")
+            traversed_record_count += len(records)
+
+            for index, record in enumerate(records):
+                if not isinstance(record, dict):
+                    raise McpContractInvalid(
+                        f"{LIST_UNITS_TOOL} page {page_no} record {index} must be an object"
+                    )
+                active_record_count += 1
+                binding = self._binding(record, page_no=page_no, index=index)
+                existing = units.get(binding.operating_unit_id)
+                if existing is None:
+                    units[binding.operating_unit_id] = binding
+                else:
+                    units[binding.operating_unit_id] = self._merge_bindings(
+                        existing,
+                        binding,
+                    )
+
+            if page_no >= total_pages:
+                if total_count > 0 and not records:
+                    raise McpContractInvalid(f"{LIST_UNITS_TOOL} ended with an empty final page")
+                break
+        else:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} pagination did not terminate")
+
+        if expected_total_count is not None and traversed_record_count != expected_total_count:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_TOOL} traversed record count does not match totalCount"
+            )
+        if expected_total_count and active_record_count == 0:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_TOOL} returned records but no active operating units"
+            )
+        return sorted(units.values(), key=lambda unit: unit.operating_unit_id)
+
+    async def list_all_active_listing_records(self) -> list[dict[str, Any]]:
+        """Return active listing records with the V3 asin/SKU parent identity."""
+        records = await self._list_all_records()
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for record in records:
+            try:
+                shop_id = self._positive_int(record.get("shopId"), "shopId")
+                site_code = str(record.get("siteCode") or "").strip()
+                shop_account = str(record.get("shopAccount") or "").strip()
+                asin = str(record.get("asin") or "").strip()
+                seller_sku = str(record.get("sellerSku") or "").strip()
+                if not site_code or not shop_account or not asin or not seller_sku:
+                    raise ValueError("missing listing identity")
+                key = f"{shop_id}|{site_code}|{asin}|{seller_sku}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                user_id = record.get("userId")
+                try:
+                    user_id = self._positive_int(user_id, "userId") if user_id is not None else None
+                except McpContractInvalid:
+                    user_id = None
+                parent_asin = str(record.get("asin") or record.get("parentAsin") or "").strip()
+                parent_seller_sku = str(
+                    record.get("sellerSku") or record.get("parentSellerSku") or ""
+                ).strip()
+                if not parent_asin or not parent_seller_sku:
+                    raise ValueError("missing parent listing identity")
+                result.append({
+                    "listing_record_id": hashlib.sha256(key.encode()).hexdigest()[:32],
+                    "shop_id": shop_id,
+                    "site_code": site_code,
+                    "shop_account": shop_account,
+                    "asin": asin,
+                    "seller_sku": seller_sku,
+                    "parent_asin": parent_asin,
+                    "parent_seller_sku": parent_seller_sku,
+                    "user_id": user_id,
+                    "status": str(record.get("status") or "").strip(),
+                })
+            except ValueError as exc:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_TOOL} returned an invalid active listing record"
+                ) from exc
+        return result
+
+    async def _list_all_records(self) -> list[dict[str, Any]]:
+        async def fetch(page_no: int) -> dict[str, Any]:
+            result = await self.client.call_tool(
+                LIST_UNITS_TOOL, {"pageNo": page_no, "pageSize": self.page_size}
+            )
+            return self._page(result, requested_page=page_no)
+
+        first_page = await fetch(1)
+        expected_total_count = self._non_negative_int(first_page.get("totalCount"), "totalCount")
+        expected_total_pages = self._non_negative_int(first_page.get("totalPages"), "totalPages")
+        if expected_total_count == 0 and expected_total_pages == 0:
+            if self._positive_int(first_page.get("pageNo"), "pageNo") != 1 or first_page.get("records") != []:
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} empty page metadata is inconsistent")
+            return []
+        if expected_total_count == 0 or expected_total_pages == 0:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} pagination metadata is inconsistent")
+        if expected_total_pages > self.max_pages:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} totalPages exceeds configured safety limit")
+
+        pages: dict[int, dict[str, Any]] = {1: first_page}
+        logger.info(
+            "operating_unit_catalog fetch started total_records=%d total_pages=%d page_size=%d concurrency=%d",
+            expected_total_count,
+            expected_total_pages,
+            self.page_size,
+            self.page_concurrency,
+        )
+        for start in range(2, expected_total_pages + 1, self.page_concurrency):
+            page_numbers = range(start, min(start + self.page_concurrency, expected_total_pages + 1))
+            fetched = await asyncio.gather(*(fetch(page_no) for page_no in page_numbers))
+            pages.update((page_no, page) for page_no, page in zip(page_numbers, fetched, strict=True))
+            completed_pages = min(start + self.page_concurrency - 1, expected_total_pages)
+            if completed_pages == expected_total_pages or completed_pages % 30 < self.page_concurrency:
+                logger.info(
+                    "operating_unit_catalog fetch progress completed_pages=%d total_pages=%d",
+                    completed_pages,
+                    expected_total_pages,
+                )
+
+        records: list[dict[str, Any]] = []
+        for page_no in range(1, expected_total_pages + 1):
+            page = pages[page_no]
+            total_count = self._non_negative_int(page.get("totalCount"), "totalCount")
+            total_pages = self._non_negative_int(page.get("totalPages"), "totalPages")
+            returned_page = self._positive_int(page.get("pageNo"), "pageNo")
+            page_records = page.get("records")
+            if returned_page != page_no:
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} pagination metadata is inconsistent")
+            if (total_pages, total_count) != (expected_total_pages, expected_total_count):
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} pagination totals changed during traversal")
+            if not isinstance(page_records, list) or len(page_records) > self.page_size:
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} records shape is invalid")
+            if any(not isinstance(record, dict) for record in page_records):
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} record must be an object")
+            if page_no == expected_total_pages and not page_records:
+                raise McpContractInvalid(f"{LIST_UNITS_TOOL} ended with an empty final page")
+            records.extend(page_records)
+        if len(records) != expected_total_count:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} traversed record count does not match totalCount")
+        return records
+
+    @staticmethod
+    def _page(result: McpToolResult, *, requested_page: int) -> dict[str, Any]:
+        if len(result.data) != 1 or not isinstance(result.data[0], dict):
+            raise McpContractInvalid(
+                f"{LIST_UNITS_TOOL} page {requested_page} must contain one page object"
+            )
+        return result.data[0]
+
+    @staticmethod
+    def _binding(
+        record: dict[str, Any],
+        *,
+        page_no: int,
+        index: int,
+    ) -> OperatingUnitBinding:
+        parent_asin = record.get("parentAsin") or record.get("asin")
+        parent_seller_sku = record.get("parentSellerSku") or record.get("sellerSku")
+        if not str(parent_asin or "").strip() or not str(parent_seller_sku or "").strip():
+            raise McpContractInvalid(
+                f"{LIST_UNITS_TOOL} page {page_no} record {index} lacks parent identity"
+            )
+        owner_user_ids = _extract_owner_user_ids(record)
+        try:
+            return OperatingUnitBinding(
+                shop_id=record.get("shopId"),
+                shop_account=record.get("shopAccount"),
+                site_code=record.get("siteCode"),
+                parent_asin=parent_asin,
+                parent_seller_sku=parent_seller_sku,
+                owner_user_ids=owner_user_ids,
+            )
+        except OperatingUnitIdentityError as exc:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_TOOL} page {page_no} record {index} has invalid identity"
+            ) from exc
+
+    @staticmethod
+    def _merge_bindings(
+        existing: OperatingUnitBinding,
+        candidate: OperatingUnitBinding,
+    ) -> OperatingUnitBinding:
+        existing_identity = (
+            existing.shop_id,
+            existing.parent_asin,
+            existing.parent_seller_sku,
+            existing.site_code,
+            existing.shop_account,
+        )
+        candidate_identity = (
+            candidate.shop_id,
+            candidate.parent_asin,
+            candidate.parent_seller_sku,
+            candidate.site_code,
+            candidate.shop_account,
+        )
+        if existing_identity != candidate_identity:
+            raise McpContractInvalid("operating unit identity maps to inconsistent MCP bindings")
+        return existing.with_owner_user_ids(
+            tuple(sorted({*existing.owner_user_ids, *candidate.owner_user_ids}))
+        )
+
+    @staticmethod
+    def _positive_int(value: Any, field: str) -> int:
+        number = McpOperatingUnitProvider._non_negative_int(value, field)
+        if number < 1:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} {field} must be positive")
+        return number
+
+    @staticmethod
+    def _non_negative_int(value: Any, field: str) -> int:
+        if isinstance(value, bool):
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} {field} must be an integer")
+        try:
+            number = int(value)
+        except (TypeError, ValueError) as exc:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} {field} must be an integer") from exc
+        if number < 0:
+            raise McpContractInvalid(f"{LIST_UNITS_TOOL} {field} must be non-negative")
+        return number
+
+
+class PrincipalFollowUpOperatingUnitProvider:
+    """按权威负责人/店铺范围读取父级经营单元，不依赖旧 SQLite。"""
+
+    def __init__(
+        self,
+        client: McpPort,
+        scopes: tuple[PrincipalScope, ...],
+        *,
+        page_size: int = 200,
+        max_pages_per_scope: int = 10_000,
+    ) -> None:
+        if not scopes:
+            raise ValueError("principal scopes must not be empty")
+        if not 1 <= page_size <= 200:
+            raise ValueError("page_size must be between 1 and 200")
+        if max_pages_per_scope < 1:
+            raise ValueError("max_pages_per_scope must be positive")
+        self.client = client
+        self.scopes = scopes
+        self.page_size = page_size
+        self.max_pages_per_scope = max_pages_per_scope
+
+    async def list_all_active_units(self) -> list[OperatingUnitBinding]:
+        units: dict[str, OperatingUnitBinding] = {}
+        traversed_any_record = False
+        active_record_count = 0
+        for scope_index, scope in enumerate(self.scopes):
+            records = await self._records_for_scope(scope, scope_index=scope_index)
+            traversed_any_record = traversed_any_record or bool(records)
+            for record_index, record in enumerate(records):
+                if str(record.get("status") or "").strip().upper() not in ACTIVE_LISTING_STATUSES:
+                    continue
+                active_record_count += 1
+                binding = self._binding(
+                    scope,
+                    record,
+                    scope_index=scope_index,
+                    record_index=record_index,
+                )
+                existing = units.get(binding.operating_unit_id)
+                units[binding.operating_unit_id] = (
+                    binding
+                    if existing is None
+                    else McpOperatingUnitProvider._merge_bindings(existing, binding)
+                )
+        if traversed_any_record and active_record_count == 0:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} returned records but no active operating units"
+            )
+        return sorted(units.values(), key=lambda unit: unit.operating_unit_id)
+
+    async def _records_for_scope(
+        self,
+        scope: PrincipalScope,
+        *,
+        scope_index: int,
+    ) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        expected_total_pages: int | None = None
+        expected_total_count: int | None = None
+        for page_no in range(1, self.max_pages_per_scope + 1):
+            result = await self.client.call_tool(
+                LIST_UNITS_BY_PRINCIPAL_TOOL,
+                {
+                    "principalName": scope.principal_name,
+                    "shopAccount": scope.shop_account,
+                    "pageNo": page_no,
+                    "pageSize": self.page_size,
+                },
+            )
+            page = self._page(result, scope_index=scope_index, requested_page=page_no)
+            total_count = self._non_negative_int(page.get("totalCount"), "totalCount")
+            total_pages = self._non_negative_int(page.get("totalPages"), "totalPages")
+            returned_page = self._positive_int(page.get("pageNo"), "pageNo")
+            page_records = page.get("records")
+            if not isinstance(page_records, list):
+                raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} records must be an array")
+            if total_count == 0 and total_pages == 0:
+                if returned_page != 1 or page_records:
+                    raise McpContractInvalid(
+                        f"{LIST_UNITS_BY_PRINCIPAL_TOOL} empty page metadata is inconsistent"
+                    )
+                return []
+            if total_count == 0 or total_pages == 0:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_BY_PRINCIPAL_TOOL} pagination totals are inconsistent"
+                )
+            if returned_page != page_no:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_BY_PRINCIPAL_TOOL} returned an unexpected page"
+                )
+            if expected_total_pages is None:
+                expected_total_pages = total_pages
+                expected_total_count = total_count
+                if total_pages > self.max_pages_per_scope:
+                    raise McpContractInvalid(
+                        f"{LIST_UNITS_BY_PRINCIPAL_TOOL} totalPages exceeds safety limit"
+                    )
+            elif total_pages != expected_total_pages or total_count != expected_total_count:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_BY_PRINCIPAL_TOOL} pagination totals changed"
+                )
+            if len(page_records) > self.page_size:
+                raise McpContractInvalid(
+                    f"{LIST_UNITS_BY_PRINCIPAL_TOOL} returned more than pageSize records"
+                )
+            if any(not isinstance(record, dict) for record in page_records):
+                raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} record must be an object")
+            records.extend(page_records)
+            if page_no >= total_pages:
+                if not page_records:
+                    raise McpContractInvalid(
+                        f"{LIST_UNITS_BY_PRINCIPAL_TOOL} ended with an empty final page"
+                    )
+                break
+        else:
+            raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} pagination did not terminate")
+        if expected_total_count is not None and len(records) != expected_total_count:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} record count does not match totalCount"
+            )
+        return records
+
+    @staticmethod
+    def _page(
+        result: McpToolResult,
+        *,
+        scope_index: int,
+        requested_page: int,
+    ) -> dict[str, Any]:
+        if len(result.data) != 1 or not isinstance(result.data[0], dict):
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} scope {scope_index} page "
+                f"{requested_page} must contain one page object"
+            )
+        return result.data[0]
+
+    @staticmethod
+    def _binding(
+        scope: PrincipalScope,
+        record: dict[str, Any],
+        *,
+        scope_index: int,
+        record_index: int,
+    ) -> OperatingUnitBinding:
+        shop_account = str(record.get("shopAccount") or "").strip()
+        if shop_account != scope.shop_account:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} scope {scope_index} record "
+                f"{record_index} has inconsistent shopAccount"
+            )
+        if (
+            not str(record.get("parentAsin") or "").strip()
+            or not str(record.get("parentSellerSku") or "").strip()
+        ):
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} scope {scope_index} record "
+                f"{record_index} lacks parent identity"
+            )
+        try:
+            return OperatingUnitBinding(
+                shop_id=scope.shop_id,
+                shop_account=scope.shop_account,
+                site_code=scope.site_code,
+                parent_asin=record.get("parentAsin"),
+                parent_seller_sku=record.get("parentSellerSku"),
+                owner_user_ids=(scope.principal_user_id,),
+            )
+        except OperatingUnitIdentityError as exc:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} returned invalid parent identity"
+            ) from exc
+
+    @staticmethod
+    def _positive_int(value: Any, field: str) -> int:
+        number = PrincipalFollowUpOperatingUnitProvider._non_negative_int(value, field)
+        if number < 1:
+            raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be positive")
+        return number
+
+    @staticmethod
+    def _non_negative_int(value: Any, field: str) -> int:
+        if isinstance(value, bool):
+            raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be an integer")
+        try:
+            number = int(value)
+        except (TypeError, ValueError) as exc:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be an integer"
+            ) from exc
+        if number < 0:
+            raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be non-negative")
+        return number
+
+
+class PrincipalDirectoryOperatingUnitProvider:
+    """Discover all parent units through users/shops plus principal follow-up.
+
+    The directory MCP supplies the authoritative principal and shop identity; the
+    AZ listing MCP supplies parentAsin/parentSellerSku. No operations-config table
+    and no child-to-parent inference are used.
+    """
+
+    def __init__(
+        self,
+        directory_client: McpPort,
+        listing_client: McpPort,
+        *,
+        operator_role: str = "GROUP_FBASALER",
+        directory_page_size: int = 100,
+        listing_page_size: int = 200,
+        max_pages: int = 10_000,
+    ) -> None:
+        self.directory_client = directory_client
+        self.listing_client = listing_client
+        self.operator_role = operator_role.strip().upper()
+        self.directory_page_size = directory_page_size
+        self.listing_page_size = listing_page_size
+        self.max_pages = max_pages
+
+    async def list_all_active_units(self) -> list[OperatingUnitBinding]:
+        users = await self._paged(self.directory_client, SYS_USER_TOOL, {}, self.directory_page_size)
+        shops = await self._paged(
+            self.directory_client, SHOP_TOOL, {"platformCode": "Amazon"}, self.directory_page_size
+        )
+        shop_map: dict[str, tuple[int, str]] = {}
+        for row in shops:
+            shop_id = self._positive_int(row.get("id"), "shop.id")
+            account = str(row.get("account") or "").strip()
+            site = str(row.get("plSiteCode") or row.get("platformSite") or row.get("siteCode") or "").strip()
+            if not account or not site:
+                raise McpContractInvalid("sprout_shop_query returned incomplete shop identity")
+            existing = shop_map.setdefault(account, (shop_id, site))
+            if existing != (shop_id, site):
+                raise McpContractInvalid("shopAccount maps to inconsistent shop identity")
+
+        operators: list[tuple[int, str]] = []
+        for row in users:
+            user_id = self._positive_int(row.get("id"), "sys_user.id")
+            state = str(row.get("userState") or "").strip().upper()
+            roles = self._role_codes(row.get("roles"))
+            name = str(row.get("userName") or "").strip()
+            if name and state in ACTIVE_USER_STATES and self.operator_role in roles:
+                operators.append((user_id, name))
+        if not operators:
+            raise McpContractInvalid("no active operating principals were returned")
+
+        units: dict[str, OperatingUnitBinding] = {}
+        for user_id, principal_name in operators:
+            for shop_account in sorted(shop_map):
+                records = await self._paged(
+                    self.listing_client,
+                    LIST_UNITS_BY_PRINCIPAL_TOOL,
+                    {"principalName": principal_name, "shopAccount": shop_account},
+                    self.listing_page_size,
+                )
+                for record in records:
+                    if str(record.get("status") or "").strip().upper() not in ACTIVE_LISTING_STATUSES:
+                        continue
+                    account = str(record.get("shopAccount") or "").strip()
+                    shop = shop_map.get(account)
+                    if shop is None:
+                        raise McpContractInvalid(
+                            f"{LIST_UNITS_BY_PRINCIPAL_TOOL} returned unknown shopAccount"
+                        )
+                    parent_asin = str(record.get("parentAsin") or "").strip()
+                    parent_seller_sku = str(record.get("parentSellerSku") or "").strip()
+                    if not parent_asin or not parent_seller_sku:
+                        raise McpContractInvalid(
+                            f"{LIST_UNITS_BY_PRINCIPAL_TOOL} returned incomplete parent identity"
+                        )
+                    unit = OperatingUnitBinding(
+                        shop_id=shop[0], site_code=shop[1], shop_account=account,
+                        parent_asin=parent_asin, parent_seller_sku=parent_seller_sku,
+                        owner_user_ids=(user_id,),
+                    )
+                    existing = units.get(unit.operating_unit_id)
+                    units[unit.operating_unit_id] = (
+                        unit if existing is None else McpOperatingUnitProvider._merge_bindings(existing, unit)
+                    )
+        return sorted(units.values(), key=lambda unit: unit.operating_unit_id)
+
+    async def _paged(
+        self, client: McpPort, tool_name: str, base_arguments: dict[str, Any], page_size: int
+    ) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        expected_total: int | None = None
+        expected_pages: int | None = None
+        for page_no in range(1, self.max_pages + 1):
+            result = await client.call_tool(
+                tool_name, {**base_arguments, "pageNo": page_no, "pageSize": page_size}
+            )
+            page = self._generic_page(result, tool_name)
+            page_records = page["records"]
+            total = page.get("totalCount")
+            pages = page.get("totalPages")
+            returned_page = page.get("pageNo")
+            if total is not None:
+                total = int(total)
+                expected_total = total if expected_total is None else expected_total
+                if total != expected_total:
+                    raise McpContractInvalid(f"{tool_name} pagination total changed")
+            if pages is not None:
+                pages = int(pages)
+                expected_pages = pages if expected_pages is None else expected_pages
+                if pages != expected_pages:
+                    raise McpContractInvalid(f"{tool_name} pagination pages changed")
+            if returned_page is not None and int(returned_page) != page_no:
+                raise McpContractInvalid(f"{tool_name} returned an unexpected page")
+            records.extend(page_records)
+            if pages is not None and page_no >= pages:
+                break
+            if pages is None and total is not None and len(records) >= total:
+                break
+            if pages is None and total is None and len(page_records) < page_size:
+                break
+        else:
+            raise McpContractInvalid(f"{tool_name} pagination did not terminate")
+        if expected_total is not None and len(records) != expected_total:
+            raise McpContractInvalid(f"{tool_name} record count does not match totalCount")
+        return records
+
+    @staticmethod
+    def _generic_page(result: McpToolResult, tool_name: str) -> dict[str, Any]:
+        for value in result.data:
+            if not isinstance(value, dict):
+                continue
+            records = value.get("records") or value.get("rows") or value.get("data")
+            if isinstance(records, list) and all(isinstance(item, dict) for item in records):
+                return {**value, "records": records}
+        raise McpContractInvalid(f"{tool_name} response does not contain a page")
+
+    @staticmethod
+    def _role_codes(value: Any) -> set[str]:
+        if isinstance(value, str):
+            return {part.strip().upper() for part in value.replace(";", ",").split(",") if part.strip()}
+        if isinstance(value, list):
+            return {code for item in value for code in PrincipalDirectoryOperatingUnitProvider._role_codes(item)}
+        if isinstance(value, dict):
+            direct = {str(value[key]).strip().upper() for key in ("roleCode", "code", "roleKey", "groupCode") if value.get(key)}
+            nested = {code for key, child in value.items() if key not in {"roleCode", "code", "roleKey", "groupCode"} for code in PrincipalDirectoryOperatingUnitProvider._role_codes(child)}
+            return direct | nested
+        return set()
+
+    @staticmethod
+    def _positive_int(value: Any, field: str) -> int:
+        if isinstance(value, bool):
+            raise McpContractInvalid(f"{field} must be a positive integer")
+        try:
+            number = int(value)
+        except (TypeError, ValueError) as exc:
+            raise McpContractInvalid(f"{field} must be a positive integer") from exc
+        if number < 1:
+            raise McpContractInvalid(f"{field} must be a positive integer")
+        return number
+
+    @staticmethod
+    def _non_negative_int(value: Any, field: str) -> int:
+        if isinstance(value, bool):
+            raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be an integer")
+        try:
+            number = int(value)
+        except (TypeError, ValueError) as exc:
+            raise McpContractInvalid(
+                f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be an integer"
+            ) from exc
+        if number < 0:
+            raise McpContractInvalid(f"{LIST_UNITS_BY_PRINCIPAL_TOOL} {field} must be non-negative")
+        return number

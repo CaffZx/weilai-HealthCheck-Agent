@@ -1,0 +1,788 @@
+{
+  "$defs": {
+    "ActionTimingStatus": {
+      "enum": [
+        "OVERDUE",
+        "DUE_TODAY",
+        "DUE_SOON",
+        "SCHEDULED",
+        "MONITOR_ONLY"
+      ],
+      "title": "ActionTimingStatus",
+      "type": "string"
+    },
+    "CapabilityCode": {
+      "description": "capability-registry.v1.json#capabilities[].code，同时是 handoff v2 的 next_capability。",
+      "enum": [
+        "OPERATING_FACT",
+        "MARKET_RELATION",
+        "MARKET_RESEARCH",
+        "BUSINESS_INSPECTION",
+        "COST_PROFIT_EVIDENCE",
+        "OPERATING_DECISION",
+        "ADVERTISING_DECISION_EXECUTION",
+        "PRICE_PROMOTION",
+        "INVENTORY_PLANNING",
+        "LISTING_EXECUTION",
+        "PORTFOLIO_COORDINATION",
+        "OUTCOME_REVIEW",
+        "DATA_REPAIR",
+        "HUMAN_REVIEW"
+      ],
+      "title": "CapabilityCode",
+      "type": "string"
+    },
+    "ChildExceptionType": {
+      "enum": [
+        "OUT_OF_STOCK",
+        "LOW_STOCK",
+        "SLOW_MOVING",
+        "PRICE",
+        "COLOR_KEYWORD",
+        "SIZE_KEYWORD",
+        "VARIANT_RELATION",
+        "OTHER"
+      ],
+      "title": "ChildExceptionType",
+      "type": "string"
+    },
+    "ChildScope": {
+      "additionalProperties": false,
+      "properties": {
+        "child_asins": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Child Asins",
+          "type": "array"
+        },
+        "exception_type": {
+          "$ref": "#/$defs/ChildExceptionType"
+        }
+      },
+      "required": [
+        "child_asins",
+        "exception_type"
+      ],
+      "title": "ChildScope",
+      "type": "object"
+    },
+    "ConstraintFlag": {
+      "enum": [
+        "NEGATIVE_CASH_RECOVERY",
+        "STOCKOUT_RISK",
+        "CLEARANCE_DEADLINE",
+        "SEASONAL_WINDOW_CLOSING",
+        "REPAIR_WINDOW_ENDING",
+        "GROWTH_STOP_LOSS",
+        "PROTECTION_FLOOR_BREACHED",
+        "CORE_CHILD_AT_RISK",
+        "DATA_UNTRUSTED",
+        "HUMAN_APPROVAL_REQUIRED"
+      ],
+      "title": "ConstraintFlag",
+      "type": "string"
+    },
+    "Diagnosis": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "known_causes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Causes",
+          "type": "array"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "unknowns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unknowns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary",
+        "confidence"
+      ],
+      "title": "Diagnosis",
+      "type": "object"
+    },
+    "EconomicExposure": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "calculation_basis": {
+          "title": "Calculation Basis",
+          "type": "string"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "window": {
+          "$ref": "#/$defs/EconomicExposureWindow"
+        }
+      },
+      "required": [
+        "window",
+        "calculation_basis",
+        "as_of"
+      ],
+      "title": "EconomicExposure",
+      "type": "object"
+    },
+    "EconomicExposureWindow": {
+      "enum": [
+        "PER_DAY",
+        "CURRENT_CYCLE",
+        "OPPORTUNITY_WINDOW",
+        "UNASSESSED"
+      ],
+      "title": "EconomicExposureWindow",
+      "type": "string"
+    },
+    "ExecutionReadiness": {
+      "enum": [
+        "READY_AUTO",
+        "READY_HUMAN",
+        "BLOCKED_DATA",
+        "BLOCKED_DEPENDENCY",
+        "MONITORING"
+      ],
+      "title": "ExecutionReadiness",
+      "type": "string"
+    },
+    "HandoffDirective": {
+      "additionalProperties": false,
+      "properties": {
+        "action_timing_status": {
+          "$ref": "#/$defs/ActionTimingStatus"
+        },
+        "contract_version": {
+          "const": "amazon_ops.handoff.v2",
+          "default": "amazon_ops.handoff.v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "handoff_id": {
+          "pattern": "^hd_[0-9a-f]{24}$",
+          "title": "Handoff Id",
+          "type": "string"
+        },
+        "human_attention": {
+          "$ref": "#/$defs/HumanAttention"
+        },
+        "missing_input_codes": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+            "type": "string"
+          },
+          "title": "Missing Input Codes",
+          "type": "array"
+        },
+        "next_capability": {
+          "$ref": "#/$defs/CapabilityCode"
+        },
+        "permitted_next_step": {
+          "$ref": "#/$defs/PermittedNextStep"
+        },
+        "producer_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Producer Versions",
+          "type": "object"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/ReasonCode"
+        },
+        "requested_outcome": {
+          "minLength": 1,
+          "title": "Requested Outcome",
+          "type": "string"
+        },
+        "required_input_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Required Input Refs",
+          "type": "array"
+        },
+        "routing_mode": {
+          "$ref": "#/$defs/RoutingMode"
+        },
+        "source_result_ref": {
+          "minLength": 1,
+          "title": "Source Result Ref",
+          "type": "string"
+        },
+        "target_ref": {
+          "$ref": "#/$defs/OperatingUnitRef"
+        }
+      },
+      "required": [
+        "handoff_id",
+        "source_result_ref",
+        "target_ref",
+        "next_capability",
+        "reason_code",
+        "requested_outcome",
+        "action_timing_status",
+        "human_attention",
+        "permitted_next_step",
+        "routing_mode",
+        "producer_versions"
+      ],
+      "title": "HandoffDirective",
+      "type": "object"
+    },
+    "HumanAttention": {
+      "enum": [
+        "NONE",
+        "REVIEW_RECOMMENDED",
+        "DECISION_REQUIRED"
+      ],
+      "title": "HumanAttention",
+      "type": "string"
+    },
+    "InspectionRun": {
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "contract_version": {
+          "const": "amazon_ops.inspection_run.v1",
+          "default": "amazon_ops.inspection_run.v1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "data_gap_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Data Gap Count",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "fact_snapshot_id": {
+          "anyOf": [
+            {
+              "pattern": "^fs_[0-9a-f]{24}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fact Snapshot Id"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "job_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Job Id",
+          "type": "string"
+        },
+        "operating_unit_id": {
+          "pattern": "^ou_[0-9a-f]{24}$",
+          "title": "Operating Unit Id",
+          "type": "string"
+        },
+        "request_id": {
+          "maxLength": 191,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "rule_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Rule Versions",
+          "type": "object"
+        },
+        "run_id": {
+          "pattern": "^pr_[0-9a-f]{24}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "signal_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Signal Count",
+          "type": "integer"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/InspectionRunStatus"
+        },
+        "trigger_type": {
+          "$ref": "#/$defs/TriggerType"
+        }
+      },
+      "required": [
+        "run_id",
+        "job_id",
+        "batch_id",
+        "request_id",
+        "operating_unit_id",
+        "trigger_type",
+        "status",
+        "rule_versions",
+        "started_at"
+      ],
+      "title": "InspectionRun",
+      "type": "object"
+    },
+    "InspectionRunStatus": {
+      "description": "最终巡检主链路状态；旧 ``RunStatus`` 保留到 S3 断链。",
+      "enum": [
+        "RECEIVED",
+        "COLLECTING_FACTS",
+        "VALIDATING_FACTS",
+        "ANALYZING_ANOMALIES",
+        "RECONCILING_SIGNALS",
+        "PERSISTING",
+        "COMPLETED",
+        "COMPLETED_WITH_GAPS",
+        "BLOCKED",
+        "FAILED"
+      ],
+      "title": "InspectionRunStatus",
+      "type": "string"
+    },
+    "InspectionSignal": {
+      "additionalProperties": false,
+      "properties": {
+        "action_timing_status": {
+          "$ref": "#/$defs/ActionTimingStatus"
+        },
+        "child_scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChildScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "constraint_flags": {
+          "items": {
+            "$ref": "#/$defs/ConstraintFlag"
+          },
+          "title": "Constraint Flags",
+          "type": "array"
+        },
+        "contract_version": {
+          "const": "amazon_ops.inspection.v2",
+          "default": "amazon_ops.inspection.v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "diagnosis": {
+          "$ref": "#/$defs/Diagnosis"
+        },
+        "economic_exposure": {
+          "$ref": "#/$defs/EconomicExposure"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "execution_readiness": {
+          "$ref": "#/$defs/ExecutionReadiness"
+        },
+        "first_detected_at": {
+          "format": "date-time",
+          "title": "First Detected At",
+          "type": "string"
+        },
+        "handoff_directive": {
+          "$ref": "#/$defs/HandoffDirective"
+        },
+        "issue_code": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+          "title": "Issue Code",
+          "type": "string"
+        },
+        "last_detected_at": {
+          "format": "date-time",
+          "title": "Last Detected At",
+          "type": "string"
+        },
+        "last_scan_run_id": {
+          "minLength": 1,
+          "title": "Last Scan Run Id",
+          "type": "string"
+        },
+        "operating_unit_ref": {
+          "$ref": "#/$defs/OperatingUnitRef"
+        },
+        "recurrence_count": {
+          "minimum": 0,
+          "title": "Recurrence Count",
+          "type": "integer"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "signal_id": {
+          "pattern": "^is_[0-9a-f]{24}$",
+          "title": "Signal Id",
+          "type": "string"
+        },
+        "signal_state": {
+          "$ref": "#/$defs/SignalState"
+        },
+        "signal_type": {
+          "$ref": "#/$defs/SignalType"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "signal_id",
+        "operating_unit_ref",
+        "signal_type",
+        "issue_code",
+        "severity",
+        "signal_state",
+        "action_timing_status",
+        "economic_exposure",
+        "constraint_flags",
+        "execution_readiness",
+        "first_detected_at",
+        "last_detected_at",
+        "last_scan_run_id",
+        "recurrence_count",
+        "evidence_refs",
+        "diagnosis",
+        "handoff_directive"
+      ],
+      "title": "InspectionSignal",
+      "type": "object"
+    },
+    "OperatingUnitRef": {
+      "additionalProperties": false,
+      "description": "由店铺、父 ASIN 和父 Seller SKU 唯一派生的经营单元身份。",
+      "properties": {
+        "contract_version": {
+          "const": "amazon_ops.v2",
+          "default": "amazon_ops.v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "operating_unit_id": {
+          "pattern": "^ou_[0-9a-f]{24}$",
+          "title": "Operating Unit Id",
+          "type": "string"
+        },
+        "parent_asin": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Parent Asin",
+          "type": "string"
+        },
+        "parent_seller_sku": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Parent Seller Sku",
+          "type": "string"
+        },
+        "shop_id": {
+          "minimum": 1,
+          "title": "Shop Id",
+          "type": "integer"
+        },
+        "site_code": {
+          "pattern": "^AMAZON_[A-Z0-9_-]{2,24}$",
+          "title": "Site Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operating_unit_id",
+        "shop_id",
+        "site_code",
+        "parent_asin",
+        "parent_seller_sku"
+      ],
+      "title": "OperatingUnitRef",
+      "type": "object"
+    },
+    "PermittedNextStep": {
+      "enum": [
+        "SUPPLY_EVIDENCE",
+        "PRODUCE_RECOMMENDATION",
+        "PROPOSE_ACTION",
+        "EXECUTE_APPROVED_ACTION",
+        "VERIFY_EXECUTION",
+        "HUMAN_DECISION"
+      ],
+      "title": "PermittedNextStep",
+      "type": "string"
+    },
+    "ReasonCode": {
+      "description": "34 个原因码，必须与 capability-registry.v1.json#reason_codes 逐字相等。",
+      "enum": [
+        "IDENTITY_REVIEW_REQUIRED",
+        "MARKET_EVIDENCE_REQUIRED",
+        "SEASON_REBASE_REQUIRED",
+        "COST_EVIDENCE_REQUIRED",
+        "PROFIT_RECONCILIATION_REQUIRED",
+        "MODE_REVIEW_REQUIRED",
+        "ADVERTISING_ACTION_REQUIRED",
+        "PRICE_ACTION_REQUIRED",
+        "INVENTORY_ACTION_REQUIRED",
+        "LISTING_ACTION_REQUIRED",
+        "EXECUTION_VERIFICATION_REQUIRED",
+        "OBSERVATION_DUE",
+        "OUTCOME_READY",
+        "ADVERSE_EFFECT_DETECTED",
+        "RULE_CHANGE_PROPOSED",
+        "ENVELOPE_NEAR_LIMIT",
+        "ENVELOPE_EXCEEDED",
+        "CHILD_EXCEPTION_REQUIRED",
+        "PORTFOLIO_COORDINATION_REQUIRED",
+        "INSPECTION_SIGNAL_DETECTED",
+        "REQUIRED_CONFIGURATION_MISSING",
+        "MARKET_CONTEXT_READY",
+        "NEW_PRODUCT_PRIOR_READY",
+        "MATERIAL_MARKET_CHANGE",
+        "PURE_OFF_SEASON_CONFIRMED",
+        "CLEARANCE_WINDOW_UPDATED",
+        "PRICE_STRUCTURE_UPDATED",
+        "COMPETITIVENESS_CHANGED",
+        "MARKET_EVIDENCE_BLOCKED",
+        "HUMAN_BOUNDARY_DECISION_REQUIRED",
+        "OPERATING_UNIT_INITIALIZATION_REQUIRED",
+        "INITIALIZATION_RECOMMENDATION_READY",
+        "BATCH_APPROVAL_REQUIRED",
+        "INDIVIDUAL_EXIT_APPROVAL_REQUIRED"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "RoutingMode": {
+      "enum": [
+        "HUMAN_ONLY",
+        "HUMAN_CONFIRM_THEN_ROUTER",
+        "AUTO_ROUTER"
+      ],
+      "title": "RoutingMode",
+      "type": "string"
+    },
+    "Severity": {
+      "description": "inspection-signal.v2#severity。\n\n注意：改造方案 v1.0 §6 写的是 DATA_GAP，但机器契约取值是 DATA_INSUFFICIENT。\n以契约为准（见 docs/05-与交接包契约的偏差说明.md 偏差 D-01）。",
+      "enum": [
+        "S0",
+        "S1",
+        "S2",
+        "DATA_INSUFFICIENT"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "SignalState": {
+      "enum": [
+        "NEW",
+        "PENDING_CONFIRMATION",
+        "IN_PROGRESS",
+        "OBSERVING",
+        "LONG_TERM_FOLLOW_UP",
+        "AWAITING_RESCAN",
+        "RESOLVED",
+        "FALSE_POSITIVE",
+        "IGNORED",
+        "INTERRUPTED"
+      ],
+      "title": "SignalState",
+      "type": "string"
+    },
+    "SignalType": {
+      "enum": [
+        "ANOMALY",
+        "OPPORTUNITY",
+        "RECOVERY",
+        "RECURRENCE",
+        "DATA_QUALITY",
+        "OBSERVATION_DUE"
+      ],
+      "title": "SignalType",
+      "type": "string"
+    },
+    "TriggerType": {
+      "enum": [
+        "DAILY_SCHEDULE",
+        "MANUAL",
+        "CONTROL_CENTER",
+        "OBSERVATION_DUE",
+        "DATA_REPAIRED"
+      ],
+      "title": "TriggerType",
+      "type": "string"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/inspection-result-envelope.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "巡检 Agent 向结果接收端投递的纯巡检结果封套",
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.inspection_result.v1",
+      "default": "amazon_ops.inspection_result.v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "handoff_directives": {
+      "items": {
+        "$ref": "#/$defs/HandoffDirective"
+      },
+      "title": "Handoff Directives",
+      "type": "array"
+    },
+    "producer_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1,
+      "title": "Producer Versions",
+      "type": "object"
+    },
+    "run": {
+      "$ref": "#/$defs/InspectionRun"
+    },
+    "signals": {
+      "items": {
+        "$ref": "#/$defs/InspectionSignal"
+      },
+      "title": "Signals",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run",
+    "producer_versions",
+    "generated_at"
+  ],
+  "title": "InspectionResultEnvelope",
+  "type": "object"
+}

@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "InspectionRunStatus": {
+      "description": "最终巡检主链路状态；旧 ``RunStatus`` 保留到 S3 断链。",
+      "enum": [
+        "RECEIVED",
+        "COLLECTING_FACTS",
+        "VALIDATING_FACTS",
+        "ANALYZING_ANOMALIES",
+        "RECONCILING_SIGNALS",
+        "PERSISTING",
+        "COMPLETED",
+        "COMPLETED_WITH_GAPS",
+        "BLOCKED",
+        "FAILED"
+      ],
+      "title": "InspectionRunStatus",
+      "type": "string"
+    },
+    "TriggerType": {
+      "enum": [
+        "DAILY_SCHEDULE",
+        "MANUAL",
+        "CONTROL_CENTER",
+        "OBSERVATION_DUE",
+        "DATA_REPAIRED"
+      ],
+      "title": "TriggerType",
+      "type": "string"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/inspection-run.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "巡检单经营单元运行记录",
+  "properties": {
+    "batch_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "amazon_ops.inspection_run.v1",
+      "default": "amazon_ops.inspection_run.v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "data_gap_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Data Gap Count",
+      "type": "integer"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    },
+    "error_message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Message"
+    },
+    "fact_snapshot_id": {
+      "anyOf": [
+        {
+          "pattern": "^fs_[0-9a-f]{24}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fact Snapshot Id"
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished At"
+    },
+    "job_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Job Id",
+      "type": "string"
+    },
+    "operating_unit_id": {
+      "pattern": "^ou_[0-9a-f]{24}$",
+      "title": "Operating Unit Id",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 191,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "rule_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1,
+      "title": "Rule Versions",
+      "type": "object"
+    },
+    "run_id": {
+      "pattern": "^pr_[0-9a-f]{24}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "signal_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Signal Count",
+      "type": "integer"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/InspectionRunStatus"
+    },
+    "trigger_type": {
+      "$ref": "#/$defs/TriggerType"
+    }
+  },
+  "required": [
+    "run_id",
+    "job_id",
+    "batch_id",
+    "request_id",
+    "operating_unit_id",
+    "trigger_type",
+    "status",
+    "rule_versions",
+    "started_at"
+  ],
+  "title": "InspectionRun",
+  "type": "object"
+}

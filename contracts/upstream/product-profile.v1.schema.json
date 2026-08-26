@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/product-profile.v1.schema.json",
+  "title": "ProductProfile",
+  "description": "版本化产品画像。只描述产品属性和证据，不承载经营模式或机会结论。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "profile_id",
+    "subject_ref",
+    "tag_registry_version",
+    "tags",
+    "unresolved_concepts",
+    "profile_version",
+    "as_of",
+    "confidence"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.market.v1"
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^pp_[0-9a-f]{24}$"
+    },
+    "subject_ref": {
+      "$ref": "market-product-ref.v1.schema.json"
+    },
+    "tag_registry_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "namespace",
+          "concept_id",
+          "role",
+          "confidence",
+          "evidence_refs",
+          "source"
+        ],
+        "properties": {
+          "namespace": {
+            "enum": [
+              "PRODUCT_FORM",
+              "FIT_CUT",
+              "MATERIAL",
+              "FUNCTION",
+              "SCENARIO",
+              "AUDIENCE",
+              "STYLE",
+              "COLOR_PATTERN",
+              "SEASON_ATTRIBUTE",
+              "PRICE_STRUCTURE",
+              "SPECIFICATION",
+              "VARIATION_STRUCTURE"
+            ]
+          },
+          "concept_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "role": {
+            "enum": [
+              "PURCHASE_JOB_DEFINING",
+              "RELATIONSHIP_REFINING",
+              "FILTER_ONLY"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "source": {
+            "enum": [
+              "ERP_STRUCTURED",
+              "AMAZON_STRUCTURED",
+              "LISTING_TEXT_RULE",
+              "MARKET_TEXT_RULE",
+              "AGENT_SEMANTIC",
+              "HUMAN_CONFIRMED"
+            ]
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "unresolved_concepts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "raw_text",
+          "proposed_namespace",
+          "recommendation",
+          "evidence_refs"
+        ],
+        "properties": {
+          "raw_text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "proposed_namespace": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recommendation": {
+            "enum": [
+              "MAP_TO_EXISTING",
+              "CREATE_CANDIDATE",
+              "IGNORE_AS_NOISE",
+              "HUMAN_REVIEW"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "review_state": {
+      "enum": [
+        "AUTO_ACCEPTED",
+        "REVIEW_RECOMMENDED",
+        "HUMAN_CONFIRMED",
+        "BLOCKED"
+      ]
+    }
+  }
+}

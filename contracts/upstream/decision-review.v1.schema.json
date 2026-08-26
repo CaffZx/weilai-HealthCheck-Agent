@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/decision-review.v1.schema.json",
+  "title": "DecisionReview",
+  "description": "将执行状态与经营结果分开，并在预批准标准和完整真实数据下允许 Agent 自动判定结果。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "review_id",
+    "operating_unit_ref",
+    "approved_plan_ref",
+    "action_receipt_refs",
+    "execution_status",
+    "outcome_status",
+    "reconciled_actual_refs",
+    "criteria_were_preapproved",
+    "data_complete",
+    "automatic_judgement",
+    "parent_guardrail_results",
+    "child_scope_results",
+    "evidence_summary",
+    "next_mode_recommendation",
+    "human_gate",
+    "reviewed_at"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.decision_review.v1"
+    },
+    "review_id": {
+      "type": "string",
+      "pattern": "^rv_[0-9a-f]{24}$"
+    },
+    "operating_unit_ref": {
+      "$ref": "operating-unit-ref.v2.schema.json"
+    },
+    "approved_plan_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_receipt_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "execution_status": {
+      "enum": [
+        "PLANNED",
+        "APPROVED",
+        "EXECUTING",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "outcome_status": {
+      "enum": [
+        "NOT_DUE",
+        "READY_FOR_REVIEW",
+        "SUCCESS",
+        "PARTIAL_SUCCESS",
+        "FAILED",
+        "INCONCLUSIVE",
+        "ADVERSE_EFFECT"
+      ]
+    },
+    "reconciled_actual_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "criteria_were_preapproved": {
+      "type": "boolean"
+    },
+    "data_complete": {
+      "type": "boolean"
+    },
+    "automatic_judgement": {
+      "type": "boolean"
+    },
+    "parent_guardrail_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion_ref",
+          "status",
+          "evidence_refs"
+        ],
+        "properties": {
+          "criterion_ref": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "child_scope_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "child_asin",
+          "outcome_status",
+          "net_cash_recovery",
+          "parent_guardrails_preserved",
+          "evidence_refs"
+        ],
+        "properties": {
+          "child_asin": {
+            "type": "string"
+          },
+          "outcome_status": {
+            "enum": [
+              "SUCCESS",
+              "PARTIAL_SUCCESS",
+              "FAILED",
+              "INCONCLUSIVE",
+              "ADVERSE_EFFECT"
+            ]
+          },
+          "net_cash_recovery": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "parent_guardrails_preserved": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "inconclusive_control": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "missing_evidence",
+        "next_review_at",
+        "extension_count"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "missing_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_review_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "extension_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "evidence_summary": {
+      "type": "string"
+    },
+    "next_mode_recommendation": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        null,
+        "NEW_PRODUCT_VALIDATION",
+        "IMMEDIATE_EXIT",
+        "CONTROLLED_CLEARANCE",
+        "TIME_BOXED_REPAIR",
+        "STABLE_OPERATION",
+        "ACTIVE_ADVANCE",
+        "PROFIT_HARVEST"
+      ]
+    },
+    "rule_change_proposal_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "human_gate": {
+      "enum": [
+        "H0",
+        "H1",
+        "H2",
+        "H3"
+      ]
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "automatic_judgement": {
+            "const": true
+          }
+        },
+        "required": [
+          "automatic_judgement"
+        ]
+      },
+      "then": {
+        "properties": {
+          "criteria_were_preapproved": {
+            "const": true
+          },
+          "data_complete": {
+            "const": true
+          },
+          "outcome_status": {
+            "enum": [
+              "SUCCESS",
+              "PARTIAL_SUCCESS",
+              "FAILED",
+              "ADVERSE_EFFECT"
+            ]
+          },
+          "reconciled_actual_refs": {
+            "type": "array",
+            "minItems": 1
+          },
+          "human_gate": {
+            "const": "H0"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome_status": {
+            "const": "INCONCLUSIVE"
+          }
+        },
+        "required": [
+          "outcome_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "inconclusive_control"
+        ],
+        "properties": {
+          "inconclusive_control": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ]
+}

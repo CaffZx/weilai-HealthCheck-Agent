@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "ReviewCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "criterionId": {
+          "minLength": 1,
+          "title": "Criterionid",
+          "type": "string"
+        },
+        "metricPath": {
+          "minLength": 1,
+          "title": "Metricpath",
+          "type": "string"
+        },
+        "operator": {
+          "enum": [
+            "GTE",
+            "LTE",
+            "EQ"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Target"
+        }
+      },
+      "required": [
+        "criterionId",
+        "metricPath",
+        "operator",
+        "target"
+      ],
+      "title": "ReviewCriterion",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/patrol-review-request.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "中控调用巡检复盘 MCP 时提交的任务上下文",
+  "properties": {
+    "approvedPlan": {
+      "additionalProperties": true,
+      "title": "Approvedplan",
+      "type": "object"
+    },
+    "baselineSnapshotId": {
+      "pattern": "^fs_[0-9a-f]{24}$",
+      "title": "Baselinesnapshotid",
+      "type": "string"
+    },
+    "contractVersion": {
+      "const": "amazon_ops.patrol_review_request.v1",
+      "default": "amazon_ops.patrol_review_request.v1",
+      "title": "Contractversion",
+      "type": "string"
+    },
+    "executionReceipts": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Executionreceipts",
+      "type": "array"
+    },
+    "failureCriteria": {
+      "items": {
+        "$ref": "#/$defs/ReviewCriterion"
+      },
+      "title": "Failurecriteria",
+      "type": "array"
+    },
+    "parentAsin": {
+      "minLength": 1,
+      "title": "Parentasin",
+      "type": "string"
+    },
+    "parentSellerSku": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Parentsellersku",
+      "type": "string"
+    },
+    "patrolBatchNo": {
+      "minLength": 1,
+      "title": "Patrolbatchno",
+      "type": "string"
+    },
+    "proposalId": {
+      "minLength": 1,
+      "title": "Proposalid",
+      "type": "string"
+    },
+    "requestedAt": {
+      "format": "date-time",
+      "title": "Requestedat",
+      "type": "string"
+    },
+    "reviewRequestId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Reviewrequestid",
+      "type": "string"
+    },
+    "reviewRound": {
+      "minimum": 1,
+      "title": "Reviewround",
+      "type": "integer"
+    },
+    "shopAccount": {
+      "minLength": 1,
+      "title": "Shopaccount",
+      "type": "string"
+    },
+    "shopId": {
+      "minimum": 1,
+      "title": "Shopid",
+      "type": "integer"
+    },
+    "siteCode": {
+      "minLength": 1,
+      "title": "Sitecode",
+      "type": "string"
+    },
+    "successCriteria": {
+      "items": {
+        "$ref": "#/$defs/ReviewCriterion"
+      },
+      "title": "Successcriteria",
+      "type": "array"
+    }
+  },
+  "required": [
+    "reviewRequestId",
+    "reviewRound",
+    "patrolBatchNo",
+    "proposalId",
+    "baselineSnapshotId",
+    "shopId",
+    "shopAccount",
+    "siteCode",
+    "parentAsin",
+    "parentSellerSku",
+    "approvedPlan",
+    "requestedAt"
+  ],
+  "title": "ReviewRequest",
+  "type": "object"
+}

@@ -1,0 +1,91 @@
+version: "2026-07-23-default-review-v2"
+default:
+  id: default_transaction_observation
+  name: 默认效果观察
+  days: 3
+  allows_manual_review: false
+
+# 仅链接状态、内容完整性、合规与属性异常允许运营覆盖默认复查日。
+# 其他异常保持异常点位的业务观察窗口，避免人为缩短经营数据的验证周期。
+rules:
+  - id: availability_follow_up
+    name: 链接状态恢复
+    issues: ["链接不可售", "变体掉线", "父子体关系异常", "Buy Box丢失"]
+    days: 1
+    allows_manual_review: true
+  - id: content_main_image_follow_up
+    name: 主图前台生效
+    issues: ["主图异常"]
+    days: 1
+    allows_manual_review: true
+  - id: content_approval_follow_up
+    name: 内容审核与前台生效
+    issues: ["图片异常", "五点异常", "A+异常"]
+    days: 3
+    allows_manual_review: true
+  - id: content_title_follow_up
+    name: 标题前台生效
+    issues: ["标题异常"]
+    days: 1
+    allows_manual_review: true
+  - id: price_promotion_follow_up
+    name: 价格与促销生效
+    issues: ["变体价差异常", "促销异常"]
+    days: 1
+    allows_manual_review: false
+  - id: inventory_supply_follow_up
+    name: 补货与库存承接
+    issues: ["FBA可售库存为0", "库存不足"]
+    days: 30
+    supports_expected_available_date: true
+    allows_manual_review: false
+  - id: inventory_availability_follow_up
+    name: 库存状态与前台可售
+    issues: ["库存不可售"]
+    days: 3
+    allows_manual_review: false
+  - id: inventory_backlog_follow_up
+    name: 库存积压消化
+    issues: ["库存积压"]
+    days: 14
+    allows_manual_review: false
+  - id: slow_moving_follow_up
+    name: 滞销恢复观察
+    issues: ["滞销异常"]
+    days: 30
+    allows_manual_review: false
+  - id: conversion_recovery_follow_up
+    name: 转化恢复观察
+    issues: ["链接转化率异常下降"]
+    days: 7
+    allows_manual_review: false
+  - id: sales_recovery_follow_up
+    name: 销量恢复观察
+    issues: ["销量异常", "销量增长提示", "ACOS异常", "广告花费异常", "目标偏离", "放量未执行"]
+    days: 3
+    allows_manual_review: false
+  - id: organic_rank_recovery_follow_up
+    name: 自然流量与卡位恢复
+    issues: ["自然流量异常", "卡位异常"]
+    days: 7
+    allows_manual_review: false
+  - id: compliance_follow_up
+    name: 合规与属性生效
+    issues: ["类目异常", "属性信息异常", "合规异常"]
+    days: 3
+    allows_manual_review: true
+  - id: review_risk_follow_up
+    name: 评价风险观察
+    issues: ["近期集中差评"]
+    days: 14
+    allows_manual_review: false
+  - id: rating_recovery_follow_up
+    name: 评分恢复观察
+    issues: ["评分异常"]
+    days: 3
+    allows_manual_review: false
+  - id: refund_recovery_follow_up
+    name: 退款恢复观察
+    issues: ["退款异常"]
+    days: 7
+    allows_manual_review: false

@@ -1,0 +1,127 @@
+child_fact_async:
+  failure_cooldown_minutes: 15
+  max_retry: 3
+  minimum_interval_seconds: 0.25
+  snapshot_ttl_hours: 24
+contracts:
+  version: '1.0'
+control_center_mcp:
+  default_url: https://mcp-gateway.example.com/opsloop/mcp
+  timeout_seconds: 15
+  token_env: CONTROL_CENTER_MCP_TOKEN
+  tool: submit_patrol_batch
+  url_env: CONTROL_CENTER_MCP_URL
+database:
+  url_env: PATROL_DATABASE_URL
+delivery:
+  base_backoff_seconds: 30
+  max_retry: 10
+feature_flags:
+  control_center_delivery_enabled: true
+  feedback_enabled: false
+  mysql_runtime: true
+  operating_mode_lookup_enabled: false
+  result_delivery_enabled: false
+  review_mcp_enabled: true
+  scheduler_enabled: false
+feedback:
+  enabled: false
+  token_env: INSPECTION_FEEDBACK_TOKEN
+inspection:
+  batch_size: 50
+  default_lookback_days: 30
+  disabled_fact_keys: []
+knowledge:
+  hot_reload: true
+  path: knowledge
+logging:
+  file: logs/agent.log
+  level: INFO
+mcp:
+  automatic_fallback: false
+  concurrency: 4
+  concurrency_env: AZLISTING_CONCURRENCY
+  default_url: http://mcp-gateway.example.com/mcp
+  directory_operator_role: GROUP_FBASALER
+  directory_token_env: MCP_API_KEY
+  directory_url_env: MCP_SYNC_GATEWAY
+  external_contract_status: PENDING_OWNER_FREEZE
+  internal_contract_version: amazon_ops.azlisting_mcp_input.internal.v3
+  legacy_token_env: MCP_AZLISTING_TOKEN
+  legacy_url_env: MCP_AZLISTING_URL
+  max_attempts: 2
+  max_attempts_env: AZLISTING_MAX_ATTEMPTS
+  operating_unit_strategy: QUERY_PAGE
+  principal_scopes_env: AZLISTING_PRINCIPAL_SCOPES_JSON
+  provider: AZLISTING
+  rate_limit_backoff_seconds: 15
+  request_interval_seconds: 1
+  storefront_zip_codes_env: AZLISTING_STOREFRONT_ZIP_CODES_JSON
+  timeout_seconds: 60
+  timeout_seconds_env: AZLISTING_TIMEOUT_SECONDS
+  token_env: MCP_API_KEY
+  tool_policy: AUDITED_ONLY
+  url_env: AZLISTING_GATEWAY
+observability:
+  oldest_pending_job_warn_minutes: 30
+  oldest_pending_outbox_warn_minutes: 15
+  pending_jobs_warn: 100
+  pending_outbox_warn: 100
+  stale_running_job_minutes: 30
+operating_mode_mcp:
+  default_url: http://10.0.0.0:8001/mcp
+  evaluate_tool: get_evaluate
+  evaluation_cooldown_seconds: 3600
+  evaluation_poll_interval_seconds: 2
+  evaluation_wait_timeout_seconds: 180
+  manual_evaluate_forbidden: false
+  timeout_seconds: 15
+  token_env: OPERATING_MODE_MCP_TOKEN
+  url_env: OPERATING_MODE_MCP_URL
+operating_unit_catalog:
+  refresh_interval_days: 7
+patrol:
+  max_retry_count: 3
+result_sink:
+  timeout_seconds: 10
+  token_env: INSPECTION_RESULT_SINK_TOKEN
+  url_env: INSPECTION_RESULT_SINK_URL
+review_mcp:
+  enabled_env: REVIEW_MCP_ENABLED
+  listen_host: 127.0.0.1
+  listen_port: 8791
+  public_token_env: REVIEW_MCP_PUBLIC_TOKEN
+  tool: review_patrol_result
+rollout:
+  allowlisted_shop_ids: []
+  shadow_mode: false
+  stage: FULL
+scheduler:
+  daily_time: 02:00
+  fallback_time: 07:00
+  lease_heartbeat_seconds: 200
+  lease_ttl_seconds: 600
+  observation_interval_minutes: 15
+  timezone: Asia/Shanghai
+service:
+  name: healthcheck-agent
+  version: 2.0.0
+supplemental_mcp:
+  concurrency: 2
+  contract_policy: FROZEN_ONLY
+  default_url: http://mcp-gateway.example.com/mcp
+  enabled: true
+  enabled_tools:
+  - listing_basic_info
+  max_attempts: 1
+  provider: STREAMABLE
+  timeout_seconds: 30
+  token_env: MCP_API_KEY
+  url_env: MCP_SYNC_GATEWAY
+worker:
+  batch_timeout_seconds: 10800
+  delivery_attempt_timeout_seconds: 60
+  handler_timeout_seconds: 600
+  job_timeout_seconds: 900
+  poll_interval_seconds: 2
+  stale_after_minutes: 30

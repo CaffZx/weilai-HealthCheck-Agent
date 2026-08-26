@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "PatrolUnitReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "listingId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listingid"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "parentAsin": {
+          "title": "Parentasin",
+          "type": "string"
+        },
+        "parentSellerSku": {
+          "title": "Parentsellersku",
+          "type": "string"
+        },
+        "proposalId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposalid"
+        },
+        "shopId": {
+          "title": "Shopid",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "SUCCESS",
+            "PARTIAL_SUCCESS",
+            "FAILED"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "shopId",
+        "parentAsin",
+        "parentSellerSku",
+        "status",
+        "code",
+        "message"
+      ],
+      "title": "PatrolUnitReceipt",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.amazon-ops.local/contracts/control-center-submit-patrol-batch-result.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "中控 submit_patrol_batch 的结构化业务结果",
+  "properties": {
+    "failedCount": {
+      "minimum": 0,
+      "title": "Failedcount",
+      "type": "integer"
+    },
+    "partialSuccessCount": {
+      "minimum": 0,
+      "title": "Partialsuccesscount",
+      "type": "integer"
+    },
+    "patrolBatchNo": {
+      "title": "Patrolbatchno",
+      "type": "string"
+    },
+    "receivedCount": {
+      "minimum": 0,
+      "title": "Receivedcount",
+      "type": "integer"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/PatrolUnitReceipt"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "successCount": {
+      "minimum": 0,
+      "title": "Successcount",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "patrolBatchNo",
+    "receivedCount",
+    "successCount",
+    "partialSuccessCount",
+    "failedCount",
+    "results"
+  ],
+  "title": "SubmitPatrolBatchResult",
+  "type": "object"
+}

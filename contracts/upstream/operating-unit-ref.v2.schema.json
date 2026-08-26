@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.amazon-ops.local/contracts/operating-unit-ref.v2.schema.json",
+  "title": "OperatingUnitRef",
+  "description": "Amazon 在售经营最小执行单元。业务键固定为 shop_id + parent_asin + parent_seller_sku；site_code 是业务属性和取数参数，不参与唯一性。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "operating_unit_id",
+    "shop_id",
+    "site_code",
+    "parent_asin",
+    "parent_seller_sku"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "amazon_ops.v2"
+    },
+    "operating_unit_id": {
+      "type": "string",
+      "pattern": "^ou_[0-9a-f]{24}$"
+    },
+    "shop_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "site_code": {
+      "type": "string",
+      "pattern": "^AMAZON_[A-Z0-9_-]{2,24}$",
+      "description": "统一为 AMAZON_US、AMAZON_UK、AMAZON_DE 等稳定代码；输入适配器可接受 US、UK、Amazon_US 等别名。"
+    },
+    "parent_asin": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "parent_seller_sku": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  }
+}

@@ -1,0 +1,170 @@
+# =============================================================================
+# 巡检 Agent 运行配置 v2.0
+# =============================================================================
+# 【铁律】密钥不能直接出现在本文件。
+#   凡是 *_env 结尾的配置项，值是**环境变量名**，实际密钥由环境或密钥中心提供。
+#   见 .env.example。
+#
+# V2 唯一运行数据库为 MySQL；SQLite 已永久退役，不提供兼容开关。
+# =============================================================================
+
+service:
+  name: healthcheck-agent
+  version: "2.0.0"
+
+contracts:
+  version: "1.0"
+
+# -----------------------------------------------------------------------------
+# 外部依赖（地址与令牌全部走环境变量）
+# -----------------------------------------------------------------------------
+mcp:
+  provider: AZLISTING
+  url_env: AZLISTING_GATEWAY
+  legacy_url_env: MCP_AZLISTING_URL
+  default_url: http://mcp-gateway.example.com/mcp
+  token_env: MCP_API_KEY
+  legacy_token_env: MCP_AZLISTING_TOKEN
+  automatic_fallback: false
+  tool_policy: AUDITED_ONLY
+  internal_contract_version: amazon_ops.azlisting_mcp_input.internal.v3
+  external_contract_status: PENDING_OWNER_FREEZE
+  # V3 query_page 的 asin/sellerSku 即父级身份；不读取运营配置表或负责人目录。
+  operating_unit_strategy: QUERY_PAGE
+  directory_url_env: MCP_SYNC_GATEWAY
+  directory_token_env: MCP_API_KEY
+  directory_operator_role: GROUP_FBASALER
+  principal_scopes_env: AZLISTING_PRINCIPAL_SCOPES_JSON
+  storefront_zip_codes_env: AZLISTING_STOREFRONT_ZIP_CODES_JSON
+  timeout_seconds_env: AZLISTING_TIMEOUT_SECONDS
+  concurrency_env: AZLISTING_CONCURRENCY
+  max_attempts_env: AZLISTING_MAX_ATTEMPTS
+  timeout_seconds: 60
+  concurrency: 32
+  max_attempts: 2
+  request_interval_seconds: 2
+  rate_limit_backoff_seconds: 15
+
+operating_unit_catalog:
+  refresh_interval_days: 7
+
+supplemental_mcp:
+  provider: STREAMABLE
+  url_env: MCP_SYNC_GATEWAY
+  default_url: http://mcp-gateway.example.com/mcp
+  token_env: MCP_API_KEY
+  enabled: true
+  contract_policy: FROZEN_ONLY
+  enabled_tools:
+    - listing_basic_info
+  timeout_seconds: 30
+  concurrency: 2
+  max_attempts: 1
+
+result_sink:
+  url_env: INSPECTION_RESULT_SINK_URL
+  token_env: INSPECTION_RESULT_SINK_TOKEN
+  timeout_seconds: 10
+
+control_center_mcp:
+  url_env: CONTROL_CENTER_MCP_URL
+  default_url: https://mcp-gateway.example.com/opsloop/mcp
+  token_env: CONTROL_CENTER_MCP_TOKEN
+  tool: submit_patrol_batch
+  timeout_seconds: 15
+
+operating_mode_mcp:
+  url_env: OPERATING_MODE_MCP_URL
+  default_url: http://10.0.0.0:8001/mcp
+  token_env: OPERATING_MODE_MCP_TOKEN
+  evaluate_tool: get_evaluate
+  manual_evaluate_forbidden: false
+  timeout_seconds: 15
+  evaluation_wait_timeout_seconds: 180
+  evaluation_poll_interval_seconds: 2
+  evaluation_cooldown_seconds: 3600
+
+review_mcp:
+  enabled_env: REVIEW_MCP_ENABLED
+  public_token_env: REVIEW_MCP_PUBLIC_TOKEN
+  listen_host: 127.0.0.1
+  listen_port: 8791
+  tool: review_patrol_result
+
+database:
+  url_env: PATROL_DATABASE_URL
+
+scheduler:
+  timezone: "Asia/Shanghai"
+  daily_time: "02:00"
+  fallback_time: "07:00"
+  observation_interval_minutes: 15
+  lease_ttl_seconds: 600
+  lease_heartbeat_seconds: 200
+
+worker:
+  stale_after_minutes: 30
+  poll_interval_seconds: 2
+  job_timeout_seconds: 900
+  batch_timeout_seconds: 10800
+  delivery_attempt_timeout_seconds: 60
+  handler_timeout_seconds: 600
+
+delivery:
+  max_retry: 10
+  base_backoff_seconds: 30
+
+feedback:
+  enabled: false
+  token_env: INSPECTION_FEEDBACK_TOKEN
+
+observability:
+  pending_jobs_warn: 100
+  oldest_pending_job_warn_minutes: 30
+  stale_running_job_minutes: 30
+  pending_outbox_warn: 100
+  oldest_pending_outbox_warn_minutes: 15
+
+rollout:
+  stage: FULL
+  shadow_mode: false
+  allowlisted_shop_ids: []
+
+feature_flags:
+  mysql_runtime: true
+  scheduler_enabled: false
+  # 巡检结果只落 MySQL，不再通过 Result Sink HTTP 投递
+  result_delivery_enabled: false
+  # 保留中控投递（submit_patrol_batch）——这是巡检 → 中控的主链路
+  control_center_delivery_enabled: true
+  # 不调用经营模式 Agent；且 payload 里不给中控 businessModel / recommendedBusinessModel
+  # / operatingMode 字段（相关字段全留空，中控自己判定或忽略）
+  operating_mode_lookup_enabled: false
+  feedback_enabled: false
+  review_mcp_enabled: true
+
+# -----------------------------------------------------------------------------
+# 巡检运行参数
+# -----------------------------------------------------------------------------
+patrol:
+  max_retry_count: 3
+
+inspection:
+  batch_size: 50
+  default_lookback_days: 30
+  # 广告订单按昨天单日窗口采集，填充中控 operatingMetric.adOrder。
+  disabled_fact_keys: []
+
+child_fact_async:
+  snapshot_ttl_hours: 24
+  failure_cooldown_minutes: 15
+  max_retry: 3
+  minimum_interval_seconds: 0.25
+
+knowledge:
+  path: knowledge
+  hot_reload: true
+
+logging:
+  level: INFO
+  file: logs/agent.log
