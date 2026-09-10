@@ -44,7 +44,7 @@ from data.sync_asin_owner import fetch_shop_map  # 复用 sprout_shop_query（sh
 load_dotenv()
 log = logging.getLogger(__name__)
 
-GATEWAY = os.getenv("AZLISTING_GATEWAY", "http://mcp-gateway.example.com/mcp")
+GATEWAY = os.environ["AZLISTING_GATEWAY"]  # 例：http://<mcp-host>/mcp
 API_KEY = os.getenv("MCP_API_KEY")
 TOOL = "erp_listing_follow_up_by_principal"
 PAGE_SIZE = 200  # 工具上限

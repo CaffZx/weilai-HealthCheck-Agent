@@ -30,8 +30,8 @@ from data import local_store as store
 load_dotenv()
 log = logging.getLogger(__name__)
 
-GATEWAY = os.getenv("MCP_SYNC_GATEWAY", "http://mcp-gateway.example.com/mcp")
-API_KEY = os.getenv("MCP_API_KEY", "REMOVED_API_KEY")
+GATEWAY = os.environ["MCP_SYNC_GATEWAY"]  # 例：http://<mcp-host>/mcp
+API_KEY = os.environ["MCP_API_KEY"]
 
 # ============================================================
 # MCP 协议封装（每个 worker 独占一个 session，避免线程共享 sid）

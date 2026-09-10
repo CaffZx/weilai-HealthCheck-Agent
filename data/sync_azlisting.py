@@ -31,8 +31,8 @@ from data import fixture_loader as fx
 
 log = logging.getLogger(__name__)
 
-GATEWAY = os.environ.get("AZLISTING_GATEWAY", "http://mcp-gateway.example.com/mcp")
-API_KEY = os.environ.get("MCP_API_KEY", "REMOVED_API_KEY")
+GATEWAY = os.environ["AZLISTING_GATEWAY"]  # 例：http://<mcp-host>/mcp
+API_KEY = os.environ["MCP_API_KEY"]
 
 _SID: str | None = None
 _HEADERS: dict = {}

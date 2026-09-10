@@ -20,11 +20,11 @@ weilai-HealthCheck-Agent/
 
 | 组件 | 地址 | 用途 |
 |---|---|---|
-| ERP MySQL | `10.0.0.0:3306 / app_db` | 配置表 + 4 张核心落库表 |
-| StarRocks | `10.0.0.0:9030 / app_db` | 大盘指标、`dwd_shop` 店铺映射 |
-| State DB  | `127.0.0.1:3307 / app_db` | agent 中间态 |
-| MCP 网关（内） | `http://10.0.0.0:7089/mcp` | 51 个业务工具，优先走此 |
-| MCP 网关（外） | `http://mcp-gateway.example.com/mcp` | 备用 |
+| ERP MySQL | `$ERP_HOST:3306 / $ERP_DATABASE` | 配置表 + 4 张核心落库表 |
+| StarRocks | `$STARROCKS_HOST:9030 / $STARROCKS_DB` | 大盘指标、店铺映射 |
+| State DB  | `127.0.0.1:3307 / $STATE_DB_NAME` | agent 中间态 |
+| MCP 网关（内） | `$MCP_GATEWAY_INTERNAL` | 业务工具，优先走此 |
+| MCP 网关（外） | `$MCP_GATEWAY_EXTERNAL` | 备用 |
 
 ## 快速开始
 

@@ -968,7 +968,8 @@ function openAiJudgmentDrawer(e, result){
 }
 
 // ---- 广告决策 agent 跳转 ----
-const AD_AGENT_BASE = 'https://mcp-gateway.example.com/demo/ad-asisitant-agent.html';
+// 部署时填入实际工作台地址（原为公司内网地址，已移除）
+const AD_AGENT_BASE = '';
 function buildAdAgentUrl(e){
   const q = new URLSearchParams({
     shopAccount: e.shop_account || '',
