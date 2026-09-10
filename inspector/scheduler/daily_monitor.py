@@ -14,7 +14,7 @@
 【用法】
     from inspector.scheduler.daily_monitor import 批量聚合, 聚合单产品
     全部结果 = 批量聚合()                         # 所有 70 个产品
-    单个结果 = 聚合单产品("B0EXAMPLE0", "am_example_us", "UK")
+    单个结果 = 聚合单产品("<PARENT_ASIN>", "<SHOP_ACCOUNT>", "<SITE_CODE>")
 """
 from __future__ import annotations
 import datetime as dt

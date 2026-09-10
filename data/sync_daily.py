@@ -2,7 +2,7 @@
 
 用法：
     python -m data.sync_daily --limit 50 --days 14
-    python -m data.sync_daily --key B0EXAMPLE0__1561   # 单个
+    python -m data.sync_daily --key <PARENT_ASIN>__<SHOP_ID>   # 单个
 
 策略：
   - 每日类(product_sales)：单日窗口循环，已冻结(>14天且库里有)的天跳过，不重复调用

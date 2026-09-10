@@ -19,7 +19,7 @@
 
 用法：
     python -m data.sync_asin_owner_forward --dry-run                 # 默认按运营角色(~24人)，只看统计
-    python -m data.sync_asin_owner_forward --principals 某某,某某   # 只跑指定负责人
+    python -m data.sync_asin_owner_forward --principals <姓名1>,<姓名2>   # 只跑指定负责人
     python -m data.sync_asin_owner_forward --from-existing --dry-run # 只刷新当前已在 asin_owner 里的负责人（快）
     python -m data.sync_asin_owner_forward --all-active --dry-run    # 遍历全部活跃用户（慢，会空跑）
     python -m data.sync_asin_owner_forward --apply                   # 确认无误后真正写库

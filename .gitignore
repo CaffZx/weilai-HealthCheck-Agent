@@ -5,6 +5,7 @@ __pycache__/
 venv/
 node_modules/
 logs/*.log
+logs/*.json
 .DS_Store
 *.egg-info/
 .pytest_cache/

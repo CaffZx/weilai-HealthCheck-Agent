@@ -368,7 +368,7 @@ def 跑内置算例() -> list[tuple[str, bool, str]]:
 
     # 1. 新建
     输入1 = 事件命中输入(
-        店铺账号="am_example_us", 父ASIN="B0EXAMPLE0",
+        店铺账号="am_example_us", 父ASIN="B0EXAMPLE01",
         问题点位="FBA可售库存为0", 作用层级="变体级", 异常类型="现象即原因型",
         严重度="S0", 命中变体="B0X_黑色/M", 变体重要性="主要色",
         判定依据={"命中依据": "FBA可售库存=0"},
@@ -415,7 +415,7 @@ def 跑内置算例() -> list[tuple[str, bool, str]]:
     输出.append(("9_历史留痕", len(历史) >= 5, f"共 {len(历史)} 条记录"))
 
     # 10. 开放事件查询
-    开放 = 查开放事件("B0EXAMPLE0")
+    开放 = 查开放事件("B0EXAMPLE01")
     输出.append(("10_查开放事件", len(开放) == 1, f"{len(开放)} 个开放事件"))
 
     return 输出

@@ -112,4 +112,4 @@ def 列出所有产品(enabled_only: bool = True) -> list[dict]:
 
 if __name__ == "__main__":
     print(f"erp_config 产品数(enabled=1): {len(列出所有产品())}")
-    print(f"某示例 目标ACOS: {读目标ACOS('B0EXAMPLE0', 1596)}")
+    print(f"某示例 目标ACOS: {读目标ACOS('B0EXAMPLE01', 1001)}")

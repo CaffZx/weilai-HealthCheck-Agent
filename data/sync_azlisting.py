@@ -8,7 +8,7 @@
 
 用法：
     python -m data.sync_azlisting --limit 5 --days 30
-    python -m data.sync_azlisting --key B0EXAMPLE0__35451
+    python -m data.sync_azlisting --key <PARENT_ASIN>__<SHOP_ID>
 
 【设计约定】
 - 独立模块，不动 sync_daily.py（B 方案实验期，方便回退）
